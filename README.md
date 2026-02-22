@@ -6,6 +6,13 @@ https://github.com/seethroughdev/obsidian-recipe-grabber/assets/203779/88e3977c-
 
 ---
 
+### To Release
+- Commit code
+- Run `npm version "patch|minor|major"`
+- Push to github with `git push`
+- Push tags with `git push --tags`
+- Wait for github actions to do its thing and grab the assets from the release
+
 ### Frontmatter Issues
 
 [Obsidian 1.4.6](https://obsidian.md/changelog/2023-08-31-desktop-v1.4.6/) changed the frontmatter behaviour.
