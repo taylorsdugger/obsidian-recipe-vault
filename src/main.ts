@@ -237,6 +237,10 @@ export default class RecipeGrabber extends Plugin {
         if (existingFile && existingFile instanceof TFile) {
           await this.app.vault.modify(existingFile, newContent);
         } else {
+          const folder = listPath.includes("/")
+            ? listPath.substring(0, listPath.lastIndexOf("/"))
+            : "";
+          if (folder) await this.folderCheck(folder);
           await this.app.vault.create(listPath, newContent);
         }
 
@@ -249,6 +253,34 @@ export default class RecipeGrabber extends Plugin {
           .join(", ");
         new Notice(
           `Shopping list updated (${msg || newItems.length + " items"}) → ${this.settings.shoppingListFile}`,
+        );
+      },
+    });
+
+    // Command to clear checked items from the shopping list
+    this.addCommand({
+      id: c.CMD_CLEAR_SHOPPING_LIST,
+      name: "Clear checked items from shopping list",
+      callback: async () => {
+        const listPath = normalizePath(this.settings.shoppingListFile);
+        const listFile = this.app.vault.getAbstractFileByPath(listPath);
+        if (!listFile || !(listFile instanceof TFile)) {
+          new Notice("Shopping list file not found.");
+          return;
+        }
+        const content = await this.app.vault.read(listFile);
+        const lines = content.split("\n");
+        const kept = lines.filter((line) => !/^- \[[xX]\]/.test(line));
+        // Remove any trailing blank lines left behind
+        while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
+        const removed = lines.filter((line) => /^- \[[xX]\]/.test(line)).length;
+        if (removed === 0) {
+          new Notice("No checked items to clear.");
+          return;
+        }
+        await this.app.vault.modify(listFile, kept.join("\n") + "\n");
+        new Notice(
+          `Cleared ${removed} checked item${removed > 1 ? "s" : ""} from shopping list.`,
         );
       },
     });

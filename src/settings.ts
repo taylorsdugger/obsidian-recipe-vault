@@ -167,7 +167,7 @@ export class SettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Shopping list file")
       .setDesc(
-        "Path to the file where checked ingredients are sent when using 'Add checked ingredients to shopping list'. Will be created if it doesn't exist.",
+        "Path to the file where checked ingredients are sent when using 'Add checked ingredients to shopping list'. Include a folder path to auto-create it (eg: Lists/Shopping List.md). Will be created if it doesn't exist.",
       )
       .addText((text) => {
         text
