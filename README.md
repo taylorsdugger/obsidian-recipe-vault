@@ -9,8 +9,7 @@ https://github.com/seethroughdev/obsidian-recipe-grabber/assets/203779/88e3977c-
 ### To Release
 - Commit code
 - Run `npm version "patch|minor|major"`
-- Push to github with `git push`
-- Push tags with `git push --tags`
+- Push to github with `git push origin --follow-tags`
 - Wait for github actions to do its thing and grab the assets from the release
 
 ### Frontmatter Issues
