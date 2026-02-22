@@ -689,6 +689,24 @@ export default class RecipeGrabber extends Plugin {
   private cleanRecipeName(name: string): string {
     if (!name) return name;
 
+    // Decode common HTML entities (e.g. &amp; → &, &amp;amp; → &)
+    const entityMap: Record<string, string> = {
+      "&amp;": "&",
+      "&lt;": "<",
+      "&gt;": ">",
+      "&quot;": '"',
+      "&#39;": "'",
+      "&apos;": "'",
+      "&nbsp;": " ",
+    };
+    let cleaned = name;
+    // Run twice to catch double-encoded entities like &amp;amp;
+    for (let pass = 0; pass < 2; pass++) {
+      for (const [entity, char] of Object.entries(entityMap)) {
+        cleaned = cleaned.split(entity).join(char);
+      }
+    }
+
     const fillerWords = [
       // Dietary labels (checked before shorter tokens)
       "gluten[- ]?free",
@@ -726,14 +744,22 @@ export default class RecipeGrabber extends Plugin {
       "healthy",
     ];
 
-    let cleaned = name;
     for (const word of fillerWords) {
       const regex = new RegExp(`\\b${word}\\b`, "gi");
       cleaned = cleaned.replace(regex, "");
     }
 
+    // Remove empty or whitespace-only parentheses left after keyword stripping
+    cleaned = cleaned.replace(/\(\s*\)/g, "");
+
     // Tidy up leftover punctuation, symbols, and whitespace
     cleaned = cleaned.replace(/[\s,\-–—&|]+/g, " ").trim();
+
+    // If the result is ALL CAPS (or mostly), convert to Title Case
+    const upper = cleaned.replace(/\s/g, "");
+    if (upper.length > 0 && upper === upper.toUpperCase()) {
+      cleaned = cleaned.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    }
 
     // Fall back to the original name if stripping removed everything
     return cleaned || name;
@@ -844,6 +870,9 @@ export default class RecipeGrabber extends Plugin {
     let s = text.trim();
     for (const [re, val] of ucFracs) s = s.replace(re, ` ${val}`);
 
+    // Normalise spaces around slashes in fractions so "1 /4" parses as "1/4"
+    s = s.replace(/(\d+)\s+\/\s*(\d+)/g, "$1/$2");
+
     // Match optional whole number + optional fraction (e.g. "1 1/2" or "1/2" or "2")
     const numRe = /^(\d+)?\s*(\d+\/\d+)?\s*/;
     const numMatch = s.match(numRe);
@@ -880,6 +909,11 @@ export default class RecipeGrabber extends Plugin {
         .filter(Boolean);
       name = name.slice(0, name.length - srcMatch[0].length).trim();
     }
+
+    // Strip parenthetical prep notes like "(, minced)" or "(packed)" or "(, finely diced)"
+    name = name.replace(/\s*\([^)]*\)/g, "").trim();
+    // Strip trailing comma-separated descriptors like ", minced" or ", or 2 pureed tomatoes"
+    name = name.replace(/,.*$/, "").trim();
 
     return { amount, unit, name: name.toLowerCase().trim(), sources };
   }
