@@ -5,6 +5,7 @@ export const CMD_INSERT_RECIPE = "cmd-insert-recipe";
 export const CMD_MARK_MADE = "cmd-mark-made";
 export const CMD_ADD_TO_SHOPPING_LIST = "cmd-add-to-shopping-list";
 export const CMD_CLEAR_SHOPPING_LIST = "cmd-clear-shopping-list";
+export const CMD_BATCH_IMPORT = "cmd-batch-import";
 
 /* ---------------------------- DEFAULT TEMPLATE ---------------------------- */
 

@@ -257,6 +257,71 @@ export default class RecipeGrabber extends Plugin {
       },
     });
 
+    // Command to batch import recipes from a list of URLs in the active file
+    this.addCommand({
+      id: c.CMD_BATCH_IMPORT,
+      name: "Batch import recipes from URL list",
+      callback: async () => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view) {
+          new Notice("Open a note containing a list of recipe URLs first.");
+          return;
+        }
+
+        // Use selection if present, otherwise whole file
+        const raw =
+          view.editor.getSelection()?.trim() || view.editor.getValue();
+
+        // Extract all lines that look like URLs
+        const urls = raw
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => /^https?:\/\//i.test(l));
+
+        if (urls.length === 0) {
+          new Notice(
+            "No URLs found. Put one URL per line in the note (or select them).",
+          );
+          return;
+        }
+
+        new Notice(
+          `Starting batch import of ${urls.length} recipe${urls.length > 1 ? "s" : ""}…`,
+        );
+
+        // Force each recipe into its own file for batch imports
+        const originalSaveInActiveFile = this.settings.saveInActiveFile;
+        this.settings.saveInActiveFile = false;
+
+        let success = 0;
+        let failed = 0;
+        for (let i = 0; i < urls.length; i++) {
+          const url = urls[i];
+          new Notice(`Importing ${i + 1} of ${urls.length}: ${url}`);
+          try {
+            await this.addRecipeToMarkdown(url);
+            success++;
+          } catch {
+            failed++;
+          }
+          // Small delay to avoid hammering servers back-to-back
+          if (i < urls.length - 1) {
+            await new Promise((r) => setTimeout(r, 800));
+          }
+        }
+
+        this.settings.saveInActiveFile = originalSaveInActiveFile;
+
+        const summary = [
+          success ? `${success} imported` : "",
+          failed ? `${failed} failed` : "",
+        ]
+          .filter(Boolean)
+          .join(", ");
+        new Notice(`Batch import complete: ${summary}.`);
+      },
+    });
+
     // Command to clear checked items from the shopping list
     this.addCommand({
       id: c.CMD_CLEAR_SHOPPING_LIST,
