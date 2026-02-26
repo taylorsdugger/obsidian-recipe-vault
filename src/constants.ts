@@ -6,6 +6,7 @@ export const CMD_MARK_MADE = "cmd-mark-made";
 export const CMD_ADD_TO_SHOPPING_LIST = "cmd-add-to-shopping-list";
 export const CMD_CLEAR_SHOPPING_LIST = "cmd-clear-shopping-list";
 export const CMD_BATCH_IMPORT = "cmd-batch-import";
+export const CMD_UPDATE_RECIPES_PHOTO = "cmd-update-recipes-photo";
 
 /* ---------------------------- DEFAULT TEMPLATE ---------------------------- */
 
@@ -17,6 +18,7 @@ created: {{datePublished}}
 meal_type: {{recipeCategory}}
 author: {{author.name}}
 url: {{url}}
+photo: "{{photoFrontmatter image}}"
 times_made: 0
 last_made:
 ---
