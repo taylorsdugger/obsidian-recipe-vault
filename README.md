@@ -7,10 +7,21 @@ https://github.com/seethroughdev/obsidian-recipe-grabber/assets/203779/88e3977c-
 ---
 
 ### To Release
-- Commit code
-- Run `npm version "patch|minor|major"`
-- Push to github with `git push origin --follow-tags`
-- Wait for github actions to do its thing and grab the assets from the release
+
+Releases are fully automated via GitHub Actions. To cut a new release:
+
+1. Go to **Actions** → **Version Bump** in this repository
+2. Click **Run workflow**
+3. Select the bump type: `patch`, `minor`, or `major`
+4. Click **Run workflow** — this will:
+   - Bump the version in `package.json`, `manifest.json`, and `versions.json`
+   - Commit and push the change with a version tag
+   - Automatically trigger the **Build obsidian plugin** workflow to build and create a draft GitHub Release
+5. Review the draft release on the [Releases page](../../releases) and publish when ready
+
+> ⚠️ Do **not** manually run `npm version` and push tags anymore — the Version Bump workflow handles this end-to-end.
+
+---
 
 ### Frontmatter Issues
 
