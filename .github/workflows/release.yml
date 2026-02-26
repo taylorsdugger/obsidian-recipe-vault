@@ -5,6 +5,7 @@ on:
         tags:
             - "*"
     workflow_dispatch:
+    workflow_call:
 
 env:
     PLUGIN_NAME: recipe-grabber # Change this to the name of your plugin-id folder
