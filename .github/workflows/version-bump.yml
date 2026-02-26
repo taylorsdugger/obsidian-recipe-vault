@@ -43,3 +43,9 @@ jobs:
 
             - name: Push Commit and Tag
               run: git push origin --follow-tags
+
+    release:
+        needs: bump
+        uses: ./.github/workflows/release.yml
+        permissions:
+            contents: write
