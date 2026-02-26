@@ -1,0 +1,45 @@
+name: Version Bump
+
+on:
+    workflow_dispatch:
+        inputs:
+            version_type:
+                description: Version bump type
+                required: true
+                default: patch
+                type: choice
+                options:
+                    - patch
+                    - minor
+                    - major
+
+jobs:
+    bump:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Use Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20.x"
+                  cache: "npm"
+
+            - name: Install Dependencies
+              run: npm ci
+
+            - name: Configure Git
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            - name: Bump Version
+              run: npm version ${{ inputs.version_type }}
+
+            - name: Push Commit and Tag
+              run: git push origin --follow-tags
