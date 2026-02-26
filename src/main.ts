@@ -352,6 +352,56 @@ export default class RecipeGrabber extends Plugin {
 
     // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new settings.SettingsTab(this.app, this));
+
+    // Command to add photo frontmatter property to existing recipe files
+    this.addCommand({
+      id: c.CMD_UPDATE_RECIPES_PHOTO,
+      name: "Add photo property to existing recipes",
+      callback: async () => {
+        const files = this.app.vault.getMarkdownFiles();
+        let updated = 0;
+        let skipped = 0;
+
+        for (const file of files) {
+          const cache = this.app.metadataCache.getFileCache(file);
+          const fm = cache?.frontmatter;
+
+          // Skip non-recipe files (must have "recipe" tag in frontmatter)
+          if (!fm) continue;
+          const tags = fm.tags;
+          const isRecipe = Array.isArray(tags)
+            ? tags.some((t: string) => t === "recipe")
+            : tags === "recipe";
+          if (!isRecipe) continue;
+
+          // Skip if photo is already set
+          if (fm.photo) {
+            skipped++;
+            continue;
+          }
+
+          // Extract image path/URL from the first Markdown image in the file body
+          const content = await this.app.vault.read(file);
+          const imgMatch = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
+          if (!imgMatch || !imgMatch[1]) {
+            skipped++;
+            continue;
+          }
+
+          const imgPath = imgMatch[1];
+          const photoValue = this.formatPhotoValue(imgPath);
+
+          await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+            frontmatter.photo = photoValue;
+          });
+          updated++;
+        }
+
+        new Notice(
+          `Photo property update complete: ${updated} updated, ${skipped} skipped.`,
+        );
+      },
+    });
   }
 
   onunload() {}
@@ -476,6 +526,14 @@ export default class RecipeGrabber extends Plugin {
     function isValidDate(d: string): boolean {
       return !isNaN(Date.parse(d));
     }
+
+    // Helper to format an image path/URL as a frontmatter-friendly photo value.
+    // Local paths are wrapped in [[...]] for Obsidian wikilink format; URLs are used as-is.
+    const formatPhotoValue = this.formatPhotoValue.bind(this);
+    handlebars.registerHelper("photoFrontmatter", function (imgPath) {
+      if (!imgPath) return "";
+      return formatPhotoValue(String(imgPath));
+    });
 
     handlebars.registerHelper("magicTime", function (arg1, arg2) {
       if (typeof arg1 === "undefined") {
@@ -667,6 +725,17 @@ export default class RecipeGrabber extends Plugin {
       return;
     }
   };
+
+  /**
+   * Formats an image path/URL as a frontmatter photo value.
+   * Local paths are wrapped in [[...]] (Obsidian wikilink); remote URLs are returned as-is.
+   */
+  private formatPhotoValue(imgPath: string): string {
+    if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
+      return imgPath;
+    }
+    return `[[${imgPath}]]`;
+  }
 
   /**
    * This function checks for an existing folder (creates if it doesn't exist)
