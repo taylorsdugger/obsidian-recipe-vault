@@ -22,6 +22,7 @@ import { fileTypeFromBuffer } from "file-type";
 import * as c from "./constants";
 import * as settings from "./settings";
 import { LoadRecipeModal } from "./modal-load-recipe";
+import { NewRecipeModal } from "./modal-new-recipe";
 import dateFormat from "dateformat";
 
 interface ShoppingItem {
@@ -402,6 +403,15 @@ export default class RecipeGrabber extends Plugin {
         );
       },
     });
+
+    // Command to create a new blank recipe stub from the current template
+    this.addCommand({
+      id: c.CMD_NEW_RECIPE_STUB,
+      name: "New recipe stub",
+      callback: () => {
+        new NewRecipeModal(this.app, this.createRecipeStub).open();
+      },
+    });
   }
 
   onunload() {}
@@ -724,6 +734,36 @@ export default class RecipeGrabber extends Plugin {
       }
       return;
     }
+  };
+
+  /**
+   * Creates a blank recipe stub file from the current template and opens it for editing.
+   */
+  private createRecipeStub = async (recipeName: string): Promise<void> => {
+    const name = recipeName.trim() || "New Recipe";
+
+    const markdown = handlebars.compile(this.settings.recipeTemplate);
+    const stub = { name };
+    let md = markdown(stub);
+
+    if (this.settings.decodeEntities) {
+      const textArea = document.createElement("textarea");
+      textArea.innerHTML = md;
+      md = textArea.value;
+    }
+
+    if (this.settings.folder !== "") {
+      await this.folderCheck(this.settings.folder);
+    }
+
+    const safeName = name.replace(/"|\*|\\|\/|<|>|:|\?/g, "");
+    const path =
+      this.settings.folder === ""
+        ? `${normalizePath(this.settings.folder)}${safeName}.md`
+        : `${normalizePath(this.settings.folder)}/${safeName}.md`;
+
+    const file = await this.app.vault.create(path, md);
+    await this.app.workspace.openLinkText(file.path, "", true);
   };
 
   /**
