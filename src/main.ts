@@ -22,6 +22,7 @@ import { fileTypeFromBuffer } from "file-type";
 import * as c from "./constants";
 import * as settings from "./settings";
 import { LoadRecipeModal } from "./modal-load-recipe";
+import { NewRecipeModal } from "./modal-new-recipe";
 import dateFormat from "dateformat";
 
 interface ShoppingItem {
@@ -353,13 +354,15 @@ export default class RecipeGrabber extends Plugin {
     // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new settings.SettingsTab(this.app, this));
 
-    // Command to add photo frontmatter property to existing recipe files
+    // Command to update frontmatter properties on existing recipe files
     this.addCommand({
       id: c.CMD_UPDATE_RECIPES_PHOTO,
-      name: "Add photo property to existing recipes",
+      name: "Update existing recipe properties",
       callback: async () => {
         const files = this.app.vault.getMarkdownFiles();
-        let updated = 0;
+        let photoUpdated = 0;
+        let authorUpdated = 0;
+        let cookTimeUpdated = 0;
         let skipped = 0;
 
         for (const file of files) {
@@ -374,32 +377,90 @@ export default class RecipeGrabber extends Plugin {
             : tags === "recipe";
           if (!isRecipe) continue;
 
-          // Skip if photo is already set
-          if (fm.photo) {
-            skipped++;
-            continue;
+          let fileChanged = false;
+
+          // Backfill photo if missing
+          if (!fm.photo) {
+            const content = await this.app.vault.read(file);
+            const imgMatch = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
+            if (imgMatch && imgMatch[1]) {
+              const photoValue = this.formatPhotoValue(imgMatch[1]);
+              await this.app.fileManager.processFrontMatter(
+                file,
+                (frontmatter) => {
+                  frontmatter.photo = photoValue;
+                },
+              );
+              photoUpdated++;
+              fileChanged = true;
+            } else {
+              skipped++;
+            }
           }
 
-          // Extract image path/URL from the first Markdown image in the file body
-          const content = await this.app.vault.read(file);
-          const imgMatch = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
-          if (!imgMatch || !imgMatch[1]) {
-            skipped++;
-            continue;
+          // Backfill author and cook_time if missing and a url is available
+          const needsAuthor = !fm.author;
+          const needsCookTime = !fm.cook_time;
+          if ((needsAuthor || needsCookTime) && fm.url) {
+            try {
+              const recipes = await this.fetchRecipes(fm.url);
+              const recipe = recipes?.[0];
+              if (recipe) {
+                let authorValue: string | undefined;
+                let cookTimeValue: string | undefined;
+                if (needsAuthor && recipe.author) {
+                  // normalizeSchema (called inside fetchRecipes) ensures author is a string
+                  authorValue = recipe.author as string;
+                }
+                if (needsCookTime && recipe.totalTime) {
+                  cookTimeValue = this.formatIsoDuration(
+                    String(recipe.totalTime),
+                  );
+                }
+                if (authorValue !== undefined || cookTimeValue !== undefined) {
+                  await this.app.fileManager.processFrontMatter(
+                    file,
+                    (frontmatter) => {
+                      if (authorValue !== undefined) {
+                        frontmatter.author = authorValue;
+                      }
+                      if (cookTimeValue !== undefined) {
+                        frontmatter.cook_time = cookTimeValue;
+                      }
+                    },
+                  );
+                  if (authorValue !== undefined) {
+                    authorUpdated++;
+                    fileChanged = true;
+                  }
+                  if (cookTimeValue !== undefined) {
+                    cookTimeUpdated++;
+                    fileChanged = true;
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn(`Recipe Grabber: failed to fetch ${fm.url}`, err);
+            }
           }
 
-          const imgPath = imgMatch[1];
-          const photoValue = this.formatPhotoValue(imgPath);
-
-          await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-            frontmatter.photo = photoValue;
-          });
-          updated++;
+          if (!fileChanged) {
+            skipped++;
+          }
         }
 
         new Notice(
-          `Photo property update complete: ${updated} updated, ${skipped} skipped.`,
+          `Recipe property update complete: ${photoUpdated} photo, ${authorUpdated} author, ${cookTimeUpdated} cook_time updated; ${skipped} skipped.`,
         );
+      },
+    });
+
+    // Command to create a new blank recipe stub from the current template
+    this.addCommand({
+      id: c.CMD_NEW_RECIPE_STUB,
+      name: "New recipe stub",
+      callback: () => {
+        new NewRecipeModal(this.app, this.createRecipeStub).open();
       },
     });
   }
@@ -465,6 +526,20 @@ export default class RecipeGrabber extends Plugin {
 
       if (typeof json.recipeIngredient === "string") {
         json.recipeIngredient = [json.recipeIngredient];
+      }
+
+      // Normalize author to a plain string
+      if (json.author) {
+        const raw = json.author as any;
+        if (Array.isArray(raw)) {
+          (json as any).author = raw
+            .map((a: any) => (typeof a === "string" ? a : a?.name ?? ""))
+            .filter(Boolean)
+            .join(", ");
+        } else if (typeof raw === "object") {
+          (json as any).author = raw?.name ?? "";
+        }
+        // if already a string, leave it as-is
       }
 
       recipes.push(json);
@@ -535,6 +610,7 @@ export default class RecipeGrabber extends Plugin {
       return formatPhotoValue(String(imgPath));
     });
 
+    const formatIsoDuration = this.formatIsoDuration.bind(this);
     handlebars.registerHelper("magicTime", function (arg1, arg2) {
       if (typeof arg1 === "undefined") {
         // catch undefined / empty
@@ -552,12 +628,7 @@ export default class RecipeGrabber extends Plugin {
         }
         if (arg1.trim().startsWith("PT")) {
           // magicTime PT1H50M
-          return arg1
-            .trim()
-            .replace("PT", "")
-            .replace("H", "h ")
-            .replace("M", "m ")
-            .replace("S", "s ");
+          return formatIsoDuration(arg1);
         }
         try {
           // magicTime "dd-mm-yyyy HH:MM"
@@ -727,6 +798,36 @@ export default class RecipeGrabber extends Plugin {
   };
 
   /**
+   * Creates a blank recipe stub file from the current template and opens it for editing.
+   */
+  private createRecipeStub = async (recipeName: string): Promise<void> => {
+    const name = recipeName.trim() || "New Recipe";
+
+    const markdown = handlebars.compile(this.settings.recipeTemplate);
+    const stub = { name };
+    let md = markdown(stub);
+
+    if (this.settings.decodeEntities) {
+      const textArea = document.createElement("textarea");
+      textArea.innerHTML = md;
+      md = textArea.value;
+    }
+
+    if (this.settings.folder !== "") {
+      await this.folderCheck(this.settings.folder);
+    }
+
+    const safeName = name.replace(/"|\*|\\|\/|<|>|:|\?/g, "");
+    const path =
+      this.settings.folder === ""
+        ? `${normalizePath(this.settings.folder)}${safeName}.md`
+        : `${normalizePath(this.settings.folder)}/${safeName}.md`;
+
+    const file = await this.app.vault.create(path, md);
+    await this.app.workspace.openLinkText(file.path, "", true);
+  };
+
+  /**
    * Formats an image path/URL as a frontmatter photo value.
    * Local paths are wrapped in [[...]] (Obsidian wikilink); remote URLs are returned as-is.
    */
@@ -832,6 +933,20 @@ export default class RecipeGrabber extends Plugin {
 
     // Fall back to the original name if stripping removed everything
     return cleaned || name;
+  }
+
+  /**
+   * Format an ISO 8601 duration string (e.g. "PT1H30M") into a human-readable
+   * string (e.g. "1h 30m "). Returns the original string if it doesn't start with "PT".
+   */
+  private formatIsoDuration(duration: string): string {
+    const raw = duration.trim();
+    if (!raw.startsWith("PT")) return raw;
+    return raw
+      .replace("PT", "")
+      .replace("H", "h ")
+      .replace("M", "m ")
+      .replace("S", "s ");
   }
 
   /**

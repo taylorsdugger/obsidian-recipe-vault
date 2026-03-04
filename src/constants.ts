@@ -7,6 +7,7 @@ export const CMD_ADD_TO_SHOPPING_LIST = "cmd-add-to-shopping-list";
 export const CMD_CLEAR_SHOPPING_LIST = "cmd-clear-shopping-list";
 export const CMD_BATCH_IMPORT = "cmd-batch-import";
 export const CMD_UPDATE_RECIPES_PHOTO = "cmd-update-recipes-photo";
+export const CMD_NEW_RECIPE_STUB = "cmd-new-recipe-stub";
 
 /* ---------------------------- DEFAULT TEMPLATE ---------------------------- */
 
@@ -16,7 +17,8 @@ tags:
 date_added: {{magicTime}}
 created: {{datePublished}}
 meal_type: {{recipeCategory}}
-author: {{author.name}}
+author: {{author}}
+cook_time: {{magicTime totalTime}}
 url: {{url}}
 photo: "{{photoFrontmatter image}}"
 times_made: 0
