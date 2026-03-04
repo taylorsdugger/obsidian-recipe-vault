@@ -17,7 +17,8 @@ tags:
 date_added: {{magicTime}}
 created: {{datePublished}}
 meal_type: {{recipeCategory}}
-author: {{author.name}}
+author: {{author}}
+cook_time: {{magicTime totalTime}}
 url: {{url}}
 photo: "{{photoFrontmatter image}}"
 times_made: 0
