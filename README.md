@@ -6,6 +6,18 @@ https://github.com/seethroughdev/obsidian-recipe-grabber/assets/203779/88e3977c-
 
 ---
 
+### Commands
+
+#### Grab Recipe
+Opens a prompt to paste a recipe URL. The plugin fetches the structured recipe data and creates a new note in the configured save folder.
+
+#### Add recipe (manual)
+Opens a prompt to enter a recipe name. A new recipe note is created in the configured save folder (defaults to `recipes/` if no folder is set) using the same template as auto-grabbed recipes, with `source: manual` added to the frontmatter. The note is opened automatically and a confirmation notice is shown.
+
+If a note with the same name already exists, a numeric suffix is appended (e.g. `Pasta (2).md`).
+
+---
+
 ### To Release
 
 Releases are fully automated via GitHub Actions. To cut a new release:
