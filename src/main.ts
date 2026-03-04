@@ -455,10 +455,10 @@ export default class RecipeGrabber extends Plugin {
       },
     });
 
-    // Command to create a new blank recipe stub from the current template
+    // Command to create a new manual recipe from the current template
     this.addCommand({
       id: c.CMD_NEW_RECIPE_STUB,
-      name: "New recipe stub",
+      name: "Add recipe (manual)",
       callback: () => {
         new NewRecipeModal(this.app, this.createRecipeStub).open();
       },
@@ -798,10 +798,11 @@ export default class RecipeGrabber extends Plugin {
   };
 
   /**
-   * Creates a blank recipe stub file from the current template and opens it for editing.
+   * Creates a manual recipe note from the current template and opens it for editing.
    */
   private createRecipeStub = async (recipeName: string): Promise<void> => {
-    const name = recipeName.trim() || "New Recipe";
+    const name = recipeName.trim();
+    if (!name) return;
 
     const markdown = handlebars.compile(this.settings.recipeTemplate);
     const stub = { name };
@@ -813,17 +814,25 @@ export default class RecipeGrabber extends Plugin {
       md = textArea.value;
     }
 
-    if (this.settings.folder !== "") {
-      await this.folderCheck(this.settings.folder);
-    }
+    const folder =
+      this.settings.folder !== ""
+        ? this.settings.folder
+        : c.MANUAL_RECIPE_DEFAULT_FOLDER;
+    await this.folderCheck(folder);
 
     const safeName = name.replace(/"|\*|\\|\/|<|>|:|\?/g, "");
-    const path =
-      this.settings.folder === ""
-        ? `${normalizePath(this.settings.folder)}${safeName}.md`
-        : `${normalizePath(this.settings.folder)}/${safeName}.md`;
+    let filePath = `${normalizePath(folder)}/${safeName}.md`;
+    let counter = 2;
+    while (this.app.vault.getAbstractFileByPath(filePath)) {
+      filePath = `${normalizePath(folder)}/${safeName} (${counter}).md`;
+      counter++;
+    }
 
-    const file = await this.app.vault.create(path, md);
+    const file = await this.app.vault.create(filePath, md);
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      fm.source = "manual";
+    });
+    new Notice(`Recipe "${name}" created.`);
     await this.app.workspace.openLinkText(file.path, "", true);
   };
 
