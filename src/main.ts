@@ -23,6 +23,7 @@ import * as c from "./constants";
 import * as settings from "./settings";
 import { LoadRecipeModal } from "./modal-load-recipe";
 import { NewRecipeModal } from "./modal-new-recipe";
+import { ImageRecipeModal, ImageRecipeResult } from "./modal-image-recipe";
 import dateFormat from "dateformat";
 
 interface ShoppingItem {
@@ -463,6 +464,15 @@ export default class RecipeGrabber extends Plugin {
         new NewRecipeModal(this.app, this.createRecipeStub).open();
       },
     });
+
+    // Command to create a recipe by scanning an image with OCR
+    this.addCommand({
+      id: c.CMD_RECIPE_FROM_IMAGE,
+      name: "Add recipe from image",
+      callback: () => {
+        new ImageRecipeModal(this.app, this.createRecipeFromImage).open();
+      },
+    });
   }
 
   onunload() {}
@@ -833,6 +843,82 @@ export default class RecipeGrabber extends Plugin {
       fm.source = "manual";
     });
     new Notice(`Recipe "${name}" created.`);
+    await this.app.workspace.openLinkText(file.path, "", true);
+  };
+
+  /**
+   * Creates a recipe note from an image-scanned result and opens it for editing.
+   */
+  private createRecipeFromImage = async (
+    result: ImageRecipeResult,
+  ): Promise<void> => {
+    const { recipe, imageOption, originalImageFile, differentImageFile } =
+      result;
+    const name = (recipe.name || "Scanned Recipe").trim();
+    if (!name) return;
+
+    const folder =
+      this.settings.folder !== ""
+        ? this.settings.folder
+        : c.MANUAL_RECIPE_DEFAULT_FOLDER;
+    await this.folderCheck(folder);
+
+    const safeName = name.replace(/"|\*|\\|\/|<|>|:|\?/g, "");
+    let filePath = `${normalizePath(folder)}/${safeName}.md`;
+    let counter = 2;
+    while (this.app.vault.getAbstractFileByPath(filePath)) {
+      filePath = `${normalizePath(folder)}/${safeName} (${counter}).md`;
+      counter++;
+    }
+
+    // Save the chosen image file into the vault attachment folder
+    let imagePath = "";
+    const imgFile =
+      imageOption === "use"
+        ? originalImageFile
+        : imageOption === "different"
+          ? differentImageFile
+          : undefined;
+    if (imgFile) {
+      const imgExt = imgFile.name.split(".").pop() ?? "jpg";
+      const imgFolder =
+        this.settings.imgFolder !== "" ? this.settings.imgFolder : folder;
+      await this.folderCheck(imgFolder);
+
+      const imgSafeName = safeName.replace(/\s+/g, "-");
+      imagePath = `${normalizePath(imgFolder)}/${imgSafeName}.${imgExt}`;
+      const buf = await imgFile.arrayBuffer();
+      if (!this.app.vault.getAbstractFileByPath(imagePath)) {
+        await this.app.vault.createBinary(imagePath, buf);
+      }
+    }
+
+    // Build template data matching the shape used by addRecipeToMarkdown
+    const templateData = {
+      name,
+      author: recipe.author,
+      totalTime: recipe.totalTime,
+      image: imagePath || undefined,
+      recipeIngredient: recipe.recipeIngredient,
+      recipeInstructions: recipe.recipeInstructions.map((step) => ({
+        text: step,
+      })),
+    };
+
+    const markdown = handlebars.compile(this.settings.recipeTemplate);
+    let md = markdown(templateData);
+
+    if (this.settings.decodeEntities) {
+      const textArea = document.createElement("textarea");
+      textArea.innerHTML = md;
+      md = textArea.value;
+    }
+
+    const file = await this.app.vault.create(filePath, md);
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      fm.source = "image";
+    });
+    new Notice(`Recipe "${name}" created from image.`);
     await this.app.workspace.openLinkText(file.path, "", true);
   };
 

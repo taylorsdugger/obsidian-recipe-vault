@@ -8,6 +8,7 @@ export const CMD_CLEAR_SHOPPING_LIST = "cmd-clear-shopping-list";
 export const CMD_BATCH_IMPORT = "cmd-batch-import";
 export const CMD_UPDATE_RECIPES_PHOTO = "cmd-update-recipes-photo";
 export const CMD_NEW_RECIPE_STUB = "cmd-new-recipe-stub";
+export const CMD_RECIPE_FROM_IMAGE = "cmd-recipe-from-image";
 export const MANUAL_RECIPE_DEFAULT_FOLDER = "recipes";
 
 /* ---------------------------- DEFAULT TEMPLATE ---------------------------- */
