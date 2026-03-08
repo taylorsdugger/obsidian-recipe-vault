@@ -1,6 +1,5 @@
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
@@ -53,7 +52,6 @@ const context = await esbuild.context({
 		"@lezer/common",
 		"@lezer/highlight",
 		"@lezer/lr",
-		...builtins,
 	],
 	format: "cjs",
 	target: "es2018",
@@ -61,7 +59,7 @@ const context = await esbuild.context({
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
-	platform: "node",
+	platform: "browser",
 	plugins: [tesseractBrowserWorkerPlugin],
 	outfile: "main.js",
 });
