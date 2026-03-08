@@ -20,7 +20,7 @@ import {
 import * as handlebars from "handlebars";
 import type { Recipe } from "schema-dts";
 import * as cheerio from "cheerio";
-import { fileTypeFromBuffer } from "file-type";
+
 import * as c from "./constants";
 import * as settings from "./settings";
 import { LoadRecipeModal } from "./modal-load-recipe";
@@ -1285,6 +1285,62 @@ export default class RecipeGrabber extends Plugin {
   }
 
   /**
+   * Detect common web image types from raw bytes using magic-byte signatures.
+   * Returns { ext, mime } compatible with the former file-type library output,
+   * or null when the format is unrecognised.
+   */
+  private detectImageType(
+    buf: ArrayBuffer,
+  ): { ext: string; mime: string } | null {
+    const bytes = new Uint8Array(buf.slice(0, 12));
+    // JPEG: FF D8 FF
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+      return { ext: "jpg", mime: "image/jpeg" };
+    }
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (
+      bytes[0] === 0x89 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x4e &&
+      bytes[3] === 0x47
+    ) {
+      return { ext: "png", mime: "image/png" };
+    }
+    // GIF: 47 49 46 38
+    if (
+      bytes[0] === 0x47 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x46 &&
+      bytes[3] === 0x38
+    ) {
+      return { ext: "gif", mime: "image/gif" };
+    }
+    // WebP: 52 49 46 46 ?? ?? ?? ?? 57 45 42 50
+    if (
+      bytes[0] === 0x52 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x46 &&
+      bytes[3] === 0x46 &&
+      bytes[8] === 0x57 &&
+      bytes[9] === 0x45 &&
+      bytes[10] === 0x42 &&
+      bytes[11] === 0x50
+    ) {
+      return { ext: "webp", mime: "image/webp" };
+    }
+    // SVG: text sniff – must contain an "<svg" element (covers both bare SVG
+    // and XML-declared SVG while rejecting other XML documents)
+    const head = new TextDecoder().decode(buf.slice(0, 256)).trimStart();
+    if (
+      head.startsWith("<svg") ||
+      (head.startsWith("<?xml") && head.includes("<svg"))
+    ) {
+      return { ext: "svg", mime: "image/svg+xml" };
+    }
+    return null;
+  }
+
+  /**
    * This function fetches the image (as an array buffer) and saves as a file, returns the path of the file.
    */
   private async fetchImage(
@@ -1306,7 +1362,7 @@ export default class RecipeGrabber extends Plugin {
         url: String(imgUrl),
         method: "GET",
       });
-      const type = await fileTypeFromBuffer(res.arrayBuffer); // type of the image
+      const type = this.detectImageType(res.arrayBuffer); // type of the image
       if (!type) {
         return false;
       }
