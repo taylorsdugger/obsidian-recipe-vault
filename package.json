@@ -9,9 +9,11 @@
   },
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "build": "npm run tailwind:build && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "tailwind:build": "tailwindcss -i ./src/tailwind.input.css -o ./styles.css",
+    "tailwind:watch": "tailwindcss -i ./src/tailwind.input.css -o ./styles.css --watch",
     "lint": "eslint src",
-    "format": "prettier --write src/**/*.ts",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "prebuild": "npm run lint && npm run format",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
@@ -23,8 +25,11 @@
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "^9.1.1",
+    "@tailwindcss/cli": "^4.2.1",
     "@types/dateformat": "^5.0.2",
     "@types/node": "^20.10.6",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "6.17.0",
     "@typescript-eslint/parser": "6.17.0",
     "builtin-modules": "3.3.0",
@@ -32,6 +37,7 @@
     "eslint": "^8.57.0",
     "obsidian": "latest",
     "prettier": "^3.2.5",
+    "tailwindcss": "^4.2.1",
     "tslib": "2.6.2",
     "typescript": "^5.3.3",
     "typescript-eslint": "^7.7.1"
@@ -41,6 +47,8 @@
     "dateformat": "^5.0.3",
     "file-type": "^19.0.0",
     "handlebars": "^4.7.8",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "schema-dts": "^1.1.2",
     "tesseract.js": "^7.0.0"
   }

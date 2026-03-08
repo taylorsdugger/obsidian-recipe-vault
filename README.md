@@ -2,8 +2,6 @@ This plugin allows you to paste the url of any recipe into your Obsidian page an
 
 Its built for those of you who want to save the recipe, and not the complete history of biscuits and how much the author loves making them on their family trip to Maine.
 
-https://github.com/seethroughdev/obsidian-recipe-grabber/assets/203779/88e3977c-fbb8-4bc6-a770-06071af154d1
-
 ---
 
 ### Commands
@@ -11,10 +9,28 @@ https://github.com/seethroughdev/obsidian-recipe-grabber/assets/203779/88e3977c-
 #### Grab Recipe
 Opens a prompt to paste a recipe URL. The plugin fetches the structured recipe data and creates a new note in the configured save folder.
 
+#### Mark Recipe as Made
+Updates frontmatter on the active recipe note by incrementing `times_made` and setting `last_made` to today.
+
+#### Add checked ingredients to shopping list
+Reads checked ingredient checkboxes from the active recipe's Ingredients section, appends/merges them into the configured shopping list file, and unchecks them in the recipe note.
+
+#### Batch import recipes from URL list
+Imports multiple recipes at once from URLs in the current selection (or entire active note), with one URL per line.
+
+#### Clear checked items from shopping list
+Removes completed (`- [x]`) items from the configured shopping list file.
+
+#### Update existing recipe properties
+Scans recipe notes and backfills missing frontmatter properties such as `photo`, `author`, and `cook_time` when possible.
+
 #### Add recipe (manual)
 Opens a prompt to enter a recipe name. A new recipe note is created in the configured save folder (defaults to `recipes/` if no folder is set) using the same template as auto-grabbed recipes, with `source: manual` added to the frontmatter. The note is opened automatically and a confirmation notice is shown.
 
 If a note with the same name already exists, a numeric suffix is appended (e.g. `Pasta (2).md`).
+
+#### Add recipe from image
+Opens an image-based import flow that uses OCR to extract recipe text from an image and creates a new recipe note using your current template, with `source: image` in frontmatter.
 
 ---
 
@@ -45,6 +61,7 @@ If you have this problem, go to the settings of this plugin and remove the leadi
 
 -   Save Image: Downloads the recipe image into the vault (save location can be set in the plugin settings). `{{image}}` value will be the link to the downloaded file instead of the direct URL. Disabled by default. If Save Image option is enabled, use `![[{{image}}]]` in the template.
     > if settings is toggled off or image save fails, `{{image}}` value will be a direct URL.
+-   OCR strict cleanup: For image-scanned recipes, aggressively filters likely OCR garbage from the extracted title, ingredients, and instructions. Turn this off if valid lines are being removed.
 
 ### Custom templating
 

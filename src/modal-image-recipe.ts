@@ -1,5 +1,10 @@
 import { App, Modal, Notice, Setting } from "obsidian";
-import { recognizeText, parseRecipeText, ParsedRecipe } from "./ocr-parser";
+import {
+  OcrRecognitionResult,
+  parseRecipeText,
+  ParsedRecipe,
+  recognizeTextWithMetadata,
+} from "./ocr-parser";
 
 export type ImageOption = "use" | "different" | "none";
 
@@ -12,8 +17,83 @@ export interface ImageRecipeResult {
   differentImageFile?: File;
 }
 
+class OcrReviewModal extends Modal {
+  private ocrResult: OcrRecognitionResult;
+  private onAccept: () => void;
+  private onCancel: () => void;
+  private resolved = false;
+
+  constructor(
+    app: App,
+    ocrResult: OcrRecognitionResult,
+    onAccept: () => void,
+    onCancel: () => void,
+  ) {
+    super(app);
+    this.ocrResult = ocrResult;
+    this.onAccept = onAccept;
+    this.onCancel = onCancel;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    contentEl.createEl("h3", { text: "Review OCR quality" });
+    contentEl.createEl("p", {
+      text: "Check OCR quality before parsing recipe fields.",
+      cls: "setting-item-description",
+    });
+
+    const meta = this.ocrResult.metadata;
+    contentEl.createEl("p", {
+      text: `Confidence: ${Math.round(meta.confidence)}%`,
+    });
+    contentEl.createEl("p", {
+      text: `Orientation correction: ${meta.orientationDegrees}°`,
+    });
+    contentEl.createEl("p", {
+      text: `Margin crop: ${meta.cropApplied ? "applied" : "not applied"}`,
+    });
+
+    const img = contentEl.createEl("img", { cls: "recipe-image-preview" });
+    img.src = meta.preprocessedImageDataUrl;
+    img.style.maxWidth = "100%";
+    img.style.maxHeight = "260px";
+    img.style.marginBottom = "1em";
+    img.style.borderRadius = "6px";
+
+    new Setting(contentEl)
+      .addButton((btn) =>
+        btn.setButtonText("Rescan").onClick(() => {
+          this.resolved = true;
+          this.close();
+          this.onCancel();
+        }),
+      )
+      .addButton((btn) =>
+        btn
+          .setButtonText("Use OCR result")
+          .setCta()
+          .onClick(() => {
+            this.resolved = true;
+            this.close();
+            this.onAccept();
+          }),
+      );
+  }
+
+  onClose() {
+    this.contentEl.empty();
+    if (!this.resolved) {
+      this.onCancel();
+    }
+  }
+}
+
 export class ImageRecipeModal extends Modal {
   private onSubmit: (result: ImageRecipeResult) => void;
+  private ocrStrictCleanup: boolean;
 
   private step = 1;
   private imageFile: File | null = null;
@@ -22,9 +102,14 @@ export class ImageRecipeModal extends Modal {
   private imageOption: ImageOption = "none";
   private differentImageFile: File | null = null;
 
-  constructor(app: App, onSubmit: (result: ImageRecipeResult) => void) {
+  constructor(
+    app: App,
+    onSubmit: (result: ImageRecipeResult) => void,
+    ocrStrictCleanup = true,
+  ) {
     super(app);
     this.onSubmit = onSubmit;
+    this.ocrStrictCleanup = ocrStrictCleanup;
   }
 
   onOpen() {
@@ -102,7 +187,7 @@ export class ImageRecipeModal extends Modal {
           if (!this.imageFile || !this.imagePreviewUrl) return;
           const notice = new Notice("Scanning recipe image…", 0);
           try {
-            const text = await recognizeText(
+            const ocrResult = await recognizeTextWithMetadata(
               this.imagePreviewUrl,
               (progress) => {
                 notice.setMessage(
@@ -111,16 +196,47 @@ export class ImageRecipeModal extends Modal {
               },
             );
             notice.hide();
-            this.parsedRecipe = parseRecipeText(text);
+            const accepted = await this.confirmOcrBeforeParse(ocrResult);
+            if (!accepted) {
+              return;
+            }
+
+            this.parsedRecipe = parseRecipeText(ocrResult.text, {
+              strictCleanup: this.ocrStrictCleanup,
+            });
             this.step = 2;
             this.renderStep();
           } catch (err) {
             notice.hide();
-            new Notice("OCR failed — please try a clearer image.");
+            const message =
+              err instanceof Error
+                ? err.message
+                : "OCR failed — please try a clearer image.";
+            new Notice(message, 8000);
             console.error("Recipe OCR error:", err);
           }
         }),
     );
+  }
+
+  private confirmOcrBeforeParse(
+    ocrResult: OcrRecognitionResult,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      new OcrReviewModal(
+        this.app,
+        ocrResult,
+        () => settle(true),
+        () => settle(false),
+      ).open();
+    });
   }
 
   /* -------------------- Step 2 — Review & edit fields ---------------------- */

@@ -8,6 +8,7 @@
 
 import {
   MarkdownView,
+  MarkdownPostProcessorContext,
   Plugin,
   Notice,
   requestUrl,
@@ -24,6 +25,7 @@ import * as settings from "./settings";
 import { LoadRecipeModal } from "./modal-load-recipe";
 import { NewRecipeModal } from "./modal-new-recipe";
 import { ImageRecipeModal, ImageRecipeResult } from "./modal-image-recipe";
+import { RecipeGalleryView } from "./view-recipe-gallery";
 import dateFormat from "dateformat";
 
 interface ShoppingItem {
@@ -38,8 +40,156 @@ interface ShoppingItem {
 export default class RecipeGrabber extends Plugin {
   settings: settings.PluginSettings;
 
+  private hasRecipeNoteCssClass(value: unknown): boolean {
+    return Array.isArray(value)
+      ? value.includes("recipe-note")
+      : typeof value === "string"
+        ? value
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .includes("recipe-note")
+        : false;
+  }
+
+  async ensureRecipeNoteCssClass(file: TFile): Promise<boolean> {
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (this.hasRecipeNoteCssClass(fm?.cssclasses)) {
+      return false;
+    }
+
+    await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+      const existing = frontmatter.cssclasses;
+      if (Array.isArray(existing)) {
+        frontmatter.cssclasses = existing.includes("recipe-note")
+          ? existing
+          : [...existing, "recipe-note"];
+      } else if (typeof existing === "string" && existing.trim()) {
+        const parts = existing.split(/[\s,]+/).filter(Boolean);
+        if (!parts.includes("recipe-note")) {
+          parts.push("recipe-note");
+        }
+        frontmatter.cssclasses = parts.join(" ");
+      } else {
+        frontmatter.cssclasses = "recipe-note";
+      }
+    });
+
+    return true;
+  }
+
+  private isRecipeFile(file: TFile): boolean {
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) return false;
+
+    const tags = fm.tags;
+    return Array.isArray(tags)
+      ? tags.some((tag: string) => tag === "recipe")
+      : tags === "recipe";
+  }
+
+  private injectRecipeActions(
+    el: HTMLElement,
+    context: MarkdownPostProcessorContext,
+  ): void {
+    const file = this.app.vault.getAbstractFileByPath(context.sourcePath);
+    if (!(file instanceof TFile) || !this.isRecipeFile(file)) {
+      return;
+    }
+
+    const container = el.closest(".markdown-preview-sizer");
+    if (!(container instanceof HTMLElement)) {
+      return;
+    }
+
+    if (container.dataset.recipeActionsInjected === context.sourcePath) {
+      return;
+    }
+
+    container.dataset.recipeActionsInjected = context.sourcePath;
+
+    window.setTimeout(() => {
+      if (!container.isConnected) {
+        return;
+      }
+
+      const existing = container.querySelector(".recipe-note-actions");
+      if (existing) {
+        return;
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "recipe-note-actions";
+
+      const markMadeButton = document.createElement("button");
+      markMadeButton.type = "button";
+      markMadeButton.className = "recipe-note-action-button primary";
+      markMadeButton.textContent = "Mark as made";
+      markMadeButton.addEventListener("click", async () => {
+        await this.app.workspace.openLinkText(file.path, "", false);
+        this.app.commands.executeCommandById(
+          `${this.manifest.id}:${c.CMD_MARK_MADE}`,
+        );
+      });
+
+      const shoppingListButton = document.createElement("button");
+      shoppingListButton.type = "button";
+      shoppingListButton.className = "recipe-note-action-button";
+      shoppingListButton.textContent = "Add ingredients to shopping list";
+      shoppingListButton.addEventListener("click", async () => {
+        await this.app.workspace.openLinkText(file.path, "", false);
+        this.app.commands.executeCommandById(
+          `${this.manifest.id}:${c.CMD_ADD_TO_SHOPPING_LIST}`,
+        );
+      });
+
+      actions.appendChild(markMadeButton);
+      actions.appendChild(shoppingListButton);
+
+      const title = container.querySelector("h1, .inline-title");
+      const heroImage = container.querySelector("img");
+      const insertAfter = heroImage ?? title;
+
+      if (insertAfter?.parentElement) {
+        insertAfter.parentElement.insertBefore(actions, insertAfter.nextSibling);
+      } else {
+        container.prepend(actions);
+      }
+    }, 0);
+  }
+
   async onload() {
     await this.loadSettings();
+
+    this.registerMarkdownPostProcessor((el, context) => {
+      this.injectRecipeActions(el, context);
+    });
+
+    // Register the Recipe Gallery view
+    this.registerView(
+      c.VIEW_TYPE_RECIPE_GALLERY,
+      (leaf) => new RecipeGalleryView(leaf, this),
+    );
+
+    // Clear any previously persisted gallery leaves so the view reopens in the main pane.
+    this.app.workspace.detachLeavesOfType(c.VIEW_TYPE_RECIPE_GALLERY);
+
+    // Auto-open the gallery in the main content area on every vault load.
+    this.app.workspace.onLayoutReady(() => {
+      this.activateRecipeGalleryView();
+    });
+
+    // Ribbon icon to open/reveal the gallery
+    this.addRibbonIcon("utensils", "Open Recipe Gallery", () => {
+      this.activateRecipeGalleryView();
+    });
+
+    // Command: open/reveal gallery
+    this.addCommand({
+      id: c.CMD_OPEN_RECIPE_GALLERY,
+      name: "Open Recipe Gallery",
+      callback: () => this.activateRecipeGalleryView(),
+    });
+
     // This creates an icon in the left ribbon.
     this.addRibbonIcon("chef-hat", this.manifest.name, (evt: MouseEvent) => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -364,6 +514,7 @@ export default class RecipeGrabber extends Plugin {
         let photoUpdated = 0;
         let authorUpdated = 0;
         let cookTimeUpdated = 0;
+        let cssClassesUpdated = 0;
         let skipped = 0;
 
         for (const file of files) {
@@ -379,6 +530,11 @@ export default class RecipeGrabber extends Plugin {
           if (!isRecipe) continue;
 
           let fileChanged = false;
+
+          if (await this.ensureRecipeNoteCssClass(file)) {
+            cssClassesUpdated++;
+            fileChanged = true;
+          }
 
           // Backfill photo if missing
           if (!fm.photo) {
@@ -451,7 +607,7 @@ export default class RecipeGrabber extends Plugin {
         }
 
         new Notice(
-          `Recipe property update complete: ${photoUpdated} photo, ${authorUpdated} author, ${cookTimeUpdated} cook_time updated; ${skipped} skipped.`,
+          `Recipe property update complete: ${photoUpdated} photo, ${authorUpdated} author, ${cookTimeUpdated} cook_time, ${cssClassesUpdated} styled; ${skipped} skipped.`,
         );
       },
     });
@@ -470,12 +626,48 @@ export default class RecipeGrabber extends Plugin {
       id: c.CMD_RECIPE_FROM_IMAGE,
       name: "Add recipe from image",
       callback: () => {
-        new ImageRecipeModal(this.app, this.createRecipeFromImage).open();
+        new ImageRecipeModal(
+          this.app,
+          this.createRecipeFromImage,
+          this.settings.ocrStrictCleanup,
+        ).open();
       },
     });
   }
 
-  onunload() {}
+  onunload() {
+    this.app.workspace.detachLeavesOfType(c.VIEW_TYPE_RECIPE_GALLERY);
+  }
+
+  refreshRecipeGalleryView() {
+    for (const leaf of this.app.workspace.getLeavesOfType(
+      c.VIEW_TYPE_RECIPE_GALLERY,
+    )) {
+      const view = leaf.view;
+      if (view instanceof RecipeGalleryView) {
+        view.refresh();
+      }
+    }
+  }
+
+  private async activateRecipeGalleryView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(
+      c.VIEW_TYPE_RECIPE_GALLERY,
+    );
+    if (existing.length > 0) {
+      this.app.workspace.setActiveLeaf(existing[0], { focus: true });
+      this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf("tab");
+    await leaf.setViewState({
+      type: c.VIEW_TYPE_RECIPE_GALLERY,
+      active: true,
+    });
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    this.app.workspace.revealLeaf(leaf);
+  }
 
   async loadSettings() {
     this.settings = Object.assign(
@@ -487,6 +679,7 @@ export default class RecipeGrabber extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    this.refreshRecipeGalleryView();
   }
 
   /**
@@ -854,7 +1047,9 @@ export default class RecipeGrabber extends Plugin {
   ): Promise<void> => {
     const { recipe, imageOption, originalImageFile, differentImageFile } =
       result;
-    const name = (recipe.name || "Scanned Recipe").trim();
+    const rawName = (recipe.name || "").trim();
+    const cleanedName = this.cleanRecipeName(rawName).trim();
+    const name = cleanedName || rawName || "Scanned Recipe";
     if (!name) return;
 
     const folder =

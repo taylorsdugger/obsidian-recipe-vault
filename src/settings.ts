@@ -10,8 +10,10 @@ export interface PluginSettings {
   saveImgSubdir: boolean;
   recipeTemplate: string;
   decodeEntities: boolean;
+  ocrStrictCleanup: boolean;
   debug: boolean;
   shoppingListFile: string;
+  recipeGalleryFolder: string;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -22,8 +24,10 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   saveImgSubdir: false,
   recipeTemplate: c.DEFAULT_TEMPLATE,
   decodeEntities: true,
+  ocrStrictCleanup: true,
   debug: false,
   shoppingListFile: "Shopping List.md",
+  recipeGalleryFolder: "Recipes/All Recipes",
 };
 
 export class SettingsTab extends PluginSettingTab {
@@ -165,6 +169,20 @@ export class SettingsTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("OCR strict cleanup")
+      .setDesc(
+        "For image-scanned recipes, aggressively filters likely OCR garbage from title, ingredients, and instructions. Turn off if valid lines are being dropped.",
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.ocrStrictCleanup)
+          .onChange(async (value) => {
+            this.plugin.settings.ocrStrictCleanup = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
       .setName("Shopping list file")
       .setDesc(
         "Path to the file where checked ingredients are sent when using 'Add checked ingredients to shopping list'. Include a folder path to auto-create it (eg: Lists/Shopping List.md). Will be created if it doesn't exist.",
@@ -176,6 +194,21 @@ export class SettingsTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.shoppingListFile =
               value.trim() || "Shopping List.md";
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Recipe gallery folder")
+      .setDesc(
+        "Folder to display in the Recipe Gallery panel. All markdown files in this folder (and subfolders) will appear as cards.",
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("eg: Recipes/All Recipes")
+          .setValue(this.plugin.settings.recipeGalleryFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.recipeGalleryFolder = value.trim();
             await this.plugin.saveSettings();
           });
       });
