@@ -7,6 +7,7 @@
  */
 
 import {
+  App,
   MarkdownView,
   MarkdownPostProcessorContext,
   Plugin,
@@ -37,8 +38,20 @@ interface ShoppingItem {
   original: string;
 }
 
+type CommandExecutorApp = App & {
+  commands: {
+    executeCommandById(commandId: string): boolean;
+  };
+};
+
 export default class RecipeGrabber extends Plugin {
   settings: settings.PluginSettings;
+
+  private executeCommand(commandId: string): boolean {
+    return (
+      this.app as unknown as CommandExecutorApp
+    ).commands.executeCommandById(commandId);
+  }
 
   private hasRecipeNoteCssClass(value: unknown): boolean {
     return Array.isArray(value)
@@ -126,9 +139,7 @@ export default class RecipeGrabber extends Plugin {
       markMadeButton.textContent = "Mark as made";
       markMadeButton.addEventListener("click", async () => {
         await this.app.workspace.openLinkText(file.path, "", false);
-        this.app.commands.executeCommandById(
-          `${this.manifest.id}:${c.CMD_MARK_MADE}`,
-        );
+        this.executeCommand(`${this.manifest.id}:${c.CMD_MARK_MADE}`);
       });
 
       const shoppingListButton = document.createElement("button");
@@ -137,7 +148,7 @@ export default class RecipeGrabber extends Plugin {
       shoppingListButton.textContent = "Add ingredients to shopping list";
       shoppingListButton.addEventListener("click", async () => {
         await this.app.workspace.openLinkText(file.path, "", false);
-        this.app.commands.executeCommandById(
+        this.executeCommand(
           `${this.manifest.id}:${c.CMD_ADD_TO_SHOPPING_LIST}`,
         );
       });
@@ -150,7 +161,10 @@ export default class RecipeGrabber extends Plugin {
       const insertAfter = heroImage ?? title;
 
       if (insertAfter?.parentElement) {
-        insertAfter.parentElement.insertBefore(actions, insertAfter.nextSibling);
+        insertAfter.parentElement.insertBefore(
+          actions,
+          insertAfter.nextSibling,
+        );
       } else {
         container.prepend(actions);
       }
