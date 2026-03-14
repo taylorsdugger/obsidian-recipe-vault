@@ -13,6 +13,10 @@ export const MANUAL_RECIPE_DEFAULT_FOLDER = "recipes";
 export const VIEW_TYPE_RECIPE_GALLERY = "recipe-gallery-view";
 export const CMD_OPEN_RECIPE_GALLERY = "cmd-open-recipe-gallery";
 
+/* ----------------------------- TEMPLATE VERSION --------------------------- */
+/** Increment this whenever DEFAULT_TEMPLATE gains new required fields. */
+export const TEMPLATE_VERSION = 2;
+
 /* ---------------------------- DEFAULT TEMPLATE ---------------------------- */
 
 export const DEFAULT_TEMPLATE = `---

@@ -9,6 +9,7 @@ export interface PluginSettings {
   saveImg: boolean;
   saveImgSubdir: boolean;
   recipeTemplate: string;
+  templateVersion: number;
   decodeEntities: boolean;
   ocrStrictCleanup: boolean;
   debug: boolean;
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   saveImg: false,
   saveImgSubdir: false,
   recipeTemplate: c.DEFAULT_TEMPLATE,
+  templateVersion: c.TEMPLATE_VERSION,
   decodeEntities: true,
   ocrStrictCleanup: true,
   debug: false,

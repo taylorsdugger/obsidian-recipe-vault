@@ -4,12 +4,14 @@ interface QuickScrollProps {
   sections: string[];
   activeSection: string;
   onJump: (section: string) => void;
+  isVisible?: boolean;
 }
 
 export function QuickScroll({
   sections,
   activeSection,
   onJump,
+  isVisible = false,
 }: QuickScrollProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastDraggedSection = useRef<string>("");
@@ -85,7 +87,7 @@ export function QuickScroll({
   return (
     <div
       ref={containerRef}
-      className={`recipe-gallery-quickscroll${dragPreview ? " dragging" : ""}`}
+      className={`recipe-gallery-quickscroll${dragPreview ? " dragging" : ""}${isVisible || dragPreview ? " qs-visible" : ""}`}
       aria-label="Jump to section"
       onPointerDown={(event) => {
         event.preventDefault();

@@ -184,13 +184,7 @@ export default class RecipeGrabber extends Plugin {
       (leaf) => new RecipeGalleryView(leaf, this),
     );
 
-    // Clear any previously persisted gallery leaves so the view reopens in the main pane.
-    this.app.workspace.detachLeavesOfType(c.VIEW_TYPE_RECIPE_GALLERY);
-
-    // Auto-open the gallery in the main content area on every vault load.
-    this.app.workspace.onLayoutReady(() => {
-      this.activateRecipeGalleryView();
-    });
+    this.registerHandlebarsHelpers();
 
     // Ribbon icon to open/reveal the gallery
     this.addRibbonIcon("utensils", "Open Recipe Gallery", () => {
@@ -689,6 +683,19 @@ export default class RecipeGrabber extends Plugin {
       settings.DEFAULT_SETTINGS,
       await this.loadData(),
     );
+
+    // Migrate saved templates that predate the current template version.
+    // When new required frontmatter fields are added, bump TEMPLATE_VERSION in constants.ts.
+    if ((this.settings.templateVersion ?? 0) < c.TEMPLATE_VERSION) {
+      this.settings.recipeTemplate = c.DEFAULT_TEMPLATE;
+      this.settings.templateVersion = c.TEMPLATE_VERSION;
+      await this.saveData(this.settings);
+      new Notice(
+        "Recipe Pro: your template was updated to include new fields (photo, cook_time, cssclasses). " +
+          "You can customise it again in Settings.",
+        8000,
+      );
+    }
   }
 
   async saveSettings() {
@@ -801,71 +808,6 @@ export default class RecipeGrabber extends Plugin {
    * This function handles all the templating of the recipes
    */
   private addRecipeToMarkdown = async (url: string): Promise<void> => {
-    // Add a handlebar function to split comma separated tags into the obsidian expected array/list
-    handlebars.registerHelper("splitTags", function (tags) {
-      if (!tags || typeof tags != "string") {
-        return "";
-      }
-      const tagsArray = tags.split(",");
-      let tagString = "";
-      for (const tag of tagsArray) {
-        tagString += "- " + tag.trim() + "\n";
-      }
-      return tagString;
-    });
-
-    // quick function to check if a string is a valid date
-    function isValidDate(d: string): boolean {
-      return !isNaN(Date.parse(d));
-    }
-
-    // Helper to format an image path/URL as a frontmatter-friendly photo value.
-    // Local paths are wrapped in [[...]] for Obsidian wikilink format; URLs are used as-is.
-    const formatPhotoValue = this.formatPhotoValue.bind(this);
-    handlebars.registerHelper("photoFrontmatter", function (imgPath) {
-      if (!imgPath) return "";
-      return formatPhotoValue(String(imgPath));
-    });
-
-    const formatIsoDuration = this.formatIsoDuration.bind(this);
-    handlebars.registerHelper("magicTime", function (arg1, arg2) {
-      if (typeof arg1 === "undefined") {
-        // catch undefined / empty
-        return "";
-      }
-      // Handlebars appends an ubject to the arguments
-      if (arguments.length === 1) {
-        // magicTime
-        return dateFormat(new Date(), "yyyy-mm-dd HH:MM");
-      } else if (arguments.length === 2) {
-        // check if arg1 is a valid date
-        if (isValidDate(arg1)) {
-          // magicTime datePublished
-          return dateFormat(new Date(arg1), "yyyy-mm-dd HH:MM");
-        }
-        if (arg1.trim().startsWith("PT")) {
-          // magicTime PT1H50M
-          return formatIsoDuration(arg1);
-        }
-        try {
-          // magicTime "dd-mm-yyyy HH:MM"
-          return dateFormat(new Date(), arg1);
-        } catch (error) {
-          return "";
-        }
-      } else if (arguments.length === 3) {
-        // magicTime datePublished "dd-mm-yyyy HH:MM"
-        if (isValidDate(arg1)) {
-          return dateFormat(new Date(arg1), arg2);
-        }
-        // Invalid input
-        return "Error in template or source";
-      } else {
-        // Unexpected amount of arguments
-        return "Error in template";
-      }
-    });
-
     const markdown = handlebars.compile(this.settings.recipeTemplate);
     try {
       const recipes = await this.fetchRecipes(url);
@@ -1000,6 +942,12 @@ export default class RecipeGrabber extends Plugin {
           md = textArea.value;
         }
 
+        md = this.ensureRequiredRecipeFrontmatter(md, {
+          cookTime:
+            typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
+          image: typeof recipe.image === "string" ? recipe.image : undefined,
+        });
+
         if (view.getMode() === "source") {
           view.editor.replaceSelection(md);
         } else {
@@ -1030,6 +978,8 @@ export default class RecipeGrabber extends Plugin {
       textArea.innerHTML = md;
       md = textArea.value;
     }
+
+    md = this.ensureRequiredRecipeFrontmatter(md, {});
 
     const folder =
       this.settings.folder !== ""
@@ -1123,6 +1073,11 @@ export default class RecipeGrabber extends Plugin {
       md = textArea.value;
     }
 
+    md = this.ensureRequiredRecipeFrontmatter(md, {
+      cookTime: recipe.totalTime,
+      image: imagePath || undefined,
+    });
+
     const file = await this.app.vault.create(filePath, md);
     await this.app.fileManager.processFrontMatter(file, (fm) => {
       fm.source = "image";
@@ -1130,6 +1085,59 @@ export default class RecipeGrabber extends Plugin {
     new Notice(`Recipe "${name}" created from image.`);
     await this.app.workspace.openLinkText(file.path, "", true);
   };
+
+  /**
+   * Registers all Handlebars helpers used by recipe templates.
+   * Called once from onload() so helpers are available to all template paths.
+   */
+  private registerHandlebarsHelpers(): void {
+    handlebars.registerHelper("splitTags", function (tags) {
+      if (!tags || typeof tags != "string") {
+        return "";
+      }
+      const tagsArray = tags.split(",");
+      let tagString = "";
+      for (const tag of tagsArray) {
+        tagString += "- " + tag.trim() + "\n";
+      }
+      return tagString;
+    });
+
+    const formatPhotoValue = this.formatPhotoValue.bind(this);
+    handlebars.registerHelper("photoFrontmatter", function (imgPath) {
+      if (!imgPath) return "";
+      return formatPhotoValue(String(imgPath));
+    });
+
+    const formatIsoDuration = this.formatIsoDuration.bind(this);
+    handlebars.registerHelper("magicTime", function (arg1, arg2) {
+      if (typeof arg1 === "undefined") {
+        return "";
+      }
+      if (arguments.length === 1) {
+        return dateFormat(new Date(), "yyyy-mm-dd HH:MM");
+      } else if (arguments.length === 2) {
+        if (!isNaN(Date.parse(arg1))) {
+          return dateFormat(new Date(arg1), "yyyy-mm-dd HH:MM");
+        }
+        if (arg1.trim().startsWith("PT")) {
+          return formatIsoDuration(arg1);
+        }
+        try {
+          return dateFormat(new Date(), arg1);
+        } catch (error) {
+          return "";
+        }
+      } else if (arguments.length === 3) {
+        if (!isNaN(Date.parse(arg1))) {
+          return dateFormat(new Date(arg1), arg2);
+        }
+        return "Error in template or source";
+      } else {
+        return "Error in template";
+      }
+    });
+  }
 
   /**
    * Formats an image path/URL as a frontmatter photo value.
@@ -1140,6 +1148,67 @@ export default class RecipeGrabber extends Plugin {
       return imgPath;
     }
     return `[[${imgPath}]]`;
+  }
+
+  /**
+   * Ensures required frontmatter keys exist even when users have customized/older templates.
+   */
+  private ensureRequiredRecipeFrontmatter(
+    markdown: string,
+    values: { cookTime?: string; image?: string },
+  ): string {
+    const cookTimeValue = this.normalizeCookTimeValue(values.cookTime);
+    const photoValue = this.normalizePhotoValue(values.image).replace(
+      /"/g,
+      '\\"',
+    );
+
+    const requiredLines = [
+      "cssclasses: recipe-note",
+      `cook_time: ${cookTimeValue}`,
+      `photo: "${photoValue}"`,
+    ];
+
+    if (markdown.startsWith("---\n")) {
+      const frontmatterStart = 4;
+      const frontmatterEnd = markdown.indexOf("\n---", frontmatterStart);
+      if (frontmatterEnd !== -1) {
+        let fmContent = markdown.slice(frontmatterStart, frontmatterEnd);
+        const remainder = markdown.slice(frontmatterEnd + 4);
+
+        const hasKey = (key: string): boolean =>
+          new RegExp(`^${key}\\s*:`, "m").test(fmContent);
+
+        const missingLines = requiredLines.filter((line) => {
+          const key = line.split(":", 1)[0];
+          return !hasKey(key);
+        });
+
+        if (missingLines.length === 0) {
+          return markdown;
+        }
+
+        if (fmContent.length > 0 && !fmContent.endsWith("\n")) {
+          fmContent += "\n";
+        }
+        fmContent += `${missingLines.join("\n")}\n`;
+
+        const remainderPrefix = remainder.startsWith("\n") ? "" : "\n";
+        return `---\n${fmContent}---${remainderPrefix}${remainder}`;
+      }
+    }
+
+    return `---\n${requiredLines.join("\n")}\n---\n\n${markdown}`;
+  }
+
+  private normalizeCookTimeValue(raw?: string): string {
+    if (!raw) return "";
+    return raw.trim().startsWith("PT") ? this.formatIsoDuration(raw) : raw;
+  }
+
+  private normalizePhotoValue(raw?: string): string {
+    if (!raw) return "";
+    return this.formatPhotoValue(raw);
   }
 
   /**

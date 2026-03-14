@@ -125,9 +125,12 @@ export function RecipeGallery({ recipes, onOpen }: RecipeGalleryProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [activeSection, setActiveSection] = useState("");
+  const [toolbarExpanded, setToolbarExpanded] = useState(false);
+  const [qsVisible, setQsVisible] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const qsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Filter by title search
   const filtered = useMemo(() => {
@@ -160,12 +163,19 @@ export function RecipeGallery({ recipes, onOpen }: RecipeGalleryProps) {
         if (top <= 16) current = label;
       }
       setActiveSection(current);
+      // Show quickscroll, then auto-hide after 2 s of inactivity
+      setQsVisible(true);
+      if (qsHideTimerRef.current !== null) clearTimeout(qsHideTimerRef.current);
+      qsHideTimerRef.current = setTimeout(() => setQsVisible(false), 2000);
     };
 
     container.addEventListener("scroll", onScroll, { passive: true });
     // Set initial active section
     onScroll();
-    return () => container.removeEventListener("scroll", onScroll);
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      if (qsHideTimerRef.current !== null) clearTimeout(qsHideTimerRef.current);
+    };
   }, [sectionLabels]);
 
   // Reset active section when sections change
@@ -188,27 +198,44 @@ export function RecipeGallery({ recipes, onOpen }: RecipeGalleryProps) {
 
   return (
     <div className="recipe-gallery-root">
-      {/* Toolbar: search + sort tabs */}
+      {/* Toolbar: search + collapsible sort tabs */}
       <div className="recipe-gallery-toolbar">
-        <input
-          className="recipe-gallery-search"
-          type="search"
-          placeholder={`Search ${recipes.length} recipes…`}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        <div className="recipe-gallery-sort-tabs">
-          {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={`rg-sort-tab${sortMode === mode ? " active" : ""}`}
-              onClick={() => setSortMode(mode)}
-            >
-              {SORT_LABELS[mode]}
-            </button>
-          ))}
+        <div className="rg-toolbar-top">
+          <input
+            className="recipe-gallery-search"
+            type="search"
+            placeholder={`Search ${recipes.length} recipes…`}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <button
+            type="button"
+            className={`rg-sort-toggle${toolbarExpanded ? " active" : sortMode !== "name" ? " filtered" : ""}`}
+            onClick={() => setToolbarExpanded((v) => !v)}
+            title="Sort options"
+            aria-label="Toggle sort options"
+            aria-expanded={toolbarExpanded}
+          >
+            {sortMode !== "name" ? SORT_LABELS[sortMode] : "Sort"}
+          </button>
         </div>
+        {toolbarExpanded && (
+          <div className="recipe-gallery-sort-tabs">
+            {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={`rg-sort-tab${sortMode === mode ? " active" : ""}`}
+                onClick={() => {
+                  setSortMode(mode);
+                  setToolbarExpanded(false);
+                }}
+              >
+                {SORT_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Body: masonry + quick scroll */}
@@ -270,6 +297,7 @@ export function RecipeGallery({ recipes, onOpen }: RecipeGalleryProps) {
           sections={sectionLabels}
           activeSection={activeSection}
           onJump={handleJump}
+          isVisible={qsVisible}
         />
       </div>
     </div>
