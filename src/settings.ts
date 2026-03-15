@@ -15,6 +15,9 @@ export interface PluginSettings {
   debug: boolean;
   shoppingListFile: string;
   recipeGalleryFolder: string;
+  openRouterApiKey: string;
+  aiModelId: string;
+  aiTimeoutMs: number;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -30,6 +33,9 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   debug: false,
   shoppingListFile: "Shopping List.md",
   recipeGalleryFolder: "Recipes/All Recipes",
+  openRouterApiKey: "",
+  aiModelId: "openai/gpt-4.1-mini",
+  aiTimeoutMs: 45000,
 };
 
 export class SettingsTab extends PluginSettingTab {
@@ -213,6 +219,55 @@ export class SettingsTab extends PluginSettingTab {
             this.plugin.settings.recipeGalleryFolder = value.trim();
             await this.plugin.saveSettings();
           });
+      });
+
+    new Setting(containerEl)
+      .setName("OpenRouter API key")
+      .setDesc(
+        "Used for Ask AI recipe edits. Stored in this vault config as plain text.",
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("sk-or-v1-...")
+          .setValue(this.plugin.settings.openRouterApiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.openRouterApiKey = value.trim();
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.type = "password";
+        text.inputEl.autocomplete = "off";
+        text.inputEl.style.width = "100%";
+      });
+
+    new Setting(containerEl)
+      .setName("AI model ID")
+      .setDesc("Default OpenRouter model used for recipe edit suggestions.")
+      .addText((text) => {
+        text
+          .setPlaceholder("openai/gpt-4.1-mini")
+          .setValue(this.plugin.settings.aiModelId)
+          .onChange(async (value) => {
+            this.plugin.settings.aiModelId =
+              value.trim() || "openai/gpt-4.1-mini";
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.style.width = "100%";
+      });
+
+    new Setting(containerEl)
+      .setName("AI request timeout (ms)")
+      .setDesc("Maximum wait time for Ask AI requests before timing out.")
+      .addText((text) => {
+        text
+          .setPlaceholder("45000")
+          .setValue(String(this.plugin.settings.aiTimeoutMs))
+          .onChange(async (value) => {
+            const parsed = Number.parseInt(value.trim(), 10);
+            this.plugin.settings.aiTimeoutMs =
+              Number.isFinite(parsed) && parsed >= 5000 ? parsed : 45000;
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.inputMode = "numeric";
       });
 
     new Setting(containerEl)

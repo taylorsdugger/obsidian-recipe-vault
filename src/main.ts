@@ -26,7 +26,9 @@ import * as settings from "./settings";
 import { LoadRecipeModal } from "./modal-load-recipe";
 import { NewRecipeModal } from "./modal-new-recipe";
 import { ImageRecipeModal, ImageRecipeResult } from "./modal-image-recipe";
+import { RefineRecipeModal } from "./modal-refine-recipe";
 import { RecipeGalleryView } from "./view-recipe-gallery";
+import { requestRecipeEditSuggestion } from "./utils/openrouter";
 import dateFormat from "dateformat";
 
 interface ShoppingItem {
@@ -36,6 +38,19 @@ interface ShoppingItem {
   name: string;
   sources: string[];
   original: string;
+}
+
+interface MarkdownSectionRange {
+  headingEnd: number;
+  bodyStart: number;
+  bodyEnd: number;
+}
+
+interface ParsedRecipeSections {
+  recipeIngredient: string[];
+  recipeInstructions: string[];
+  ingredientRange: MarkdownSectionRange;
+  instructionRange: MarkdownSectionRange;
 }
 
 type CommandExecutorApp = App & {
@@ -188,6 +203,59 @@ export default class RecipeGrabber extends Plugin {
     actions.appendChild(markMadeButton);
     actions.appendChild(shoppingListButton);
 
+    const aiControls = document.createElement("div");
+    aiControls.className = "recipe-note-ai-controls";
+
+    const aiPromptInput = document.createElement("input");
+    aiPromptInput.type = "text";
+    aiPromptInput.className = "recipe-note-ai-input";
+    aiPromptInput.placeholder =
+      "Ask AI: swap ingredients, tweak steps, simplify prep...";
+
+    const aiPromptButton = document.createElement("button");
+    aiPromptButton.type = "button";
+    aiPromptButton.className = "recipe-note-action-button";
+    aiPromptButton.textContent = "Ask AI";
+
+    let aiRequestInFlight = false;
+    const runAiRefine = async () => {
+      const prompt = aiPromptInput.value.trim();
+      if (!prompt) {
+        new Notice("Enter a short edit request before asking AI.");
+        return;
+      }
+      if (aiRequestInFlight) {
+        return;
+      }
+
+      aiRequestInFlight = true;
+      aiPromptButton.disabled = true;
+      aiPromptButton.textContent = "Asking...";
+
+      try {
+        await this.askAiToRefineRecipe(file, prompt);
+      } finally {
+        aiRequestInFlight = false;
+        aiPromptButton.disabled = false;
+        aiPromptButton.textContent = "Ask AI";
+      }
+    };
+
+    aiPromptButton.addEventListener("click", () => {
+      void runAiRefine();
+    });
+
+    aiPromptInput.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void runAiRefine();
+      }
+    });
+
+    aiControls.appendChild(aiPromptInput);
+    aiControls.appendChild(aiPromptButton);
+    actions.appendChild(aiControls);
+
     const targetHeading = Array.from(
       container.querySelectorAll<HTMLElement>("h2, h3, h4"),
     ).find((heading) =>
@@ -207,6 +275,207 @@ export default class RecipeGrabber extends Plugin {
       insertAfter.parentElement.insertBefore(actions, insertAfter.nextSibling);
     } else {
       container.prepend(actions);
+    }
+  }
+
+  private findMarkdownSection(
+    markdown: string,
+    sectionTitle: string,
+  ): MarkdownSectionRange | null {
+    const escapedTitle = sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const headingRegex = new RegExp(`^#{1,6}\\s+${escapedTitle}\\s*$`, "im");
+    const headingMatch = headingRegex.exec(markdown);
+    if (!headingMatch || headingMatch.index === undefined) {
+      return null;
+    }
+
+    const headingStart = headingMatch.index;
+    const headingEnd = headingStart + headingMatch[0].length;
+    const afterHeading = markdown.slice(headingEnd);
+    const nextHeadingMatch = /\n#{1,6}\s+/.exec(afterHeading);
+    const bodyEnd =
+      nextHeadingMatch && nextHeadingMatch.index !== undefined
+        ? headingEnd + nextHeadingMatch.index
+        : markdown.length;
+
+    return {
+      headingEnd,
+      bodyStart: headingEnd,
+      bodyEnd,
+    };
+  }
+
+  private parseSectionList(
+    sectionBody: string,
+    isIngredients: boolean,
+  ): string[] {
+    return sectionBody
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        if (isIngredients) {
+          return line
+            .replace(/^-\s*\[(?: |x|X)\]\s*/, "")
+            .replace(/^-\s*/, "")
+            .trim();
+        }
+        return line
+          .replace(/^[-*]\s*/, "")
+          .replace(/^\d+\.\s*/, "")
+          .trim();
+      })
+      .filter((line) => line.length > 0);
+  }
+
+  private parseRecipeSections(markdown: string): ParsedRecipeSections | null {
+    const ingredientRange = this.findMarkdownSection(markdown, "Ingredients");
+    const instructionRange = this.findMarkdownSection(markdown, "Instructions");
+    if (!ingredientRange || !instructionRange) {
+      return null;
+    }
+
+    const recipeIngredient = this.parseSectionList(
+      markdown.slice(ingredientRange.bodyStart, ingredientRange.bodyEnd),
+      true,
+    );
+    const recipeInstructions = this.parseSectionList(
+      markdown.slice(instructionRange.bodyStart, instructionRange.bodyEnd),
+      false,
+    );
+
+    return {
+      recipeIngredient,
+      recipeInstructions,
+      ingredientRange,
+      instructionRange,
+    };
+  }
+
+  private replaceRecipeSections(
+    markdown: string,
+    recipeIngredient: string[],
+    recipeInstructions: string[],
+  ): string {
+    const parsed = this.parseRecipeSections(markdown);
+    if (!parsed) {
+      throw new Error(
+        "Could not find both Ingredients and Instructions sections in this note.",
+      );
+    }
+
+    const ingredientBody = recipeIngredient
+      .map((line) => `- [ ] ${line}`)
+      .join("\n");
+    const instructionBody = recipeInstructions
+      .map((line) => `- ${line}`)
+      .join("\n");
+
+    const replacements: Array<{ start: number; end: number; value: string }> = [
+      {
+        start: parsed.ingredientRange.bodyStart,
+        end: parsed.ingredientRange.bodyEnd,
+        value: `\n\n${ingredientBody}\n`,
+      },
+      {
+        start: parsed.instructionRange.bodyStart,
+        end: parsed.instructionRange.bodyEnd,
+        value: `\n\n${instructionBody}\n`,
+      },
+    ].sort((a, b) => b.start - a.start);
+
+    let nextMarkdown = markdown;
+    for (const replacement of replacements) {
+      nextMarkdown =
+        nextMarkdown.slice(0, replacement.start) +
+        replacement.value +
+        nextMarkdown.slice(replacement.end);
+    }
+
+    return nextMarkdown;
+  }
+
+  private async askAiToRefineRecipe(
+    file: TFile,
+    prompt: string,
+  ): Promise<void> {
+    const apiKey = this.settings.openRouterApiKey?.trim();
+    if (!apiKey) {
+      new Notice("Set your OpenRouter API key in Recipe Pro settings first.");
+      return;
+    }
+
+    const content = await this.app.vault.read(file);
+    const parsed = this.parseRecipeSections(content);
+    if (!parsed) {
+      new Notice(
+        "Could not find Ingredients and Instructions sections to refine in this note.",
+      );
+      return;
+    }
+
+    if (
+      parsed.recipeIngredient.length === 0 ||
+      parsed.recipeInstructions.length === 0
+    ) {
+      new Notice("Recipe is missing ingredient or instruction content.");
+      return;
+    }
+
+    const model = this.settings.aiModelId?.trim() || "openai/gpt-4.1-mini";
+    const timeoutMs = Math.max(this.settings.aiTimeoutMs ?? 45000, 5000);
+    const loadingNotice = new Notice("Asking AI for recipe edits...", 0);
+
+    try {
+      const suggestion = await requestRecipeEditSuggestion({
+        apiKey,
+        model,
+        prompt,
+        recipeIngredient: parsed.recipeIngredient,
+        recipeInstructions: parsed.recipeInstructions,
+        timeoutMs,
+      });
+
+      loadingNotice.hide();
+
+      new RefineRecipeModal(
+        this.app,
+        {
+          prompt,
+          summary: suggestion.summary,
+          originalIngredients: parsed.recipeIngredient,
+          originalInstructions: parsed.recipeInstructions,
+          suggestedIngredients: suggestion.recipeIngredient,
+          suggestedInstructions: suggestion.recipeInstructions,
+        },
+        async (result) => {
+          if (result.recipeIngredient.length === 0) {
+            new Notice("Ingredients cannot be empty.");
+            return;
+          }
+          if (result.recipeInstructions.length === 0) {
+            new Notice("Instructions cannot be empty.");
+            return;
+          }
+
+          const latestContent = await this.app.vault.read(file);
+          const updated = this.replaceRecipeSections(
+            latestContent,
+            result.recipeIngredient,
+            result.recipeInstructions,
+          );
+
+          await this.app.vault.modify(file, updated);
+          new Notice("Applied AI recipe edits.");
+        },
+      ).open();
+    } catch (error) {
+      loadingNotice.hide();
+      const message =
+        error instanceof Error
+          ? error.message
+          : "AI request failed. Please try again.";
+      new Notice(message, 8000);
     }
   }
 
