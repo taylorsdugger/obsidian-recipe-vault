@@ -81,8 +81,12 @@ export class RecipeGalleryView extends ItemView {
           const abstractFile = this.app.vault.getAbstractFileByPath(path);
           if (abstractFile instanceof TFile) {
             await this.plugin.ensureRecipeNoteCssClass(abstractFile);
-            // Open in this leaf so the gallery is pushed into back-navigation history.
-            await this.leaf.openFile(abstractFile);
+            // Open in this leaf and force Reading mode when entering from gallery.
+            await this.leaf.setViewState({
+              type: "markdown",
+              state: { file: abstractFile.path, mode: "preview" },
+              active: true,
+            });
           }
         }}
       />,

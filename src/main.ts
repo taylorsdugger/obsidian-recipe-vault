@@ -95,22 +95,51 @@ export default class RecipeGrabber extends Plugin {
     if (!fm) return false;
 
     const tags = fm.tags;
-    return Array.isArray(tags)
-      ? tags.some((tag: string) => tag === "recipe")
-      : tags === "recipe";
+    const hasRecipeTag = Array.isArray(tags)
+      ? tags.some(
+          (tag: string) =>
+            String(tag).toLowerCase().replace(/^#/, "").trim() === "recipe",
+        )
+      : typeof tags === "string"
+        ? tags
+            .split(/[\s,]+/)
+            .map((tag) => tag.toLowerCase().replace(/^#/, "").trim())
+            .includes("recipe")
+        : false;
+
+    if (hasRecipeTag) return true;
+
+    // Fallback: many existing notes rely on the recipe-note css class instead of tags.
+    return this.hasRecipeNoteCssClass(
+      (fm as Record<string, unknown>).cssclasses,
+    );
   }
 
   private injectRecipeActions(
     el: HTMLElement,
     context: MarkdownPostProcessorContext,
   ): void {
-    const file = this.app.vault.getAbstractFileByPath(context.sourcePath);
-    if (!(file instanceof TFile) || !this.isRecipeFile(file)) {
+    const container =
+      el.closest(".markdown-preview-sizer") ??
+      el.querySelector(".markdown-preview-sizer") ??
+      el.closest(".markdown-preview-view");
+    if (!(container instanceof HTMLElement)) {
       return;
     }
 
-    const container = el.closest(".markdown-preview-sizer");
-    if (!(container instanceof HTMLElement)) {
+    const file = this.app.vault.getAbstractFileByPath(context.sourcePath);
+    if (!(file instanceof TFile)) {
+      return;
+    }
+
+    const previewRoot = container.closest(
+      ".markdown-preview-view, .markdown-source-view.mod-cm6",
+    );
+    const hasRecipeClassOnView =
+      previewRoot instanceof HTMLElement &&
+      previewRoot.classList.contains("recipe-note");
+
+    if (!this.isRecipeFile(file) && !hasRecipeClassOnView) {
       return;
     }
 
@@ -125,49 +154,76 @@ export default class RecipeGrabber extends Plugin {
         return;
       }
 
-      const existing = container.querySelector(".recipe-note-actions");
-      if (existing) {
-        return;
-      }
+      this.insertRecipeActions(container, file);
+    }, 0);
+  }
 
-      const actions = document.createElement("div");
-      actions.className = "recipe-note-actions";
+  private insertRecipeActions(container: HTMLElement, file: TFile): void {
+    const existing = container.querySelector(".recipe-note-actions");
+    if (existing) {
+      return;
+    }
 
-      const markMadeButton = document.createElement("button");
-      markMadeButton.type = "button";
-      markMadeButton.className = "recipe-note-action-button primary";
-      markMadeButton.textContent = "Mark as made";
-      markMadeButton.addEventListener("click", async () => {
-        await this.app.workspace.openLinkText(file.path, "", false);
-        this.executeCommand(`${this.manifest.id}:${c.CMD_MARK_MADE}`);
-      });
+    const actions = document.createElement("div");
+    actions.className = "recipe-note-actions";
 
-      const shoppingListButton = document.createElement("button");
-      shoppingListButton.type = "button";
-      shoppingListButton.className = "recipe-note-action-button";
-      shoppingListButton.textContent = "Add ingredients to shopping list";
-      shoppingListButton.addEventListener("click", async () => {
-        await this.app.workspace.openLinkText(file.path, "", false);
-        this.executeCommand(
-          `${this.manifest.id}:${c.CMD_ADD_TO_SHOPPING_LIST}`,
-        );
-      });
+    const markMadeButton = document.createElement("button");
+    markMadeButton.type = "button";
+    markMadeButton.className = "recipe-note-action-button primary";
+    markMadeButton.textContent = "Mark as made";
+    markMadeButton.addEventListener("click", async () => {
+      await this.app.workspace.openLinkText(file.path, "", false);
+      this.executeCommand(`${this.manifest.id}:${c.CMD_MARK_MADE}`);
+    });
 
-      actions.appendChild(markMadeButton);
-      actions.appendChild(shoppingListButton);
+    const shoppingListButton = document.createElement("button");
+    shoppingListButton.type = "button";
+    shoppingListButton.className = "recipe-note-action-button";
+    shoppingListButton.textContent = "Add ingredients to shopping list";
+    shoppingListButton.addEventListener("click", async () => {
+      await this.app.workspace.openLinkText(file.path, "", false);
+      this.executeCommand(`${this.manifest.id}:${c.CMD_ADD_TO_SHOPPING_LIST}`);
+    });
 
-      const title = container.querySelector("h1, .inline-title");
-      const heroImage = container.querySelector("img");
-      const insertAfter = heroImage ?? title;
+    actions.appendChild(markMadeButton);
+    actions.appendChild(shoppingListButton);
 
-      if (insertAfter?.parentElement) {
-        insertAfter.parentElement.insertBefore(
-          actions,
-          insertAfter.nextSibling,
-        );
-      } else {
-        container.prepend(actions);
-      }
+    const targetHeading = Array.from(
+      container.querySelectorAll<HTMLElement>("h2, h3, h4"),
+    ).find((heading) =>
+      heading.textContent?.toLowerCase().includes("ingredients"),
+    );
+
+    if (targetHeading && targetHeading.parentElement) {
+      targetHeading.parentElement.insertBefore(actions, targetHeading);
+      return;
+    }
+
+    const title = container.querySelector("h1, .inline-title");
+    const heroImage = container.querySelector("img");
+    const insertAfter = heroImage ?? title;
+
+    if (insertAfter?.parentElement) {
+      insertAfter.parentElement.insertBefore(actions, insertAfter.nextSibling);
+    } else {
+      container.prepend(actions);
+    }
+  }
+
+  private queueInjectActiveRecipeActions(): void {
+    window.setTimeout(() => {
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (!view?.file) return;
+
+      if (!this.isRecipeFile(view.file)) return;
+      if (view.getMode() === "source") return;
+
+      const container =
+        view.containerEl.querySelector(".markdown-preview-sizer") ??
+        view.containerEl.querySelector(".markdown-preview-view");
+      if (!(container instanceof HTMLElement)) return;
+
+      this.insertRecipeActions(container, view.file);
     }, 0);
   }
 
@@ -177,6 +233,24 @@ export default class RecipeGrabber extends Plugin {
     this.registerMarkdownPostProcessor((el, context) => {
       this.injectRecipeActions(el, context);
     });
+
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => {
+        this.queueInjectActiveRecipeActions();
+      }),
+    );
+
+    this.registerEvent(
+      this.app.workspace.on("file-open", () => {
+        this.queueInjectActiveRecipeActions();
+      }),
+    );
+
+    this.registerEvent(
+      this.app.workspace.on("layout-change", () => {
+        this.queueInjectActiveRecipeActions();
+      }),
+    );
 
     // Register the Recipe Gallery view
     this.registerView(
@@ -522,6 +596,7 @@ export default class RecipeGrabber extends Plugin {
         let photoUpdated = 0;
         let authorUpdated = 0;
         let cookTimeUpdated = 0;
+        let notesUpdated = 0;
         let cssClassesUpdated = 0;
         let skipped = 0;
 
@@ -566,13 +641,23 @@ export default class RecipeGrabber extends Plugin {
           // Backfill author and cook_time if missing and a url is available
           const needsAuthor = !fm.author;
           const needsCookTime = !fm.cook_time;
-          if ((needsAuthor || needsCookTime) && fm.url) {
+          const content = await this.app.vault.read(file);
+          const needsNotes = this.isRecipeNotesSectionEmpty(content);
+
+          if ((needsAuthor || needsCookTime || needsNotes) && fm.url) {
             try {
               const recipes = await this.fetchRecipes(fm.url);
-              const recipe = recipes?.[0];
+              const recipe = needsNotes
+                ? recipes.find(
+                    (r) =>
+                      this.normalizeRecipeNotes((r as any).recipeNotes).length >
+                      0,
+                  ) ?? recipes?.[0]
+                : recipes?.[0];
               if (recipe) {
                 let authorValue: string | undefined;
                 let cookTimeValue: string | undefined;
+                let notesContent = content;
                 if (needsAuthor && recipe.author) {
                   // normalizeSchema (called inside fetchRecipes) ensures author is a string
                   authorValue = recipe.author as string;
@@ -581,6 +666,17 @@ export default class RecipeGrabber extends Plugin {
                   cookTimeValue = this.formatIsoDuration(
                     String(recipe.totalTime),
                   );
+                }
+                if (needsNotes) {
+                  const recipeNotes = this.normalizeRecipeNotes(
+                    (recipe as any).recipeNotes,
+                  );
+                  if (recipeNotes.length > 0) {
+                    notesContent = this.ensureRecipeNotesSection(
+                      content,
+                      recipeNotes,
+                    );
+                  }
                 }
                 if (authorValue !== undefined || cookTimeValue !== undefined) {
                   await this.app.fileManager.processFrontMatter(
@@ -603,6 +699,12 @@ export default class RecipeGrabber extends Plugin {
                     fileChanged = true;
                   }
                 }
+
+                if (notesContent !== content) {
+                  await this.app.vault.modify(file, notesContent);
+                  notesUpdated++;
+                  fileChanged = true;
+                }
               }
             } catch (err) {
               console.warn(`Recipe Grabber: failed to fetch ${fm.url}`, err);
@@ -615,7 +717,7 @@ export default class RecipeGrabber extends Plugin {
         }
 
         new Notice(
-          `Recipe property update complete: ${photoUpdated} photo, ${authorUpdated} author, ${cookTimeUpdated} cook_time, ${cssClassesUpdated} styled; ${skipped} skipped.`,
+          `Recipe property update complete: ${photoUpdated} photo, ${authorUpdated} author, ${cookTimeUpdated} cook_time, ${notesUpdated} notes, ${cssClassesUpdated} styled; ${skipped} skipped.`,
         );
       },
     });
@@ -752,6 +854,10 @@ export default class RecipeGrabber extends Plugin {
         json.recipeIngredient = [json.recipeIngredient];
       }
 
+      (json as any).recipeNotes = this.normalizeRecipeNotes(
+        (json as any).recipeNotes,
+      );
+
       // Normalize author to a plain string
       if (json.author) {
         const raw = json.author as any;
@@ -800,6 +906,18 @@ export default class RecipeGrabber extends Plugin {
       const data = Array.isArray(json) ? json : [json];
       handleSchemas(data);
     });
+
+    // Fallback for WordPress Recipe Maker pages where notes may not be in JSON-LD.
+    const fallbackNotes = this.extractWprmRecipeNotes($, url.hash);
+    if (fallbackNotes.length > 0) {
+      const hasNotesInSchema = recipes.some(
+        (recipe) =>
+          this.normalizeRecipeNotes((recipe as any).recipeNotes).length > 0,
+      );
+      if (!hasNotesInSchema && recipes[0]) {
+        (recipes[0] as any).recipeNotes = fallbackNotes;
+      }
+    }
 
     return recipes;
   }
@@ -947,6 +1065,10 @@ export default class RecipeGrabber extends Plugin {
             typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
           image: typeof recipe.image === "string" ? recipe.image : undefined,
         });
+        md = this.ensureRecipeNotesSection(
+          md,
+          this.normalizeRecipeNotes((recipe as any).recipeNotes),
+        );
 
         if (view.getMode() === "source") {
           view.editor.replaceSelection(md);
@@ -1077,6 +1199,10 @@ export default class RecipeGrabber extends Plugin {
       cookTime: recipe.totalTime,
       image: imagePath || undefined,
     });
+    md = this.ensureRecipeNotesSection(
+      md,
+      this.normalizeRecipeNotes((recipe as any).recipeNotes),
+    );
 
     const file = await this.app.vault.create(filePath, md);
     await this.app.fileManager.processFrontMatter(file, (fm) => {
@@ -1209,6 +1335,120 @@ export default class RecipeGrabber extends Plugin {
   private normalizePhotoValue(raw?: string): string {
     if (!raw) return "";
     return this.formatPhotoValue(raw);
+  }
+
+  private normalizeRecipeNotes(raw: unknown): string[] {
+    if (!raw) return [];
+
+    if (typeof raw === "string") {
+      const note = raw.trim();
+      return note ? [note] : [];
+    }
+
+    if (!Array.isArray(raw)) return [];
+
+    const notes = raw
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (item && typeof item === "object" && "text" in item) {
+          const text = (item as { text?: unknown }).text;
+          return typeof text === "string" ? text.trim() : "";
+        }
+        return "";
+      })
+      .filter((item) => item.length > 0);
+
+    return [...new Set(notes)];
+  }
+
+  private extractWprmRecipeNotes(
+    $: ReturnType<typeof cheerio.load>,
+    urlHash: string,
+  ): string[] {
+    const selectorCandidates: string[] = [];
+    const hashId = urlHash?.replace(/^#/, "").trim();
+
+    if (hashId) {
+      selectorCandidates.push(
+        `#${hashId} .wprm-recipe-notes`,
+        `#${hashId} .wprm-recipe-notes-container`,
+      );
+    }
+
+    selectorCandidates.push(
+      ".wprm-recipe .wprm-recipe-notes",
+      ".wprm-recipe .wprm-recipe-notes-container",
+      ".wprm-recipe-notes",
+      ".wprm-recipe-notes-container",
+    );
+
+    for (const selector of selectorCandidates) {
+      const el = $(selector).first();
+      if (!el || el.length === 0) continue;
+
+      const text = el
+        .text()
+        .replace(/\r/g, "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+
+      if (!text) continue;
+
+      const cleaned = text.replace(/^notes\s*:?\s*/i, "").trim();
+      if (!cleaned) continue;
+
+      return [cleaned];
+    }
+
+    return [];
+  }
+
+  private isRecipeNotesSectionEmpty(markdown: string): boolean {
+    const headingMatch = markdown.match(/^##\s+Notes\s*$/m);
+    if (!headingMatch || headingMatch.index === undefined) return true;
+
+    const sectionStart = headingMatch.index + headingMatch[0].length;
+    const afterHeading = markdown.slice(sectionStart);
+    const nextHeadingMatch = afterHeading.match(/\n##\s+/);
+    const sectionBody =
+      nextHeadingMatch && nextHeadingMatch.index !== undefined
+        ? afterHeading.slice(0, nextHeadingMatch.index)
+        : afterHeading;
+
+    return sectionBody.trim().length === 0;
+  }
+
+  private ensureRecipeNotesSection(markdown: string, notes: string[]): string {
+    if (notes.length === 0) return markdown;
+
+    const headingMatch = markdown.match(/^##\s+Notes\s*$/m);
+    const notesBody = `${notes.map((note) => `- ${note}`).join("\n")}\n`;
+
+    if (!headingMatch || headingMatch.index === undefined) {
+      const separator = markdown.endsWith("\n") ? "" : "\n";
+      return `${markdown}${separator}\n## Notes\n\n${notesBody}`;
+    }
+
+    const sectionStart = headingMatch.index + headingMatch[0].length;
+    const beforeSection = markdown.slice(0, sectionStart);
+    const afterHeading = markdown.slice(sectionStart);
+    const nextHeadingMatch = afterHeading.match(/\n##\s+/);
+    const sectionBody =
+      nextHeadingMatch && nextHeadingMatch.index !== undefined
+        ? afterHeading.slice(0, nextHeadingMatch.index)
+        : afterHeading;
+
+    if (sectionBody.trim().length > 0) return markdown;
+
+    const tail =
+      nextHeadingMatch && nextHeadingMatch.index !== undefined
+        ? afterHeading.slice(nextHeadingMatch.index)
+        : "";
+
+    return `${beforeSection}\n\n${notesBody}${tail}`;
   }
 
   /**

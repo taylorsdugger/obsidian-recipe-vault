@@ -77,4 +77,9 @@ last_made:
 -----
 
 ## Notes
+{{#if recipeNotes}}
+{{#each recipeNotes}}
+- {{{this}}}
+{{/each}}
+{{/if}}
 `;
