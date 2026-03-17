@@ -17,7 +17,7 @@ import * as c from "./constants";
 import * as settings from "./settings";
 import { LoadRecipeModal } from "./modal-load-recipe";
 import { NewRecipeModal } from "./modal-new-recipe";
-import { ImageRecipeModal, ImageRecipeResult } from "./modal-image-recipe";
+import type { ImageRecipeResult } from "./modal-image-recipe";
 import {
   RefineRecipeModal,
   RecipeRefineModalData,
@@ -1032,10 +1032,16 @@ export default class RecipeVault extends Plugin {
     });
 
     // Command to create a recipe by scanning an image with OCR
+    // Uses a dynamic import so that tesseract.js (and its WASM/Worker
+    // bootstrap) is never evaluated at plugin startup — it only loads when
+    // the user actually invokes this command. This is what allows the plugin
+    // to load on Android where tesseract.js's startup code would otherwise
+    // crash the entire bundle before onload() could run.
     this.addCommand({
       id: c.CMD_RECIPE_FROM_IMAGE,
       name: "Add recipe from image",
-      callback: () => {
+      callback: async () => {
+        const { ImageRecipeModal } = await import("./modal-image-recipe");
         new ImageRecipeModal(
           this.app,
           this.createRecipeFromImage,

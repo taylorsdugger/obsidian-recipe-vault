@@ -90,5 +90,3 @@ jobs:
                   name: ${{ env.VERSION }}
                   tag_name: ${{ env.VERSION }}
                   repository: ${{ github.repository }}
-                  draft: true
-                  prerelease: false

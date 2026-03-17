@@ -55,8 +55,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   aiTimeoutMs: 45000,
   fillerWordsMode: "auto",
   customFillerWords: "",
-  filterVeganWords: true,
-  filterGlutenFreeWords: true,
+  filterVeganWords: false,
+  filterGlutenFreeWords: false,
 };
 
 export class SettingsTab extends PluginSettingTab {
