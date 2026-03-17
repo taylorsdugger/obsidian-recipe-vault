@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
-import RecipeGrabber from "./main";
+import RecipeVault from "./main";
 import * as c from "./constants";
 
 export interface PluginSettings {
@@ -16,9 +16,24 @@ export interface PluginSettings {
   shoppingListFile: string;
   recipeGalleryFolder: string;
   openRouterApiKey: string;
+  aiModelPreset: string;
+  aiCustomModelId: string;
   aiModelId: string;
   aiTimeoutMs: number;
+  fillerWordsMode: "auto" | "custom";
+  customFillerWords: string;
+  filterVeganWords: boolean;
+  filterGlutenFreeWords: boolean;
 }
+
+const AI_MODEL_PRESETS: Array<{ id: string; label: string }> = [
+  { id: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite ($)" },
+  { id: "openai/gpt-4.1-mini", label: "GPT-4.1 Mini ($)" },
+  { id: "anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku ($)" },
+  { id: "minimax/minimax-m2.5", label: "MiniMax: MiniMax M2.5 ($)" },
+];
+
+const AI_MODEL_OTHER = "__other__";
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   folder: "",
@@ -34,14 +49,20 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   shoppingListFile: "Shopping List.md",
   recipeGalleryFolder: "Recipes/All Recipes",
   openRouterApiKey: "",
-  aiModelId: "openai/gpt-4.1-mini",
+  aiModelPreset: "google/gemini-2.5-flash-lite",
+  aiCustomModelId: "",
+  aiModelId: "google/gemini-2.5-flash-lite",
   aiTimeoutMs: 45000,
+  fillerWordsMode: "auto",
+  customFillerWords: "",
+  filterVeganWords: true,
+  filterGlutenFreeWords: true,
 };
 
 export class SettingsTab extends PluginSettingTab {
-  plugin: RecipeGrabber;
+  plugin: RecipeVault;
 
-  constructor(app: App, plugin: RecipeGrabber) {
+  constructor(app: App, plugin: RecipeVault) {
     super(app, plugin);
     this.plugin = plugin;
   }
@@ -84,7 +105,7 @@ export class SettingsTab extends PluginSettingTab {
     saveImgDescription.append(
       "Save images imported by recipes. If empty, will follow: Files and links > new attachment location. See ",
       saveImgDescription.createEl("a", {
-        href: "https://github.com/seethroughdev/obsidian-recipe-grabber#settings",
+        href: "TODO",
         text: "README",
       }),
       " for more info.",
@@ -132,7 +153,7 @@ export class SettingsTab extends PluginSettingTab {
     templateDescription.append(
       "Here you can edit the Template for newly created files. See ",
       templateDescription.createEl("a", {
-        href: "https://github.com/seethroughdev/obsidian-recipe-grabber#custom-templating",
+        href: "TODO",
         text: "README",
       }),
       " for more info.",
@@ -241,18 +262,51 @@ export class SettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("AI model ID")
-      .setDesc("Default OpenRouter model used for recipe edit suggestions.")
-      .addText((text) => {
-        text
-          .setPlaceholder("openai/gpt-4.1-mini")
-          .setValue(this.plugin.settings.aiModelId)
-          .onChange(async (value) => {
-            this.plugin.settings.aiModelId =
-              value.trim() || "openai/gpt-4.1-mini";
-            await this.plugin.saveSettings();
-          });
-        text.inputEl.style.width = "100%";
+      .setDesc(
+        "Choose a default OpenRouter model for Ask AI. Prices are rough relative tiers.",
+      )
+      .addDropdown((dropdown) => {
+        AI_MODEL_PRESETS.forEach((preset) => {
+          dropdown.addOption(preset.id, preset.label);
+        });
+        dropdown.addOption(AI_MODEL_OTHER, "Other (custom)");
+
+        const currentPreset = this.plugin.settings.aiModelPreset;
+        const hasPreset = AI_MODEL_PRESETS.some((p) => p.id === currentPreset);
+        dropdown.setValue(hasPreset ? currentPreset : AI_MODEL_OTHER);
+
+        dropdown.onChange(async (value) => {
+          this.plugin.settings.aiModelPreset = value;
+          if (value !== AI_MODEL_OTHER) {
+            this.plugin.settings.aiModelId = value;
+          }
+          await this.plugin.saveSettings();
+          this.display();
+        });
       });
+
+    if (
+      this.plugin.settings.aiModelPreset === AI_MODEL_OTHER ||
+      !AI_MODEL_PRESETS.some((p) => p.id === this.plugin.settings.aiModelPreset)
+    ) {
+      new Setting(containerEl)
+        .setName("Custom AI model ID")
+        .setDesc(
+          "Used when 'Other (custom)' is selected above. Format: provider/model.",
+        )
+        .addText((text) => {
+          text
+            .setPlaceholder("google/gemini-2.5-flash-lite")
+            .setValue(this.plugin.settings.aiCustomModelId)
+            .onChange(async (value) => {
+              this.plugin.settings.aiCustomModelId = value.trim();
+              this.plugin.settings.aiModelId =
+                value.trim() || "google/gemini-2.5-flash-lite";
+              await this.plugin.saveSettings();
+            });
+          text.inputEl.style.width = "100%";
+        });
+    }
 
     new Setting(containerEl)
       .setName("AI request timeout (ms)")
@@ -268,6 +322,69 @@ export class SettingsTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           });
         text.inputEl.inputMode = "numeric";
+      });
+
+    new Setting(containerEl)
+      .setName("Recipe title filler words")
+      .setDesc(
+        "Choose how recipe-title cleanup words are applied during imports.",
+      )
+      .addDropdown((dropdown) => {
+        dropdown.addOption("auto", "Auto (built-in list)");
+        dropdown.addOption("custom", "Custom list");
+        dropdown.setValue(this.plugin.settings.fillerWordsMode || "auto");
+        dropdown.onChange(async (value: "auto" | "custom") => {
+          this.plugin.settings.fillerWordsMode = value;
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      });
+
+    if (this.plugin.settings.fillerWordsMode === "custom") {
+      new Setting(containerEl)
+        .setName("Custom filler words")
+        .setDesc(
+          "Words/phrases to remove from imported recipe titles. Separate with commas or new lines.",
+        )
+        .addTextArea((text) => {
+          text
+            .setPlaceholder("best, easy, one-pot")
+            .setValue(this.plugin.settings.customFillerWords)
+            .onChange(async (value) => {
+              this.plugin.settings.customFillerWords = value;
+              await this.plugin.saveSettings();
+            });
+          text.inputEl.style.width = "100%";
+          text.inputEl.style.minHeight = "90px";
+        });
+    }
+
+    new Setting(containerEl)
+      .setName("Filter vegan words")
+      .setDesc(
+        "When cleaning imported recipe titles, remove vegan-related words.",
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.filterVeganWords)
+          .onChange(async (value) => {
+            this.plugin.settings.filterVeganWords = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Filter gluten-free words")
+      .setDesc(
+        "When cleaning imported recipe titles, remove gluten-free-related words.",
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.filterGlutenFreeWords)
+          .onChange(async (value) => {
+            this.plugin.settings.filterGlutenFreeWords = value;
+            await this.plugin.saveSettings();
+          });
       });
 
     new Setting(containerEl)

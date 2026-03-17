@@ -14,7 +14,7 @@ on:
                     - major
 
 env:
-    PLUGIN_NAME: recipe-grabber
+    PLUGIN_NAME: recipe-vault
 
 jobs:
     bump:

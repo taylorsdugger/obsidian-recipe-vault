@@ -224,6 +224,33 @@
 	word-break: break-word;
 }
 
+.recipe-ai-summary-log {
+	margin: 0.75rem 0;
+	padding: 10px 12px;
+	border-radius: 10px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.recipe-ai-summary-entry p {
+	margin: 0;
+}
+
+.recipe-ai-summary-prompt {
+	font-weight: 600;
+	color: var(--text-muted);
+	margin-bottom: 0.35rem !important;
+}
+
+.recipe-ai-summary-response {
+	color: var(--text-normal);
+	line-height: 1.5;
+}
+
+.recipe-ai-diff-wrapper {
+	margin-top: 0.5rem;
+}
+
 .recipe-note .callout[data-callout="recipe-meta"] .callout-icon {
 	display: none;
 }
@@ -621,19 +648,34 @@
 
 /* Quick scroll sidebar */
 .recipe-gallery-quickscroll {
-	position: relative;
-	width: 96px;
-	flex-shrink: 0;
-	display: flex;
+	position: absolute;
+	right: 10px;
+	top: 10px;
+	bottom: 10px;
+	width: 70px;
+	display: none;
 	flex-direction: column;
 	align-items: stretch;
-	padding: 20px 14px 20px 10px;
+	padding: 10px 8px;
 	overflow-y: auto;
-	border-left: 1px solid var(--background-modifier-border);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 14px;
 	gap: 6px;
 	background: var(--background-secondary);
+	box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 	touch-action: none;
 	transition: transform 0.2s ease, opacity 0.2s ease;
+	transform: translateX(120%);
+	opacity: 0;
+	pointer-events: none;
+	z-index: 5;
+}
+
+.recipe-gallery-quickscroll.qs-visible,
+.recipe-gallery-quickscroll.dragging {
+	transform: translateX(0);
+	opacity: 1;
+	pointer-events: auto;
 }
 
 .recipe-gallery-quickscroll.dragging {
@@ -717,8 +759,7 @@
 	}
 
 	.recipe-gallery-quickscroll {
-		width: 70px;
-		padding: 16px 8px;
+		display: flex;
 	}
 
 	.rg-qs-item {
@@ -729,28 +770,10 @@
 
 @media (max-width: 700px) {
 	.recipe-gallery-quickscroll {
-		position: absolute;
 		right: 10px;
 		top: 10px;
 		bottom: 10px;
 		width: 70px;
 		padding: 10px 8px;
-		border-radius: 14px;
-		border: 1px solid var(--background-modifier-border);
-		box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-		transform: translateX(120%);
-		opacity: 0;
-		pointer-events: none;
-	}
-
-	.recipe-gallery-quickscroll.qs-visible,
-	.recipe-gallery-quickscroll.dragging {
-		transform: translateX(0);
-		opacity: 1;
-		pointer-events: auto;
-	}
-
-	.recipe-gallery-scroll {
-		padding-right: 86px;
 	}
 }

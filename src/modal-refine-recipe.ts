@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from "obsidian";
+import { App, Modal, Notice, Setting } from "obsidian";
 
 export interface RecipeRefineModalData {
   prompt: string;
@@ -7,6 +7,7 @@ export interface RecipeRefineModalData {
   originalInstructions: string[];
   suggestedIngredients: string[];
   suggestedInstructions: string[];
+  suggestEdits: boolean;
 }
 
 export interface RecipeRefineApplyResult {
@@ -15,19 +16,55 @@ export interface RecipeRefineApplyResult {
 }
 
 export class RefineRecipeModal extends Modal {
-  private readonly data: RecipeRefineModalData;
+  private data: RecipeRefineModalData;
+  private readonly onAsk: (prompt: string) => Promise<RecipeRefineModalData>;
   private readonly onApply: (
     result: RecipeRefineApplyResult,
   ) => Promise<void> | void;
 
+  private chatLogEl: HTMLDivElement | null = null;
+  private diffWrapperEl: HTMLDivElement | null = null;
+  private emptyDiffEl: HTMLParagraphElement | null = null;
+  private reviewButtonEl: HTMLButtonElement | null = null;
+  private applyButtonEl: HTMLButtonElement | null = null;
+  private askButtonEl: HTMLButtonElement | null = null;
+  private promptInputEl: HTMLTextAreaElement | null = null;
+  private isReviewVisible = false;
+  private isRequestInFlight = false;
+  private isApplyInFlight = false;
+
   constructor(
     app: App,
     data: RecipeRefineModalData,
+    onAsk: (prompt: string) => Promise<RecipeRefineModalData>,
     onApply: (result: RecipeRefineApplyResult) => Promise<void> | void,
   ) {
     super(app);
     this.data = data;
+    this.onAsk = onAsk;
     this.onApply = onApply;
+  }
+
+  private hasDiff(data: RecipeRefineModalData): boolean {
+    if (data.originalIngredients.length !== data.suggestedIngredients.length) {
+      return true;
+    }
+    if (
+      data.originalInstructions.length !== data.suggestedInstructions.length
+    ) {
+      return true;
+    }
+
+    const ingredientsChanged = data.originalIngredients.some(
+      (line, index) => line !== data.suggestedIngredients[index],
+    );
+    if (ingredientsChanged) {
+      return true;
+    }
+
+    return data.originalInstructions.some(
+      (line, index) => line !== data.suggestedInstructions[index],
+    );
   }
 
   private buildDiffLines(before: string[], after: string[]): string[] {
@@ -82,67 +119,219 @@ export class RefineRecipeModal extends Modal {
   }
 
   private renderDiffSection(
+    containerEl: HTMLElement,
     name: string,
     before: string[],
     after: string[],
   ): void {
-    const wrapper = this.contentEl.createDiv({ cls: "recipe-ai-diff-section" });
+    const wrapper = containerEl.createDiv({ cls: "recipe-ai-diff-section" });
     wrapper.createEl("h4", { text: name });
     const pre = wrapper.createEl("pre", { cls: "recipe-ai-diff-block" });
     pre.textContent = this.buildDiffLines(before, after).join("\n");
+  }
+
+  private renderChatLog(): void {
+    if (!this.chatLogEl) {
+      return;
+    }
+
+    this.chatLogEl.empty();
+
+    const entry = this.chatLogEl.createDiv({ cls: "recipe-ai-summary-entry" });
+    entry.createEl("p", {
+      text: `You: ${this.data.prompt}`,
+      cls: "recipe-ai-summary-prompt",
+    });
+    entry.createEl("p", {
+      text: `AI: ${this.data.summary.trim() || "No summary provided."}`,
+      cls: "recipe-ai-summary-response",
+    });
+  }
+
+  private refreshReviewState(): void {
+    const hasDiff = this.hasDiff(this.data);
+
+    if (this.reviewButtonEl) {
+      this.reviewButtonEl.style.display = hasDiff ? "" : "none";
+      this.reviewButtonEl.textContent = this.isReviewVisible
+        ? "Hide suggested edits"
+        : "Review suggested edits";
+      this.reviewButtonEl.disabled =
+        this.isRequestInFlight || this.isApplyInFlight;
+    }
+
+    if (this.emptyDiffEl) {
+      this.emptyDiffEl.style.display = hasDiff ? "none" : "";
+      this.emptyDiffEl.textContent = this.data.suggestEdits
+        ? "AI did not produce diffable edits for this response."
+        : "No recipe edits suggested for this response.";
+    }
+
+    if (this.diffWrapperEl) {
+      this.diffWrapperEl.empty();
+      this.diffWrapperEl.style.display =
+        hasDiff && this.isReviewVisible ? "" : "none";
+
+      if (hasDiff && this.isReviewVisible) {
+        this.renderDiffSection(
+          this.diffWrapperEl,
+          "Ingredient diff",
+          this.data.originalIngredients,
+          this.data.suggestedIngredients,
+        );
+        this.renderDiffSection(
+          this.diffWrapperEl,
+          "Instruction diff",
+          this.data.originalInstructions,
+          this.data.suggestedInstructions,
+        );
+      }
+    }
+
+    if (this.applyButtonEl) {
+      this.applyButtonEl.style.display =
+        hasDiff && this.isReviewVisible ? "" : "none";
+      this.applyButtonEl.disabled =
+        this.isRequestInFlight || this.isApplyInFlight || !hasDiff;
+      this.applyButtonEl.textContent = this.isApplyInFlight
+        ? "Applying..."
+        : "Apply edits";
+    }
+
+    if (this.askButtonEl) {
+      this.askButtonEl.disabled =
+        this.isRequestInFlight || this.isApplyInFlight;
+      this.askButtonEl.textContent = this.isRequestInFlight
+        ? "Asking..."
+        : "Ask AI";
+    }
+
+    if (this.promptInputEl) {
+      this.promptInputEl.disabled =
+        this.isRequestInFlight || this.isApplyInFlight;
+    }
+  }
+
+  private async runAsk(): Promise<void> {
+    if (!this.promptInputEl) {
+      return;
+    }
+
+    const prompt = this.promptInputEl.value.trim();
+    if (!prompt) {
+      new Notice("Enter a question for AI first.");
+      return;
+    }
+
+    this.promptInputEl.value = "";
+    this.isRequestInFlight = true;
+    this.refreshReviewState();
+
+    try {
+      const nextData = await this.onAsk(prompt);
+      this.data = nextData;
+      this.isReviewVisible = false;
+      this.renderChatLog();
+      this.refreshReviewState();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "AI request failed. Please try again.";
+      new Notice(message, 8000);
+    } finally {
+      this.isRequestInFlight = false;
+      this.refreshReviewState();
+      this.promptInputEl.focus();
+    }
+  }
+
+  private async runApply(): Promise<void> {
+    if (!this.hasDiff(this.data) || this.isApplyInFlight) {
+      return;
+    }
+
+    this.isApplyInFlight = true;
+    this.refreshReviewState();
+
+    try {
+      await this.onApply({
+        recipeIngredient: this.data.suggestedIngredients,
+        recipeInstructions: this.data.suggestedInstructions,
+      });
+      this.close();
+    } finally {
+      this.isApplyInFlight = false;
+      this.refreshReviewState();
+    }
   }
 
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
 
-    contentEl.createEl("h3", { text: "Review AI recipe edits" });
+    contentEl.createEl("h3", { text: "Ask AI about this recipe" });
     contentEl.createEl("p", {
-      text: "Confirm these diffs before they are written to the note.",
+      text: "You can ask follow-up questions. Review diffs before applying recipe edits.",
       cls: "setting-item-description",
     });
 
-    contentEl.createEl("p", {
-      text: `AI summary: ${this.data.summary.trim() || "No summary provided."}`,
-      cls: "setting-item-description",
-    });
+    this.chatLogEl = contentEl.createDiv({ cls: "recipe-ai-summary-log" });
+    this.renderChatLog();
 
-    new Setting(contentEl).setName("Prompt").addTextArea((text) => {
-      text.setValue(this.data.prompt);
+    new Setting(contentEl).setName("Ask AI").addTextArea((text) => {
+      this.promptInputEl = text.inputEl;
+      text.setPlaceholder("Try: I do not eat vinegar. What should I change?");
       text.inputEl.rows = 3;
       text.inputEl.style.width = "100%";
-      text.inputEl.readOnly = true;
+      text.inputEl.addEventListener("keydown", (event: KeyboardEvent) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          void this.runAsk();
+        }
+      });
     });
 
-    this.renderDiffSection(
-      "Ingredient diff",
-      this.data.originalIngredients,
-      this.data.suggestedIngredients,
-    );
-    this.renderDiffSection(
-      "Instruction diff",
-      this.data.originalInstructions,
-      this.data.suggestedInstructions,
-    );
+    this.emptyDiffEl = contentEl.createEl("p", {
+      cls: "setting-item-description",
+    });
+
+    this.diffWrapperEl = contentEl.createDiv({ cls: "recipe-ai-diff-wrapper" });
 
     new Setting(contentEl)
-      .addButton((btn) =>
-        btn.setButtonText("Cancel").onClick(() => {
-          this.close();
-        }),
-      )
-      .addButton((btn) =>
+      .addButton((btn) => {
+        this.askButtonEl = btn.buttonEl;
+        btn
+          .setButtonText("Ask AI")
+          .setCta()
+          .onClick(() => {
+            void this.runAsk();
+          });
+      })
+      .addButton((btn) => {
+        this.reviewButtonEl = btn.buttonEl;
+        btn.setButtonText("Review suggested edits").onClick(() => {
+          this.isReviewVisible = !this.isReviewVisible;
+          this.refreshReviewState();
+        });
+      })
+      .addButton((btn) => {
+        this.applyButtonEl = btn.buttonEl;
         btn
           .setButtonText("Apply edits")
           .setCta()
           .onClick(() => {
-            void this.onApply({
-              recipeIngredient: this.data.suggestedIngredients,
-              recipeInstructions: this.data.suggestedInstructions,
-            });
-            this.close();
-          }),
+            void this.runApply();
+          });
+      })
+      .addButton((btn) =>
+        btn.setButtonText("Cancel").onClick(() => {
+          this.close();
+        }),
       );
+
+    this.refreshReviewState();
+    this.promptInputEl?.focus();
   }
 
   onClose(): void {

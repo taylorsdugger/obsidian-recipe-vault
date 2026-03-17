@@ -1,15 +1,27 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { createRoot, Root } from "react-dom/client";
-import { RecipeGallery } from "./components/RecipeGallery";
+import { RecipeGallery, type SortMode } from "./components/RecipeGallery";
 import { loadRecipes } from "./utils/recipeLoader";
 import * as c from "./constants";
-import type RecipeGrabber from "./main";
+import type RecipeVault from "./main";
 
 export class RecipeGalleryView extends ItemView {
-  private plugin: RecipeGrabber;
+  private plugin: RecipeVault;
   private root: Root | null = null;
+  private savedScrollTop = 0;
+  private savedSearchQuery = "";
+  private savedSortMode: SortMode = "name";
 
-  constructor(leaf: WorkspaceLeaf, plugin: RecipeGrabber) {
+  private isValidSortMode(value: unknown): value is SortMode {
+    return (
+      value === "name" ||
+      value === "meal_type" ||
+      value === "cook_time" ||
+      value === "times_made"
+    );
+  }
+
+  constructor(leaf: WorkspaceLeaf, plugin: RecipeVault) {
     super(leaf);
     this.plugin = plugin;
   }
@@ -59,6 +71,34 @@ export class RecipeGalleryView extends ItemView {
     this.render();
   }
 
+  async setState(state: unknown): Promise<void> {
+    const next = state as {
+      scrollTop?: unknown;
+      searchQuery?: unknown;
+      sortMode?: unknown;
+    } | null;
+    const scrollTop = next?.scrollTop;
+    this.savedScrollTop =
+      typeof scrollTop === "number" && Number.isFinite(scrollTop)
+        ? Math.max(0, scrollTop)
+        : 0;
+
+    this.savedSearchQuery =
+      typeof next?.searchQuery === "string" ? next.searchQuery : "";
+    this.savedSortMode = this.isValidSortMode(next?.sortMode)
+      ? next.sortMode
+      : "name";
+    this.render();
+  }
+
+  getState(): unknown {
+    return {
+      scrollTop: this.savedScrollTop,
+      searchQuery: this.savedSearchQuery,
+      sortMode: this.savedSortMode,
+    };
+  }
+
   private render(): void {
     const recipes = loadRecipes(
       this.app.vault,
@@ -77,6 +117,18 @@ export class RecipeGalleryView extends ItemView {
     this.root.render(
       <RecipeGallery
         recipes={recipes}
+        initialScrollTop={this.savedScrollTop}
+        initialSearchQuery={this.savedSearchQuery}
+        initialSortMode={this.savedSortMode}
+        onScrollTopChange={(scrollTop) => {
+          this.savedScrollTop = scrollTop;
+        }}
+        onSearchQueryChange={(searchQuery) => {
+          this.savedSearchQuery = searchQuery;
+        }}
+        onSortModeChange={(sortMode) => {
+          this.savedSortMode = sortMode;
+        }}
         onOpen={async (path: string) => {
           const abstractFile = this.app.vault.getAbstractFileByPath(path);
           if (abstractFile instanceof TFile) {

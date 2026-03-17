@@ -10,7 +10,7 @@ import { cookTimeGroup, timesMadeGroup } from "../utils/recipeLoader";
 import { RecipeCard } from "./RecipeCard";
 import { QuickScroll } from "./QuickScroll";
 
-type SortMode = "name" | "meal_type" | "cook_time" | "times_made";
+export type SortMode = "name" | "meal_type" | "cook_time" | "times_made";
 
 interface Section {
   label: string;
@@ -24,6 +24,12 @@ function shouldShowSectionHeader(sortMode: SortMode): boolean {
 interface RecipeGalleryProps {
   recipes: RecipeNote[];
   onOpen: (path: string) => void;
+  initialScrollTop?: number;
+  onScrollTopChange?: (scrollTop: number) => void;
+  initialSearchQuery?: string;
+  initialSortMode?: SortMode;
+  onSearchQueryChange?: (searchQuery: string) => void;
+  onSortModeChange?: (sortMode: SortMode) => void;
 }
 
 const SORT_LABELS: Record<SortMode, string> = {
@@ -121,9 +127,18 @@ function buildSections(recipes: RecipeNote[], sortMode: SortMode): Section[] {
   }
 }
 
-export function RecipeGallery({ recipes, onOpen }: RecipeGalleryProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("name");
+export function RecipeGallery({
+  recipes,
+  onOpen,
+  initialScrollTop = 0,
+  onScrollTopChange,
+  initialSearchQuery = "",
+  initialSortMode = "name",
+  onSearchQueryChange,
+  onSortModeChange,
+}: RecipeGalleryProps) {
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
   const [activeSection, setActiveSection] = useState("");
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
   const [qsVisible, setQsVisible] = useState(false);
@@ -148,12 +163,25 @@ export function RecipeGallery({ recipes, onOpen }: RecipeGalleryProps) {
 
   const sectionLabels = useMemo(() => sections.map((s) => s.label), [sections]);
 
+  useEffect(() => {
+    onSearchQueryChange?.(searchQuery);
+  }, [searchQuery, onSearchQueryChange]);
+
+  useEffect(() => {
+    onSortModeChange?.(sortMode);
+  }, [sortMode, onSortModeChange]);
+
   // Track active section via scroll position
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
+    if (initialScrollTop > 0) {
+      container.scrollTop = initialScrollTop;
+    }
+
     const onScroll = () => {
+      onScrollTopChange?.(container.scrollTop);
       const containerTop = container.getBoundingClientRect().top;
       let current = sectionLabels[0] ?? "";
       for (const label of sectionLabels) {
@@ -163,10 +191,10 @@ export function RecipeGallery({ recipes, onOpen }: RecipeGalleryProps) {
         if (top <= 16) current = label;
       }
       setActiveSection(current);
-      // Show quickscroll, then auto-hide after 2 s of inactivity
+      // Show quickscroll, then auto-hide shortly after scroll activity stops
       setQsVisible(true);
       if (qsHideTimerRef.current !== null) clearTimeout(qsHideTimerRef.current);
-      qsHideTimerRef.current = setTimeout(() => setQsVisible(false), 2000);
+      qsHideTimerRef.current = setTimeout(() => setQsVisible(false), 900);
     };
 
     container.addEventListener("scroll", onScroll, { passive: true });
@@ -176,13 +204,16 @@ export function RecipeGallery({ recipes, onOpen }: RecipeGalleryProps) {
       container.removeEventListener("scroll", onScroll);
       if (qsHideTimerRef.current !== null) clearTimeout(qsHideTimerRef.current);
     };
-  }, [sectionLabels]);
+  }, [sectionLabels, initialScrollTop, onScrollTopChange]);
 
   // Reset active section when sections change
   useEffect(() => {
+    if (initialScrollTop > 0) {
+      return;
+    }
     setActiveSection(sectionLabels[0] ?? "");
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [sectionLabels]);
+  }, [sectionLabels, initialScrollTop]);
 
   const handleJump = useCallback((label: string) => {
     const el = sectionRefs.current[label];

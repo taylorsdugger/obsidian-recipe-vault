@@ -1,11 +1,3 @@
-/**
- * This is the main file for the recipe-grabber plugin. The summary is:
- * - fetch a recipe from a url
- * - if the recipe is valid, try and normalize it into a simple templatable format
- * - render the recipe into a markdown template
- * - add the recipe to the markdown editor
- */
-
 import {
   App,
   MarkdownView,
@@ -26,7 +18,10 @@ import * as settings from "./settings";
 import { LoadRecipeModal } from "./modal-load-recipe";
 import { NewRecipeModal } from "./modal-new-recipe";
 import { ImageRecipeModal, ImageRecipeResult } from "./modal-image-recipe";
-import { RefineRecipeModal } from "./modal-refine-recipe";
+import {
+  RefineRecipeModal,
+  RecipeRefineModalData,
+} from "./modal-refine-recipe";
 import { RecipeGalleryView } from "./view-recipe-gallery";
 import { requestRecipeEditSuggestion } from "./utils/openrouter";
 import dateFormat from "dateformat";
@@ -59,7 +54,7 @@ type CommandExecutorApp = App & {
   };
 };
 
-export default class RecipeGrabber extends Plugin {
+export default class RecipeVault extends Plugin {
   settings: settings.PluginSettings;
 
   private executeCommand(commandId: string): boolean {
@@ -228,6 +223,7 @@ export default class RecipeGrabber extends Plugin {
         return;
       }
 
+      aiPromptInput.value = "";
       aiRequestInFlight = true;
       aiPromptButton.disabled = true;
       aiPromptButton.textContent = "Asking...";
@@ -405,49 +401,62 @@ export default class RecipeGrabber extends Plugin {
       return;
     }
 
-    const content = await this.app.vault.read(file);
-    const parsed = this.parseRecipeSections(content);
-    if (!parsed) {
-      new Notice(
-        "Could not find Ingredients and Instructions sections to refine in this note.",
-      );
-      return;
-    }
-
-    if (
-      parsed.recipeIngredient.length === 0 ||
-      parsed.recipeInstructions.length === 0
-    ) {
-      new Notice("Recipe is missing ingredient or instruction content.");
-      return;
-    }
-
-    const model = this.settings.aiModelId?.trim() || "openai/gpt-4.1-mini";
+    const model = this.resolveAiModelId();
     const timeoutMs = Math.max(this.settings.aiTimeoutMs ?? 45000, 5000);
-    const loadingNotice = new Notice("Asking AI for recipe edits...", 0);
 
-    try {
-      const suggestion = await requestRecipeEditSuggestion({
-        apiKey,
-        model,
-        prompt,
-        recipeIngredient: parsed.recipeIngredient,
-        recipeInstructions: parsed.recipeInstructions,
-        timeoutMs,
-      });
+    const requestRefineData = async (
+      refinePrompt: string,
+      loadingMessage = "Asking AI for recipe summary...",
+    ): Promise<RecipeRefineModalData> => {
+      const content = await this.app.vault.read(file);
+      const parsed = this.parseRecipeSections(content);
+      if (!parsed) {
+        throw new Error(
+          "Could not find Ingredients and Instructions sections to refine in this note.",
+        );
+      }
 
-      loadingNotice.hide();
+      if (
+        parsed.recipeIngredient.length === 0 ||
+        parsed.recipeInstructions.length === 0
+      ) {
+        throw new Error("Recipe is missing ingredient or instruction content.");
+      }
 
-      new RefineRecipeModal(
-        this.app,
-        {
-          prompt,
+      const loadingNotice = new Notice(loadingMessage, 0);
+
+      try {
+        const suggestion = await requestRecipeEditSuggestion({
+          apiKey,
+          model,
+          prompt: refinePrompt,
+          recipeIngredient: parsed.recipeIngredient,
+          recipeInstructions: parsed.recipeInstructions,
+          timeoutMs,
+        });
+
+        return {
+          prompt: refinePrompt,
           summary: suggestion.summary,
           originalIngredients: parsed.recipeIngredient,
           originalInstructions: parsed.recipeInstructions,
           suggestedIngredients: suggestion.recipeIngredient,
           suggestedInstructions: suggestion.recipeInstructions,
-        },
+          suggestEdits: suggestion.suggestEdits,
+        };
+      } finally {
+        loadingNotice.hide();
+      }
+    };
+
+    try {
+      const initialData = await requestRefineData(prompt);
+
+      new RefineRecipeModal(
+        this.app,
+        initialData,
+        async (followUpPrompt) =>
+          requestRefineData(followUpPrompt, "Asking AI follow-up..."),
         async (result) => {
           if (result.recipeIngredient.length === 0) {
             new Notice("Ingredients cannot be empty.");
@@ -470,13 +479,29 @@ export default class RecipeGrabber extends Plugin {
         },
       ).open();
     } catch (error) {
-      loadingNotice.hide();
       const message =
         error instanceof Error
           ? error.message
           : "AI request failed. Please try again.";
       new Notice(message, 8000);
     }
+  }
+
+  private resolveAiModelId(): string {
+    const defaultModel = "google/gemini-2.5-flash-lite";
+    const preset = this.settings.aiModelPreset?.trim();
+
+    if (preset && preset !== "__other__") {
+      return preset;
+    }
+
+    const custom = this.settings.aiCustomModelId?.trim();
+    if (custom) {
+      return custom;
+    }
+
+    const legacy = this.settings.aiModelId?.trim();
+    return legacy || defaultModel;
   }
 
   private queueInjectActiveRecipeActions(): void {
@@ -556,7 +581,7 @@ export default class RecipeGrabber extends Plugin {
     // This adds a simple command that can be triggered anywhere
     this.addCommand({
       id: c.CMD_OPEN_MODAL,
-      name: "Grab Recipe",
+      name: "Import Recipe",
       callback: () => {
         new LoadRecipeModal(this.app, this.addRecipeToMarkdown).open();
       },
@@ -856,140 +881,146 @@ export default class RecipeGrabber extends Plugin {
     // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new settings.SettingsTab(this.app, this));
 
-    // Command to update frontmatter properties on existing recipe files
-    this.addCommand({
-      id: c.CMD_UPDATE_RECIPES_PHOTO,
-      name: "Update existing recipe properties",
-      callback: async () => {
-        const files = this.app.vault.getMarkdownFiles();
-        let photoUpdated = 0;
-        let authorUpdated = 0;
-        let cookTimeUpdated = 0;
-        let notesUpdated = 0;
-        let cssClassesUpdated = 0;
-        let skipped = 0;
+    /**
+     * Command to update frontmatter properties on existing recipe files
+     *
+     * This is commented out since this is a DEBUG feature only.
+     * You only need it when you need to backfill new properties into recipes
+     * that do not have them. If you need to debug/develop, then comment this back in
+     */
+    // this.addCommand({
+    //   id: c.CMD_UPDATE_RECIPES_PROPERTIES,
+    //   name: "Update existing recipe properties",
+    //   callback: async () => {
+    //     const files = this.app.vault.getMarkdownFiles();
+    //     let photoUpdated = 0;
+    //     let authorUpdated = 0;
+    //     let cookTimeUpdated = 0;
+    //     let notesUpdated = 0;
+    //     let cssClassesUpdated = 0;
+    //     let skipped = 0;
 
-        for (const file of files) {
-          const cache = this.app.metadataCache.getFileCache(file);
-          const fm = cache?.frontmatter;
+    //     for (const file of files) {
+    //       const cache = this.app.metadataCache.getFileCache(file);
+    //       const fm = cache?.frontmatter;
 
-          // Skip non-recipe files (must have "recipe" tag in frontmatter)
-          if (!fm) continue;
-          const tags = fm.tags;
-          const isRecipe = Array.isArray(tags)
-            ? tags.some((t: string) => t === "recipe")
-            : tags === "recipe";
-          if (!isRecipe) continue;
+    //       // Skip non-recipe files (must have "recipe" tag in frontmatter)
+    //       if (!fm) continue;
+    //       const tags = fm.tags;
+    //       const isRecipe = Array.isArray(tags)
+    //         ? tags.some((t: string) => t === "recipe")
+    //         : tags === "recipe";
+    //       if (!isRecipe) continue;
 
-          let fileChanged = false;
+    //       let fileChanged = false;
 
-          if (await this.ensureRecipeNoteCssClass(file)) {
-            cssClassesUpdated++;
-            fileChanged = true;
-          }
+    //       if (await this.ensureRecipeNoteCssClass(file)) {
+    //         cssClassesUpdated++;
+    //         fileChanged = true;
+    //       }
 
-          // Backfill photo if missing
-          if (!fm.photo) {
-            const content = await this.app.vault.read(file);
-            const imgMatch = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
-            if (imgMatch && imgMatch[1]) {
-              const photoValue = this.formatPhotoValue(imgMatch[1]);
-              await this.app.fileManager.processFrontMatter(
-                file,
-                (frontmatter) => {
-                  frontmatter.photo = photoValue;
-                },
-              );
-              photoUpdated++;
-              fileChanged = true;
-            } else {
-              skipped++;
-            }
-          }
+    //       // Backfill photo if missing
+    //       if (!fm.photo) {
+    //         const content = await this.app.vault.read(file);
+    //         const imgMatch = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
+    //         if (imgMatch && imgMatch[1]) {
+    //           const photoValue = this.formatPhotoValue(imgMatch[1]);
+    //           await this.app.fileManager.processFrontMatter(
+    //             file,
+    //             (frontmatter) => {
+    //               frontmatter.photo = photoValue;
+    //             },
+    //           );
+    //           photoUpdated++;
+    //           fileChanged = true;
+    //         } else {
+    //           skipped++;
+    //         }
+    //       }
 
-          // Backfill author and cook_time if missing and a url is available
-          const needsAuthor = !fm.author;
-          const needsCookTime = !fm.cook_time;
-          const content = await this.app.vault.read(file);
-          const needsNotes = this.isRecipeNotesSectionEmpty(content);
+    //       // Backfill author and cook_time if missing and a url is available
+    //       const needsAuthor = !fm.author;
+    //       const needsCookTime = !fm.cook_time;
+    //       const content = await this.app.vault.read(file);
+    //       const needsNotes = this.isRecipeNotesSectionEmpty(content);
 
-          if ((needsAuthor || needsCookTime || needsNotes) && fm.url) {
-            try {
-              const recipes = await this.fetchRecipes(fm.url);
-              const recipe = needsNotes
-                ? recipes.find(
-                    (r) =>
-                      this.normalizeRecipeNotes((r as any).recipeNotes).length >
-                      0,
-                  ) ?? recipes?.[0]
-                : recipes?.[0];
-              if (recipe) {
-                let authorValue: string | undefined;
-                let cookTimeValue: string | undefined;
-                let notesContent = content;
-                if (needsAuthor && recipe.author) {
-                  // normalizeSchema (called inside fetchRecipes) ensures author is a string
-                  authorValue = recipe.author as string;
-                }
-                if (needsCookTime && recipe.totalTime) {
-                  cookTimeValue = this.formatIsoDuration(
-                    String(recipe.totalTime),
-                  );
-                }
-                if (needsNotes) {
-                  const recipeNotes = this.normalizeRecipeNotes(
-                    (recipe as any).recipeNotes,
-                  );
-                  if (recipeNotes.length > 0) {
-                    notesContent = this.ensureRecipeNotesSection(
-                      content,
-                      recipeNotes,
-                    );
-                  }
-                }
-                if (authorValue !== undefined || cookTimeValue !== undefined) {
-                  await this.app.fileManager.processFrontMatter(
-                    file,
-                    (frontmatter) => {
-                      if (authorValue !== undefined) {
-                        frontmatter.author = authorValue;
-                      }
-                      if (cookTimeValue !== undefined) {
-                        frontmatter.cook_time = cookTimeValue;
-                      }
-                    },
-                  );
-                  if (authorValue !== undefined) {
-                    authorUpdated++;
-                    fileChanged = true;
-                  }
-                  if (cookTimeValue !== undefined) {
-                    cookTimeUpdated++;
-                    fileChanged = true;
-                  }
-                }
+    //       if ((needsAuthor || needsCookTime || needsNotes) && fm.url) {
+    //         try {
+    //           const recipes = await this.fetchRecipes(fm.url);
+    //           const recipe = needsNotes
+    //             ? recipes.find(
+    //                 (r) =>
+    //                   this.normalizeRecipeNotes((r as any).recipeNotes).length >
+    //                   0,
+    //               ) ?? recipes?.[0]
+    //             : recipes?.[0];
+    //           if (recipe) {
+    //             let authorValue: string | undefined;
+    //             let cookTimeValue: string | undefined;
+    //             let notesContent = content;
+    //             if (needsAuthor && recipe.author) {
+    //               // normalizeSchema (called inside fetchRecipes) ensures author is a string
+    //               authorValue = recipe.author as string;
+    //             }
+    //             if (needsCookTime && recipe.totalTime) {
+    //               cookTimeValue = this.formatIsoDuration(
+    //                 String(recipe.totalTime),
+    //               );
+    //             }
+    //             if (needsNotes) {
+    //               const recipeNotes = this.normalizeRecipeNotes(
+    //                 (recipe as any).recipeNotes,
+    //               );
+    //               if (recipeNotes.length > 0) {
+    //                 notesContent = this.ensureRecipeNotesSection(
+    //                   content,
+    //                   recipeNotes,
+    //                 );
+    //               }
+    //             }
+    //             if (authorValue !== undefined || cookTimeValue !== undefined) {
+    //               await this.app.fileManager.processFrontMatter(
+    //                 file,
+    //                 (frontmatter) => {
+    //                   if (authorValue !== undefined) {
+    //                     frontmatter.author = authorValue;
+    //                   }
+    //                   if (cookTimeValue !== undefined) {
+    //                     frontmatter.cook_time = cookTimeValue;
+    //                   }
+    //                 },
+    //               );
+    //               if (authorValue !== undefined) {
+    //                 authorUpdated++;
+    //                 fileChanged = true;
+    //               }
+    //               if (cookTimeValue !== undefined) {
+    //                 cookTimeUpdated++;
+    //                 fileChanged = true;
+    //               }
+    //             }
 
-                if (notesContent !== content) {
-                  await this.app.vault.modify(file, notesContent);
-                  notesUpdated++;
-                  fileChanged = true;
-                }
-              }
-            } catch (err) {
-              console.warn(`Recipe Grabber: failed to fetch ${fm.url}`, err);
-            }
-          }
+    //             if (notesContent !== content) {
+    //               await this.app.vault.modify(file, notesContent);
+    //               notesUpdated++;
+    //               fileChanged = true;
+    //             }
+    //           }
+    //         } catch (err) {
+    //           console.warn(`Recipe Vault: failed to fetch ${fm.url}`, err);
+    //         }
+    //       }
 
-          if (!fileChanged) {
-            skipped++;
-          }
-        }
+    //       if (!fileChanged) {
+    //         skipped++;
+    //       }
+    //     }
 
-        new Notice(
-          `Recipe property update complete: ${photoUpdated} photo, ${authorUpdated} author, ${cookTimeUpdated} cook_time, ${notesUpdated} notes, ${cssClassesUpdated} styled; ${skipped} skipped.`,
-        );
-      },
-    });
+    //     new Notice(
+    //       `Recipe property update complete: ${photoUpdated} photo, ${authorUpdated} author, ${cookTimeUpdated} cook_time, ${notesUpdated} notes, ${cssClassesUpdated} styled; ${skipped} skipped.`,
+    //     );
+    //   },
+    // });
 
     // Command to create a new manual recipe from the current template
     this.addCommand({
@@ -1759,23 +1790,16 @@ export default class RecipeGrabber extends Plugin {
       }
     }
 
-    const fillerWords = [
-      // Dietary labels (checked before shorter tokens)
-      "gluten[- ]?free",
-      "dairy[- ]?free",
-      "plant[- ]?based",
-      "guilt[- ]?free",
-      "lightened[- ]?up",
-      "vegetarian",
-      "vegan",
-      "paleo",
-      "whole30",
-      "keto",
-      "gf",
-      "df",
-      // Marketing / filler words
+    const baseFillerWords = [
       "the\\s+ultimate",
       "the\\s+best",
+      "must[- ]?try",
+      "one[- ]?pot",
+      "one[- ]?pan",
+      "restaurant[- ]?style",
+      "crowd[- ]?pleasing",
+      "family[- ]?favorite",
+      "weeknight",
       "ultimate",
       "incredible",
       "delicious",
@@ -1785,6 +1809,7 @@ export default class RecipeGrabber extends Plugin {
       "perfect",
       "amazing",
       "lighter",
+      "light",
       "skinny",
       "simple",
       "tasty",
@@ -1794,9 +1819,53 @@ export default class RecipeGrabber extends Plugin {
       "easy",
       "best",
       "healthy",
+      "flavorful",
+      "favourite",
+      "favorite",
+      "famous",
+      "authentic",
+      "copycat",
+      "yummy",
+      "lazy",
+      "fresh",
+      "comfort",
+      "cozy",
+      "satisfying",
+      "crispy",
+      "juicy",
+      "sticky",
+      "tender",
+    ];
+    const veganWords = [
+      "plant[- ]?based",
+      "vegetarian",
+      "vegan",
+      "veggie",
+      "meatless",
+      "dairy[- ]?free",
+      "df",
+    ];
+    const glutenFreeWords = [
+      "gluten[- ]?free",
+      "wheat[- ]?free",
+      "flourless",
+      "gf",
     ];
 
-    for (const word of fillerWords) {
+    const customWordPatterns = this.getCustomFillerWordPatterns();
+    const mode = this.settings.fillerWordsMode ?? "auto";
+    const activePatterns = new Set<string>(
+      mode === "custom" ? customWordPatterns : baseFillerWords,
+    );
+
+    if (this.settings.filterVeganWords ?? true) {
+      veganWords.forEach((word) => activePatterns.add(word));
+    }
+    if (this.settings.filterGlutenFreeWords ?? true) {
+      glutenFreeWords.forEach((word) => activePatterns.add(word));
+    }
+
+    for (const word of activePatterns) {
       const regex = new RegExp(`\\b${word}\\b`, "gi");
       cleaned = cleaned.replace(regex, "");
     }
@@ -1815,6 +1884,20 @@ export default class RecipeGrabber extends Plugin {
 
     // Fall back to the original name if stripping removed everything
     return cleaned || name;
+  }
+
+  private getCustomFillerWordPatterns(): string[] {
+    const raw = this.settings.customFillerWords || "";
+    return raw
+      .split(/[\n,]+/)
+      .map((word) => word.trim())
+      .filter((word) => word.length > 0)
+      .map((word) => this.toLooseWordPattern(word));
+  }
+
+  private toLooseWordPattern(word: string): string {
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return escaped.replace(/\s+/g, "[-\\s]+");
   }
 
   /**

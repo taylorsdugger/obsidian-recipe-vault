@@ -13,6 +13,7 @@ export interface RecipeEditSuggestion {
   summary: string;
   recipeIngredient: string[];
   recipeInstructions: string[];
+  suggestEdits: boolean;
 }
 
 interface OpenRouterMessage {
@@ -37,6 +38,19 @@ interface ParsedRecipeEditPayload {
   summary?: unknown;
   recipeIngredient?: unknown;
   recipeInstructions?: unknown;
+  suggestEdits?: unknown;
+}
+
+function cleanBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return null;
 }
 
 function cleanStringList(value: unknown): string[] {
@@ -77,6 +91,7 @@ function parseSuggestionPayload(content: string): RecipeEditSuggestion {
     typeof parsed.summary === "string"
       ? parsed.summary.trim()
       : "Suggested changes generated.";
+  const suggestEdits = cleanBoolean(parsed.suggestEdits);
 
   if (recipeIngredient.length === 0 || recipeInstructions.length === 0) {
     throw new Error(
@@ -88,6 +103,7 @@ function parseSuggestionPayload(content: string): RecipeEditSuggestion {
     summary,
     recipeIngredient,
     recipeInstructions,
+    suggestEdits: suggestEdits ?? true,
   };
 }
 
@@ -107,6 +123,8 @@ function getErrorMessage(status: number, bodyErrorMessage?: string): string {
 function buildMessages(req: RecipeEditRequest): OpenRouterMessage[] {
   const schema = {
     summary: "One short sentence explaining what changed.",
+    suggestEdits:
+      "Boolean. Use false when no ingredient/instruction edits are needed for the prompt.",
     recipeIngredient: ["string"],
     recipeInstructions: ["string"],
   };
@@ -127,6 +145,8 @@ function buildMessages(req: RecipeEditRequest): OpenRouterMessage[] {
     ...req.recipeInstructions.map((item) => `- ${item}`),
     "",
     "Rules:",
+    "- Always return all required fields.",
+    "- If no edits are needed, set suggestEdits to false and return the original arrays unchanged.",
     "- Respect the user goal and preserve recipe intent.",
     "- If substituting ingredients, update steps accordingly.",
     "- Return complete replacement arrays for both ingredients and instructions.",

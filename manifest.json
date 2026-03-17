@@ -1,9 +1,9 @@
 {
-	"id": "recipe-pro",
-	"name": "Recipe Pro",
+	"id": "recipe-vault",
+	"name": "Recipe Vault",
 	"version": "0.24.3",
 	"minAppVersion": "0.15.0",
-	"description": "Quickly grab the important contents of any online recipe.",
+	"description": "Recipe Vault is a full recipe management system for Obsidian — import from web, image, or scratch, browse your vault visually, and build shopping lists automatically",
 	"author": "Taylor Dugger",
 	"authorUrl": "https://github.com/taylorsdugger",
 	"isDesktopOnly": false

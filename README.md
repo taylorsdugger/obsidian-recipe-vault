@@ -1,111 +1,159 @@
-This plugin allows you to paste the url of any recipe into your Obsidian page and get the contents in a concise recipe format along with the image and link back to the original page.
+# Recipe Vault
 
-Its built for those of you who want to save the recipe, and not the complete history of biscuits and how much the author loves making them on their family trip to Maine.
+**Recipe Vault** is a full recipe management system for Obsidian — import from web, image, or scratch, browse your vault visually, and build shopping lists automatically
 
----
-
-### Commands
-
-#### Grab Recipe
-Opens a prompt to paste a recipe URL. The plugin fetches the structured recipe data and creates a new note in the configured save folder.
-
-#### Mark Recipe as Made
-Updates frontmatter on the active recipe note by incrementing `times_made` and setting `last_made` to today.
-
-#### Add checked ingredients to shopping list
-Reads checked ingredient checkboxes from the active recipe's Ingredients section, appends/merges them into the configured shopping list file, and unchecks them in the recipe note.
-
-#### Batch import recipes from URL list
-Imports multiple recipes at once from URLs in the current selection (or entire active note), with one URL per line.
-
-#### Clear checked items from shopping list
-Removes completed (`- [x]`) items from the configured shopping list file.
-
-#### Update existing recipe properties
-Scans recipe notes and backfills missing frontmatter properties such as `photo`, `author`, and `cook_time` when possible.
-
-#### Add recipe (manual)
-Opens a prompt to enter a recipe name. A new recipe note is created in the configured save folder (defaults to `recipes/` if no folder is set) using the same template as auto-grabbed recipes, with `source: manual` added to the frontmatter. The note is opened automatically and a confirmation notice is shown.
-
-If a note with the same name already exists, a numeric suffix is appended (e.g. `Pasta (2).md`).
-
-#### Add recipe from image
-Opens an image-based import flow that uses OCR to extract recipe text from an image and creates a new recipe note using your current template, with `source: image` in frontmatter.
+Paste a URL, get a clean recipe note. Browse your collection in a visual gallery. Build a shopping list straight from your ingredients. No subscriptions, no accounts, no ads — just your recipes in your vault.
 
 ---
 
-### To Release
+## Features
 
-Releases are fully automated via GitHub Actions. To cut a new release:
+- **Import from URL** — Fetches structured recipe data (JSON-LD) from any recipe page and creates a formatted note instantly.
+- **Add recipes manually** — Create a recipe note from scratch using the same template.
+- **Recipe Gallery** — Browse your recipe vault visually with a dedicated gallery view.
+- **Shopping list** — Check off ingredients in a recipe note and send them directly to your shopping list file. Handles unit merging automatically.
+- **Mark as made** — Track when you last made a recipe and how many times.
+- **Ask AI for recipe edits** — Request modifications to a recipe using an AI model via OpenRouter (API key required).
+- **Customizable templates** — Full Handlebars template support so your notes look exactly how you want.
 
-1. Go to **Actions** → **Version Bump** in this repository
-2. Click **Run workflow**
-3. Select the bump type: `patch`, `minor`, or `major`
-4. Click **Run workflow** — this will:
-   - Bump the version in `package.json`, `manifest.json`, and `versions.json`
-   - Commit and push the change with a version tag
-   - Automatically trigger the **Build obsidian plugin** workflow to build and create a draft GitHub Release
-5. Review the draft release on the [Releases page](../../releases) and publish when ready
-
-> ⚠️ Do **not** manually run `npm version` and push tags anymore — the Version Bump workflow handles this end-to-end.
+> **Note:** Image-based OCR import is included as an early experimental feature. It works in basic cases but is not yet reliable enough for everyday use.
 
 ---
 
-### Frontmatter Issues
+## Installation
 
-[Obsidian 1.4.6](https://obsidian.md/changelog/2023-08-31-desktop-v1.4.6/) changed the frontmatter behaviour.
-The frontmatter has to start on the first line of the file now. If you have leading newlines in your recipe template, the resulting frontmatter won't be properly parsed by obsidian.
-If you have this problem, go to the settings of this plugin and remove the leading newlines.
+### From the Obsidian Plugin Store *(coming soon)*
 
-### Settings
+1. Open Obsidian → **Settings** → **Community plugins**
+2. Search for **Recipe Vault**
+3. Click **Install**, then **Enable**
 
--   Save Image: Downloads the recipe image into the vault (save location can be set in the plugin settings). `{{image}}` value will be the link to the downloaded file instead of the direct URL. Disabled by default. If Save Image option is enabled, use `![[{{image}}]]` in the template.
-    > if settings is toggled off or image save fails, `{{image}}` value will be a direct URL.
--   OCR strict cleanup: For image-scanned recipes, aggressively filters likely OCR garbage from the extracted title, ingredients, and instructions. Turn this off if valid lines are being removed.
+### Manual Installation
 
-### Custom templating
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/taylorsdugger/obsidian-recipe-vault/releases/latest).
+2. Copy them into your vault at: `.obsidian/plugins/recipe-vault/`
+3. Reload Obsidian and enable the plugin under **Settings → Community plugins**.
 
-Prefer your own layout instead? No problem. Just paste a [custom handlebars string template](https://handlebarsjs.com/guide/#simple-expressions) into the settings.
+---
 
-We're assuming the page has a [json recipe](https://developers.google.com/search/docs/appearance/structured-data/recipe#guided-example) on the page. Make sure to check the [Example Recipe](https://developers.google.com/search/docs/appearance/structured-data/recipe#guided-example) for a list of what fields you can pull. And keep in mind that lots of recipes seem to not stick exactly to the spec. So expect some thing to take a little extra effort to get them there.
+## Quick Start
 
-You can also add `{{{json}}}` for the raw json in the template if you like.
+1. Click the **chef hat icon** in the ribbon (or run **Import Recipe** from the command palette).
+2. Paste a recipe URL and press Enter.
+3. Your recipe note will be created in the configured save folder.
 
-#### Custom handlebar functions
+To browse your recipes, click the **utensils icon** in the ribbon to open the Recipe Gallery.
 
-`splitTags`  
-Split comma separated tags. Obsidian expect tags as a list in its properties.
+---
 
-```
+## Commands
+
+| Command | What it does |
+|---|---|
+| **Import Recipe** | Opens a URL prompt and imports a recipe into a new note |
+| **Open Recipe Gallery** | Opens the visual gallery of your recipe notes |
+| **Mark Recipe as Made** | Increments `times_made` and sets `last_made` to today on the active note |
+| **Add checked ingredients to shopping list** | Sends checked ingredients from the active recipe to your shopping list file |
+| **Clear checked items from shopping list** | Removes completed items from your shopping list |
+| **Add recipe (manual)** | Creates a new recipe note from a title prompt |
+| **Batch import recipes from URL list** | Imports multiple recipes from a list of URLs (one per line) in the active note |
+
+---
+
+## Settings
+
+| Setting | Description |
+|---|---|
+| **Recipe save folder** | Where new recipe notes are created |
+| **Save in currently opened file** | Import into the active note instead of creating a new one |
+| **Save images** | Download recipe images into your vault |
+| **Save images in subdirectories** | Create a per-recipe subfolder under the image folder |
+| **Recipe template** | Handlebars template used when creating recipe notes |
+| **Decode Entities** | Decodes HTML entities in imported data |
+| **Shopping list file** | Path to your shopping list note (created automatically if missing) |
+| **Recipe gallery folder** | The folder the Recipe Gallery browses |
+| **OpenRouter API key** | Required for Ask AI features |
+| **AI model ID** | Which model to use for Ask AI (default: `google/gemini-2.5-flash-lite`) |
+| **AI request timeout (ms)** | Timeout for AI requests (minimum 5000 ms) |
+| **Debug mode** | Enables extra developer logging |
+
+---
+
+## Custom Templates
+
+Recipe Vault uses [Handlebars](https://handlebarsjs.com/guide/#simple-expressions) for note templates. The plugin assumes the recipe page includes [JSON-LD structured data](https://developers.google.com/search/docs/appearance/structured-data/recipe).
+
+### Built-in Helpers
+
+**`splitTags`** — Converts comma-separated tags into a YAML list for Obsidian frontmatter:
+```handlebars
 tags:
 {{splitTags keywords}}
 ```
 
-`magicTime`
-Attempts to handle anything included with time and date.  
-Change the ugly PT1H30M string to a prettier 1h 30min formatting.  
-Insert or reformat existing timestamps using any masks available at [dateformat](https://www.npmjs.com/package/dateformat), defaults to `yyyy-mm-dd HH:MM`.
-
+**`photoFrontmatter`** — Formats image values correctly for frontmatter (wikilink for local files, URL for remote):
+```handlebars
+photo: "{{photoFrontmatter image}}"
 ```
+
+**`magicTime`** — Formats ISO durations and timestamps into readable values:
+```handlebars
 DateSaved: {{magicTime}}
-DateSaved2: {{magicTime "dd-mm-yyyy HH:MM"}}
 CookTime: {{magicTime cookTime}}
 TotalTime: {{magicTime totalTime}}
-DatePublished1: {{magicTime datePublished}}
-DatePublished2: {{magicTime datePublished "dd-mm-yyyy HH:MM"}}
+DatePublished: {{magicTime datePublished "dd-mm-yyyy"}}
 ```
 
-Would return something like
-
+Example output:
 ```
 DateSaved: 2024-04-13 20:10
-DateSaved2: 13-04-2024 20:10
 CookTime: 15m
 TotalTime: 1h 5m
-DatePublished1: 2017-07-27 00:14
-DatePublished2: 27-07-2017 00:14
 ```
+
+### Default Frontmatter Fields
+
+```yaml
+cssclasses: recipe-note
+tags:
+date_added:
+meal_type:
+author:
+cook_time:
+url:
+photo:
+times_made:
+last_made:
+```
+
+> **Tip:** Keep frontmatter starting at line 1 of your template. Obsidian requires this to parse it correctly.
 
 ---
 
-In the meantime, I did my best to make the most recipes I can work out of the box. Please [create ticket](#) if you have suggestions for improving it!
+## Ask AI
+
+Recipe Vault can use an AI model to suggest edits to a recipe directly in the note preview (e.g., "make this dairy-free" or "scale to 2 servings"). This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add in plugin settings.
+
+The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible model ID can be used.
+
+---
+
+## Releasing
+
+Releases are automated via GitHub Actions.
+
+1. Go to **Actions → Tag and Release**
+2. Click **Run workflow** and choose `patch`, `minor`, or `major`
+3. Review the draft release and publish when ready
+
+---
+
+## Credits
+
+Recipe Vault is based on [obsidian-recipe-grabber](https://github.com/seethroughdev/obsidian-recipe-grabber) by [@seethroughdev](https://github.com/seethroughdev), which provided the original URL import foundation. This project has since been substantially rewritten and extended with new features.
+
+---
+
+## License
+
+[MIT](LICENSE)
