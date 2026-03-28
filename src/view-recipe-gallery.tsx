@@ -2,6 +2,7 @@ import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { createRoot, Root } from "react-dom/client";
 import { RecipeGallery, type SortMode } from "./components/RecipeGallery";
 import { loadRecipes } from "./utils/recipeLoader";
+import { CompareRecipesModal } from "./modal-compare-recipes";
 import * as c from "./constants";
 import type RecipeVault from "./main";
 
@@ -139,6 +140,23 @@ export class RecipeGalleryView extends ItemView {
               state: { file: abstractFile.path, mode: "preview" },
               active: true,
             });
+          }
+        }}
+        onCompare={(selected) => {
+          new CompareRecipesModal(this.app, this.plugin, selected).open();
+        }}
+        onOpenInSplit={async (paths) => {
+          for (const path of paths) {
+            const file = this.app.vault.getAbstractFileByPath(path);
+            if (file instanceof TFile) {
+              await this.plugin.ensureRecipeNoteCssClass(file);
+              const leaf = this.app.workspace.getLeaf("split");
+              await leaf.setViewState({
+                type: "markdown",
+                state: { file: file.path, mode: "preview" },
+                active: true,
+              });
+            }
           }
         }}
       />,
