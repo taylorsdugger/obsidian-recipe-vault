@@ -63,11 +63,7 @@ export function RecipeCard({
     }
   };
 
-  const className = [
-    "rg-card",
-    isSelected ? "rg-card--selected" : "",
-    recipe.archived ? "rg-card--archived" : "",
-  ]
+  const className = ["rg-card", isSelected ? "rg-card--selected" : ""]
     .filter(Boolean)
     .join(" ");
 
@@ -112,9 +108,6 @@ export function RecipeCard({
         <div className="rg-card-meta">
           {recipe.cook_time ? <span>⏱ {recipe.cook_time}</span> : null}
           <span>✓ {recipe.times_made}×</span>
-          {recipe.archived && (
-            <span className="rg-archived-badge">Archived</span>
-          )}
         </div>
       </div>
     </article>

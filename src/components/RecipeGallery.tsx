@@ -8,7 +8,6 @@ import React, {
 import { RecipeNote } from "../types/recipe";
 import { cookTimeGroup, timesMadeGroup } from "../utils/recipeLoader";
 import { RecipeCard } from "./RecipeCard";
-import { QuickScroll } from "./QuickScroll";
 
 export type SortMode = "name" | "meal_type" | "cook_time" | "times_made";
 
@@ -32,8 +31,6 @@ interface RecipeGalleryProps {
   initialSortMode?: SortMode;
   onSearchQueryChange?: (searchQuery: string) => void;
   onSortModeChange?: (sortMode: SortMode) => void;
-  initialShowArchived?: boolean;
-  onShowArchivedChange?: (show: boolean) => void;
 }
 
 const SORT_LABELS: Record<SortMode, string> = {
@@ -142,38 +139,31 @@ export function RecipeGallery({
   initialSortMode = "name",
   onSearchQueryChange,
   onSortModeChange,
-  initialShowArchived = false,
-  onShowArchivedChange,
 }: RecipeGalleryProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
-  const [activeSection, setActiveSection] = useState("");
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
-  const [qsVisible, setQsVisible] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
-  const [showArchived, setShowArchived] = useState(initialShowArchived);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
-  const qsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Stable ref so onScrollTopChange never needs to be a useEffect dependency
   const onScrollTopChangeRef = useRef(onScrollTopChange);
   useEffect(() => {
     onScrollTopChangeRef.current = onScrollTopChange;
   });
 
-  // Filter by archived visibility and search query (title or ingredients)
+  // Filter by search query (title or ingredients)
   const filtered = useMemo(() => {
-    const visible = showArchived ? recipes : recipes.filter((r) => !r.archived);
     const q = searchQuery.toLowerCase().trim();
     return q
-      ? visible.filter(
+      ? recipes.filter(
           (r) =>
             r.title.toLowerCase().includes(q) ||
             r.ingredients.some((ing) => ing.toLowerCase().includes(q)),
         )
-      : visible;
-  }, [recipes, searchQuery, showArchived]);
+      : recipes;
+  }, [recipes, searchQuery]);
 
   // Build grouped sections
   const sections = useMemo(
@@ -190,10 +180,6 @@ export function RecipeGallery({
   useEffect(() => {
     onSortModeChange?.(sortMode);
   }, [sortMode, onSortModeChange]);
-
-  useEffect(() => {
-    onShowArchivedChange?.(showArchived);
-  }, [showArchived, onShowArchivedChange]);
 
   const handleSelect = useCallback((path: string) => {
     setSelectedPaths((prev) => {
@@ -221,60 +207,35 @@ export function RecipeGallery({
       container.scrollTop = initialScrollTop;
     }
 
-    const updateActiveSection = () => {
+    const updateScroll = () => {
       onScrollTopChangeRef.current?.(container.scrollTop);
-      const containerTop = container.getBoundingClientRect().top;
-      let current = sectionLabels[0] ?? "";
-      for (const label of sectionLabels) {
-        const el = sectionRefs.current[label];
-        if (!el) continue;
-        const top = el.getBoundingClientRect().top - containerTop;
-        if (top <= 16) current = label;
-      }
-      setActiveSection(current);
     };
 
     const onScroll = () => {
-      updateActiveSection();
-      // Show quickscroll, then auto-hide shortly after scroll activity stops
-      setQsVisible(true);
-      if (qsHideTimerRef.current !== null) clearTimeout(qsHideTimerRef.current);
-      qsHideTimerRef.current = setTimeout(() => setQsVisible(false), 900);
+      updateScroll();
     };
 
     container.addEventListener("scroll", onScroll, { passive: true });
-    // Set initial active section without showing the quick-scroll bar
-    updateActiveSection();
+    updateScroll();
     return () => {
       container.removeEventListener("scroll", onScroll);
-      if (qsHideTimerRef.current !== null) clearTimeout(qsHideTimerRef.current);
     };
   }, [sectionLabels, initialScrollTop]);
 
-  // Reset active section when sections change
+  // Reset scroll when sections change and no restored scroll position exists.
   useEffect(() => {
     if (initialScrollTop > 0) {
       return;
     }
-    setActiveSection(sectionLabels[0] ?? "");
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [sectionLabels, initialScrollTop]);
-
-  const handleJump = useCallback((label: string) => {
-    const el = sectionRefs.current[label];
-    if (el && scrollRef.current) {
-      const containerTop = scrollRef.current.getBoundingClientRect().top;
-      const elTop = el.getBoundingClientRect().top;
-      scrollRef.current.scrollTop += elTop - containerTop - 8;
-    }
-  }, []);
 
   const totalCount = filtered.length;
   const showSectionHeader = shouldShowSectionHeader(sortMode);
 
   return (
     <div className="recipe-gallery-root">
-      {/* Toolbar: search + archived toggle + collapsible sort tabs */}
+      {/* Toolbar: search + collapsible sort tabs */}
       <div className="recipe-gallery-toolbar">
         <div className="rg-toolbar-top">
           <input
@@ -284,17 +245,6 @@ export function RecipeGallery({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <button
-            type="button"
-            className={`rg-archived-toggle${showArchived ? " active" : ""}`}
-            onClick={() => setShowArchived((v) => !v)}
-            title={
-              showArchived ? "Hide archived recipes" : "Show archived recipes"
-            }
-            aria-pressed={showArchived}
-          >
-            Archived
-          </button>
           <button
             type="button"
             className={`rg-sort-toggle${toolbarExpanded ? " active" : sortMode !== "name" ? " filtered" : ""}`}
@@ -362,7 +312,7 @@ export function RecipeGallery({
         </div>
       )}
 
-      {/* Body: masonry + quick scroll */}
+      {/* Body: masonry */}
       <div className="recipe-gallery-body">
         <div className="recipe-gallery-scroll" ref={scrollRef}>
           {totalCount === 0 ? (
@@ -418,13 +368,6 @@ export function RecipeGallery({
             </div>
           )}
         </div>
-
-        <QuickScroll
-          sections={sectionLabels}
-          activeSection={activeSection}
-          onJump={handleJump}
-          isVisible={qsVisible}
-        />
       </div>
     </div>
   );

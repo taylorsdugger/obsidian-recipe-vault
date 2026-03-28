@@ -170,7 +170,7 @@ export class SettingsTab extends PluginSettingTab {
     saveImgDescription.append(
       "Save images imported by recipes. If empty, will follow: Files and links > new attachment location. See ",
       saveImgDescription.createEl("a", {
-        href: "TODO",
+        href: "https://github.com/taylorsdugger/obsidian-recipe-vault#settings",
         text: "README",
       }),
       " for more info.",
@@ -227,7 +227,7 @@ export class SettingsTab extends PluginSettingTab {
     templateDescription.append(
       "Here you can edit the Template for newly created files. See ",
       templateDescription.createEl("a", {
-        href: "TODO",
+        href: "https://github.com/taylorsdugger/obsidian-recipe-vault#custom-templates",
         text: "README",
       }),
       " for more info.",

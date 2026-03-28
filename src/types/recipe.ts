@@ -15,6 +15,4 @@ export interface RecipeNote {
   times_made: number;
   /** Ingredient list from frontmatter.recipeIngredient */
   ingredients: string[];
-  /** Whether the recipe is archived (from frontmatter.archived) */
-  archived: boolean;
 }

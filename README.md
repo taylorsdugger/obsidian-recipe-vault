@@ -9,6 +9,7 @@ Paste a URL, get a clean recipe note. Browse your collection in a visual gallery
 ## Features
 
 - **Import from URL** — Fetches structured recipe data (JSON-LD) from any recipe page and creates a formatted note instantly.
+- **Import from image** — Scan a photographed recipe card or cookbook page with OCR, then review and save it as a recipe note.
 - **Add recipes manually** — Create a recipe note from scratch using the same template.
 - **Recipe Gallery** — Browse your recipe vault visually with a dedicated gallery view.
 - **Shopping list** — Check off ingredients in a recipe note and send them directly to your shopping list file. Handles unit merging automatically.
@@ -22,7 +23,7 @@ Paste a URL, get a clean recipe note. Browse your collection in a visual gallery
 
 ## Installation
 
-### From the Obsidian Plugin Store *(coming soon)*
+### From the Obsidian Plugin Store
 
 1. Open Obsidian → **Settings** → **Community plugins**
 2. Search for **Recipe Vault**
@@ -56,6 +57,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Add checked ingredients to shopping list** | Sends checked ingredients from the active recipe to your shopping list file |
 | **Clear checked items from shopping list** | Removes completed items from your shopping list |
 | **Add recipe (manual)** | Creates a new recipe note from a title prompt |
+| **Add recipe from image** | Scans a recipe from a photo using OCR and lets you review it before saving |
 | **Batch import recipes from URL list** | Imports multiple recipes from a list of URLs (one per line) in the active note |
 
 ---
@@ -70,11 +72,15 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Save images in subdirectories** | Create a per-recipe subfolder under the image folder |
 | **Recipe template** | Handlebars template used when creating recipe notes |
 | **Decode Entities** | Decodes HTML entities in imported data |
+| **OCR strict cleanup** | More aggressively filters OCR noise during image-based recipe import |
 | **Shopping list file** | Path to your shopping list note (created automatically if missing) |
 | **Recipe gallery folder** | The folder the Recipe Gallery browses |
 | **OpenRouter API key** | Required for Ask AI features |
 | **AI model ID** | Which model to use for Ask AI (default: `google/gemini-2.5-flash-lite`) |
 | **AI request timeout (ms)** | Timeout for AI requests (minimum 5000 ms) |
+| **Custom AI system prompt** | Optional override for the built-in Ask AI instructions |
+| **Recipe title filler words** | Controls how imported titles are cleaned up |
+| **Filter vegan words / gluten-free words** | Optionally strips dietary labels from imported recipe titles |
 | **Debug mode** | Enables extra developer logging |
 
 ---
@@ -134,7 +140,7 @@ last_made:
 
 Recipe Vault can use an AI model to suggest edits to a recipe directly in the note preview (e.g., "make this dairy-free" or "scale to 2 servings"). This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add in plugin settings.
 
-The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible model ID can be used.
+The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
 
 ---
 

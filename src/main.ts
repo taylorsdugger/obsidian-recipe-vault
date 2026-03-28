@@ -401,7 +401,7 @@ export default class RecipeVault extends Plugin {
   ): Promise<void> {
     const apiKey = this.settings.openRouterApiKey?.trim();
     if (!apiKey) {
-      new Notice("Set your OpenRouter API key in Recipe Pro settings first.");
+      new Notice("Set your OpenRouter API key in Recipe Vault settings first.");
       return;
     }
 
@@ -437,6 +437,7 @@ export default class RecipeVault extends Plugin {
           recipeIngredient: parsed.recipeIngredient,
           recipeInstructions: parsed.recipeInstructions,
           timeoutMs,
+          systemPrompt: this.settings.aiSystemPrompt,
         });
 
         return {
@@ -468,6 +469,7 @@ export default class RecipeVault extends Plugin {
             model,
             messages,
             timeoutMs,
+            systemPrompt: this.settings.aiSystemPrompt,
           }),
         async (result: RecipeRefineApplyResult) => {
           if (result.recipeIngredient.length === 0) {
@@ -1111,7 +1113,7 @@ export default class RecipeVault extends Plugin {
       this.settings.templateVersion = c.TEMPLATE_VERSION;
       await this.saveData(this.settings);
       new Notice(
-        "Recipe Pro: your template was updated to include new fields (photo, cook_time, cssclasses). " +
+        "Recipe Vault: your template was updated to include new fields (photo, cook_time, cssclasses). " +
           "You can customise it again in Settings.",
         8000,
       );
@@ -1127,10 +1129,15 @@ export default class RecipeVault extends Plugin {
    * The main function to go get the recipe, and format it for the template
    */
   async fetchRecipes(_url: string): Promise<Recipe[]> {
-    const url = new URL(_url);
+    let url: URL;
+    try {
+      url = new URL(_url);
+    } catch {
+      throw new Error("That doesn't look like a valid recipe URL.");
+    }
 
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return Promise.reject("Not a valid url");
+      throw new Error("Recipe URL must start with http:// or https://.");
     }
 
     new Notice(`Fetching: ${url.href}`);
@@ -1149,7 +1156,10 @@ export default class RecipeVault extends Plugin {
         },
       });
     } catch (err) {
-      return Promise.reject("Not a valid url");
+      const detail = err instanceof Error ? ` (${err.message})` : "";
+      throw new Error(
+        `Could not fetch that page. Check the URL and your connection, then try again.${detail}`,
+      );
     }
 
     const $ = cheerio.load(response.text, {});
@@ -1258,6 +1268,15 @@ export default class RecipeVault extends Plugin {
     const markdown = handlebars.compile(this.settings.recipeTemplate);
     try {
       const recipes = await this.fetchRecipes(url);
+
+      // Avoid creating empty notes when no recipe schema is found.
+      if (recipes?.length === 0) {
+        new Notice(
+          "No recipe data was found on that page. Try another URL or import manually.",
+        );
+        return;
+      }
+
       let view = this.settings.saveInActiveFile
         ? this.app.workspace.getActiveViewOfType(MarkdownView)
         : null;
@@ -1298,14 +1317,6 @@ export default class RecipeVault extends Plugin {
       // in debug, clear editor first
       if (this.settings.debug) {
         view.editor.setValue("");
-      }
-
-      // too often, the recipe isn't there or malformed, lets let the user know.
-      if (recipes?.length === 0) {
-        new Notice(
-          "A validated recipe scheme was not found on this page, sorry!\n\nIf you think this is an error, please open an issue on github.",
-        );
-        return;
       }
 
       // pages can have multiple recipes, lets add them all
@@ -1408,7 +1419,7 @@ export default class RecipeVault extends Plugin {
         }
       }
     } catch (error) {
-      console.error("Recipe Pro: import failed", error);
+      console.error("Recipe Vault: import failed", error);
       const msg = error instanceof Error ? error.message : String(error);
       new Notice(`Recipe import failed: ${msg}`);
     }
@@ -1785,7 +1796,7 @@ export default class RecipeVault extends Plugin {
    * This function checks for an existing folder (creates if it doesn't exist)
    */
   private async folderCheck(foldername: string) {
-    const vault = app.vault;
+    const vault = this.app.vault;
     const folderPath = normalizePath(foldername);
     const folder = vault.getAbstractFileByPath(folderPath);
     if (folder && folder instanceof TFolder) {
@@ -2070,12 +2081,12 @@ export default class RecipeVault extends Plugin {
         path = `${normalizePath(this.settings.imgFolder)}/${filename}.${type.ext}`;
       }
 
-      const fileByPath = app.vault.getAbstractFileByPath(path);
+      const fileByPath = this.app.vault.getAbstractFileByPath(path);
       if (fileByPath && fileByPath instanceof TFile) {
         return fileByPath;
       }
 
-      return await app.vault.createBinary(path, res.arrayBuffer);
+      return await this.app.vault.createBinary(path, res.arrayBuffer);
     } catch (err) {
       return false;
     }

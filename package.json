@@ -20,8 +20,14 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "recipes",
+    "cooking",
+    "meal-planning"
+  ],
+  "author": "Taylor Dugger",
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "^9.1.1",

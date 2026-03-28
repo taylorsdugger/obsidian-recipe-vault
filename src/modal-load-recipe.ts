@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from "obsidian";
+import { App, Modal, Notice, Setting } from "obsidian";
 import * as settings from "./settings";
 
 export class LoadRecipeModal extends Modal {
@@ -30,8 +30,15 @@ export class LoadRecipeModal extends Modal {
         .setButtonText("Get Recipe")
         .setCta()
         .onClick(() => {
+          const url = this.result?.trim();
+          if (!url || !/^https?:\/\//i.test(url)) {
+            new Notice(
+              "Paste a valid recipe URL starting with http:// or https://",
+            );
+            return;
+          }
           this.close();
-          this.onSubmit(this.result);
+          this.onSubmit(url);
         }),
     );
   }
