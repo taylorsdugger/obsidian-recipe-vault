@@ -429,18 +429,222 @@
 .rg-section-header:first-child {
   padding-top: 0;
 }
+.rg-compare-modal {
+  width: min(92vw, 860px) !important;
+  max-height: 80vh !important;
+}
+.rg-compare-modal .modal-content {
+  padding: 20px 24px 24px;
+  overflow-y: auto;
+  max-height: calc(80vh - 40px);
+}
+.rg-compare-modal h3 {
+  margin: 0 0 16px;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.compare-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.compare-modal-card {
+  border-radius: 12px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.compare-modal-img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  display: block;
+  flex-shrink: 0;
+}
+.compare-modal-img-placeholder {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: var(--background-modifier-hover);
+  flex-shrink: 0;
+}
+.compare-modal-title {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-normal);
+  padding: 10px 10px 6px;
+}
+.compare-modal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 10px 6px;
+}
+.compare-modal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 10px 8px;
+}
+.compare-modal-open-btn {
+  appearance: none;
+  margin: 0 10px 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background 0.12s;
+  align-self: flex-start;
+}
+.compare-modal-open-btn:hover {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.compare-modal-ing-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0;
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.compare-modal-ing-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.compare-modal-ing {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-normal);
+  padding: 2px 0;
+}
+.compare-modal-ing.unique {
+  color: var(--interactive-accent);
+  font-weight: 600;
+}
+.rg-compare-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--interactive-accent);
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary) 88%);
+  }
+  border-bottom: 1px solid var(--interactive-accent);
+  @supports (color: color-mix(in lab, red, red)) {
+    border-bottom: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border) 70%);
+  }
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.rg-compare-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--interactive-accent);
+  background: var(--interactive-accent);
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+  }
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--interactive-accent);
+  @supports (color: color-mix(in lab, red, red)) {
+    border: 1px solid color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+  }
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.rg-compare-btn {
+  appearance: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background 0.12s, box-shadow 0.12s, transform 0.12s;
+  white-space: nowrap;
+}
+.rg-compare-btn:hover {
+  background: var(--background-modifier-hover);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+.rg-compare-btn.mod-cta {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.rg-compare-btn.mod-cta:hover {
+  filter: brightness(1.08);
+}
+.rg-compare-clear {
+  appearance: none;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.rg-compare-clear:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
 .rg-card {
   border-radius: 16px;
   overflow: hidden;
   background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
+  border: 2px solid transparent;
   cursor: pointer;
-  transition: box-shadow 0.15s, transform 0.15s;
+  transition: box-shadow 0.15s, transform 0.15s, border-color 0.15s, background 0.15s;
   padding: 0;
   width: 100%;
   text-align: left;
   box-sizing: border-box;
   align-self: start;
+}
+.rg-card--selected {
+  border-color: var(--interactive-accent);
+  background: var(--interactive-accent);
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary) 90%);
+  }
+  box-shadow: 0 0 0 3px var(--interactive-accent);
+  @supports (color: color-mix(in lab, red, red)) {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+  }
 }
 .rg-card:focus-visible {
   outline: 2px solid var(--color-accent);

@@ -39,7 +39,7 @@ export function RecipeCard({
 
   const handlePointerLeave = () => {
     if (holdTimerRef.current !== null) {
-      window.clearTimeout(holdTimerRef.current);
+      clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
     }
   };

@@ -69,14 +69,14 @@ export class CompareRecipesModal extends Modal {
       meta.createEl("span", { text: `✓ ${recipe.times_made}×` });
 
       const openBtn = card.createEl("button", {
-        text: "Open in split →",
+        text: "Open →",
         cls: "compare-modal-open-btn",
       });
       openBtn.addEventListener("click", async () => {
         const file = this.app.vault.getAbstractFileByPath(recipe.path);
         if (file instanceof TFile) {
           await this.plugin.ensureRecipeNoteCssClass(file);
-          const leaf = this.app.workspace.getLeaf("split");
+          const leaf = this.app.workspace.getLeaf();
           await leaf.setViewState({
             type: "markdown",
             state: { file: file.path, mode: "preview" },
