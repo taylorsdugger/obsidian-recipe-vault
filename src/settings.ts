@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, FuzzySuggestModal, PluginSettingTab, Setting, TFile, TFolder } from "obsidian";
 import RecipeVault from "./main";
 import * as c from "./constants";
 
@@ -20,6 +20,7 @@ export interface PluginSettings {
   aiCustomModelId: string;
   aiModelId: string;
   aiTimeoutMs: number;
+  aiSystemPrompt: string;
   fillerWordsMode: "auto" | "custom";
   customFillerWords: string;
   filterVeganWords: boolean;
@@ -53,11 +54,58 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   aiCustomModelId: "",
   aiModelId: "google/gemini-2.5-flash-lite",
   aiTimeoutMs: 45000,
+  aiSystemPrompt: "",
   fillerWordsMode: "auto",
   customFillerWords: "",
   filterVeganWords: false,
   filterGlutenFreeWords: false,
 };
+
+class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
+  private readonly onChoose: (path: string) => void;
+
+  constructor(app: App, onChoose: (path: string) => void) {
+    super(app);
+    this.onChoose = onChoose;
+  }
+
+  getItems(): TFolder[] {
+    return this.app.vault
+      .getAllFolders()
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  getItemText(folder: TFolder): string {
+    return folder.path;
+  }
+
+  onChooseItem(folder: TFolder): void {
+    this.onChoose(folder.path);
+  }
+}
+
+class FileSuggestModal extends FuzzySuggestModal<TFile> {
+  private readonly onChoose: (path: string) => void;
+
+  constructor(app: App, onChoose: (path: string) => void) {
+    super(app);
+    this.onChoose = onChoose;
+  }
+
+  getItems(): TFile[] {
+    return this.app.vault
+      .getMarkdownFiles()
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  getItemText(file: TFile): string {
+    return file.path;
+  }
+
+  onChooseItem(file: TFile): void {
+    this.onChoose(file.path);
+  }
+}
 
 export class SettingsTab extends PluginSettingTab {
   plugin: RecipeVault;
@@ -85,7 +133,16 @@ export class SettingsTab extends PluginSettingTab {
             this.plugin.settings.folder = value.trim();
             await this.plugin.saveSettings();
           });
-      });
+      })
+      .addButton((btn) =>
+        btn.setButtonText("Browse").onClick(() => {
+          new FolderSuggestModal(this.app, async (path) => {
+            this.plugin.settings.folder = path;
+            await this.plugin.saveSettings();
+            this.display();
+          }).open();
+        }),
+      );
 
     new Setting(containerEl)
       .setName("Save in currently opened file")
@@ -123,6 +180,15 @@ export class SettingsTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           });
       })
+      .addButton((btn) =>
+        btn.setButtonText("Browse").onClick(() => {
+          new FolderSuggestModal(this.app, async (path) => {
+            this.plugin.settings.imgFolder = path;
+            await this.plugin.saveSettings();
+            this.display();
+          }).open();
+        }),
+      )
       .addToggle((toggle) => {
         toggle
           .setValue(this.plugin.settings.saveImg)
@@ -225,7 +291,16 @@ export class SettingsTab extends PluginSettingTab {
               value.trim() || "Shopping List.md";
             await this.plugin.saveSettings();
           });
-      });
+      })
+      .addButton((btn) =>
+        btn.setButtonText("Browse").onClick(() => {
+          new FileSuggestModal(this.app, async (path) => {
+            this.plugin.settings.shoppingListFile = path;
+            await this.plugin.saveSettings();
+            this.display();
+          }).open();
+        }),
+      );
 
     new Setting(containerEl)
       .setName("Recipe gallery folder")
@@ -240,7 +315,16 @@ export class SettingsTab extends PluginSettingTab {
             this.plugin.settings.recipeGalleryFolder = value.trim();
             await this.plugin.saveSettings();
           });
-      });
+      })
+      .addButton((btn) =>
+        btn.setButtonText("Browse").onClick(() => {
+          new FolderSuggestModal(this.app, async (path) => {
+            this.plugin.settings.recipeGalleryFolder = path;
+            await this.plugin.saveSettings();
+            this.display();
+          }).open();
+        }),
+      );
 
     new Setting(containerEl)
       .setName("OpenRouter API key")
@@ -322,6 +406,25 @@ export class SettingsTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           });
         text.inputEl.inputMode = "numeric";
+      });
+
+    new Setting(containerEl)
+      .setName("Custom AI system prompt")
+      .setDesc(
+        "Override the default AI instructions sent with every request. Leave blank to use the built-in default.",
+      )
+      .addTextArea((text) => {
+        text
+          .setPlaceholder(
+            "eg: Always suggest substitutions that are dairy-free.",
+          )
+          .setValue(this.plugin.settings.aiSystemPrompt)
+          .onChange(async (value) => {
+            this.plugin.settings.aiSystemPrompt = value;
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.style.width = "100%";
+        text.inputEl.style.minHeight = "80px";
       });
 
     new Setting(containerEl)

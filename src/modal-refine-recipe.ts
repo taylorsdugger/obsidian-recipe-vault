@@ -340,25 +340,46 @@ export class RefineRecipeModal extends Modal {
 
     contentEl.createEl("h3", { text: "Ask AI about this recipe" });
     contentEl.createEl("p", {
-      text: "You can ask follow-up questions. Review diffs before applying recipe edits.",
+      text: 'Use "Ask" to get an answer. Use "Suggest Edits" when you want recipe changes you can review and apply.',
       cls: "setting-item-description",
     });
 
-    this.chatLogEl = contentEl.createDiv({ cls: "recipe-ai-summary-log" });
+    this.chatLogEl = contentEl.createDiv({ cls: "recipe-ai-chat-log" });
     this.renderChatLog();
 
-    new Setting(contentEl).setName("Ask AI").addTextArea((text) => {
+    new Setting(contentEl).setName("Your question").addTextArea((text) => {
       this.promptInputEl = text.inputEl;
       text.setPlaceholder("Try: I do not eat vinegar. What should I change?");
       text.inputEl.rows = 3;
       text.inputEl.style.width = "100%";
+      if (this.initialPrompt) {
+        text.setValue(this.initialPrompt);
+      }
       text.inputEl.addEventListener("keydown", (event: KeyboardEvent) => {
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
-          void this.runAsk();
+          void this.runChat();
         }
       });
     });
+
+    // Send action row
+    new Setting(contentEl)
+      .addButton((btn) => {
+        this.askButtonEl = btn.buttonEl;
+        btn
+          .setButtonText("Ask")
+          .setCta()
+          .onClick(() => {
+            void this.runChat();
+          });
+      })
+      .addButton((btn) => {
+        this.suggestEditsButtonEl = btn.buttonEl;
+        btn.setButtonText("Suggest Edits").onClick(() => {
+          void this.runAsk();
+        });
+      });
 
     this.emptyDiffEl = contentEl.createEl("p", {
       cls: "setting-item-description",
@@ -366,16 +387,8 @@ export class RefineRecipeModal extends Modal {
 
     this.diffWrapperEl = contentEl.createDiv({ cls: "recipe-ai-diff-wrapper" });
 
+    // Review / Apply / Cancel row
     new Setting(contentEl)
-      .addButton((btn) => {
-        this.askButtonEl = btn.buttonEl;
-        btn
-          .setButtonText("Ask AI")
-          .setCta()
-          .onClick(() => {
-            void this.runAsk();
-          });
-      })
       .addButton((btn) => {
         this.reviewButtonEl = btn.buttonEl;
         btn.setButtonText("Review suggested edits").onClick(() => {
@@ -400,6 +413,9 @@ export class RefineRecipeModal extends Modal {
 
     this.refreshReviewState();
     this.promptInputEl?.focus();
+    if (this.initialPrompt) {
+      this.promptInputEl?.select();
+    }
   }
 
   onClose(): void {
