@@ -25,6 +25,7 @@ interface RecipeGalleryProps {
   recipes: RecipeNote[];
   onOpen: (path: string) => void;
   onCompare?: (selected: RecipeNote[]) => void;
+  onOpenInSplit?: (paths: string[]) => void;
   initialScrollTop?: number;
   onScrollTopChange?: (scrollTop: number) => void;
   initialSearchQuery?: string;
@@ -134,6 +135,7 @@ export function RecipeGallery({
   recipes,
   onOpen,
   onCompare,
+  onOpenInSplit,
   initialScrollTop = 0,
   onScrollTopChange,
   initialSearchQuery = "",
@@ -334,6 +336,18 @@ export function RecipeGallery({
               onClick={handleCompare}
             >
               Compare Recipes
+            </button>
+          )}
+          {onOpenInSplit && (
+            <button
+              type="button"
+              className="rg-compare-btn"
+              onClick={() => {
+                onOpenInSplit([...selectedPaths]);
+                setSelectedPaths(new Set());
+              }}
+            >
+              Open in split
             </button>
           )}
           <button
