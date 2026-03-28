@@ -38,6 +38,8 @@ export function loadRecipes(
       const cook_time_mins = parseCookTimeMins(cook_time);
       const times_made =
         typeof fm.times_made === "number" ? (fm.times_made as number) : 0;
+      const ingredients = parseMealType(fm.recipeIngredient);
+      const archived = fm.archived === true;
 
       return {
         title: file.basename,
@@ -47,6 +49,8 @@ export function loadRecipes(
         cook_time,
         cook_time_mins,
         times_made,
+        ingredients,
+        archived,
       };
     })
     .sort((a, b) => a.title.localeCompare(b.title));

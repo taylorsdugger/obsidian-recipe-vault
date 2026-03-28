@@ -7,6 +7,7 @@ export interface RecipeEditRequest {
   recipeIngredient: string[];
   recipeInstructions: string[];
   timeoutMs: number;
+  systemPrompt?: string;
 }
 
 export interface RecipeEditSuggestion {
@@ -129,10 +130,14 @@ function buildMessages(req: RecipeEditRequest): OpenRouterMessage[] {
     recipeInstructions: ["string"],
   };
 
-  const systemPrompt =
+  const baseSystem =
     "You edit recipes. Return only valid JSON with this exact shape: " +
     JSON.stringify(schema) +
     ". Keep ingredient and instruction wording concise and practical.";
+
+  const systemContent = req.systemPrompt?.trim()
+    ? `${req.systemPrompt.trim()}\n\n${baseSystem}`
+    : baseSystem;
 
   const userPrompt = [
     "Goal:",
@@ -153,7 +158,7 @@ function buildMessages(req: RecipeEditRequest): OpenRouterMessage[] {
   ].join("\n");
 
   return [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: systemContent },
     { role: "user", content: userPrompt },
   ];
 }
@@ -198,4 +203,70 @@ export async function requestRecipeEditSuggestion(
   }
 
   return parseSuggestionPayload(content);
+}
+
+// ---------------------------------------------------------------------------
+// Chat-only (non-edit) request
+// ---------------------------------------------------------------------------
+
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+
+export interface RecipeChatRequest {
+  apiKey: string;
+  model: string;
+  /** Full conversation history including the latest user message. */
+  messages: ChatMessage[];
+  /** Optional custom system prompt. Falls back to a default if omitted. */
+  systemPrompt?: string;
+  timeoutMs: number;
+}
+
+export async function requestRecipeChatResponse(
+  req: RecipeChatRequest,
+): Promise<string> {
+  const systemContent =
+    req.systemPrompt?.trim() ||
+    "You are a helpful cooking assistant. Answer questions about recipes concisely and helpfully.";
+
+  const messages: OpenRouterMessage[] = [
+    { role: "system", content: systemContent },
+    ...req.messages,
+  ];
+
+  const response = await Promise.race([
+    requestUrl({
+      url: "https://openrouter.ai/api/v1/chat/completions",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${req.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: req.model,
+        messages,
+        temperature: 0.7,
+      }),
+      throw: false,
+    }),
+    new Promise<never>((_resolve, reject) => {
+      window.setTimeout(() => {
+        reject(
+          new Error("AI request timed out. Try again with a simpler prompt."),
+        );
+      }, req.timeoutMs);
+    }),
+  ]);
+
+  const payload = response.json as OpenRouterResponse | undefined;
+
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(getErrorMessage(response.status, payload?.error?.message));
+  }
+
+  const content = payload?.choices?.[0]?.message?.content;
+  if (!content?.trim()) {
+    throw new Error("OpenRouter returned an empty response.");
+  }
+
+  return content.trim();
 }

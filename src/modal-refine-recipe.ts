@@ -1,4 +1,5 @@
 import { App, Modal, Notice, Setting } from "obsidian";
+import type { ChatMessage } from "./utils/openrouter";
 
 export interface RecipeRefineModalData {
   prompt: string;
@@ -17,7 +18,10 @@ export interface RecipeRefineApplyResult {
 
 export class RefineRecipeModal extends Modal {
   private data: RecipeRefineModalData;
+  private chatMessages: ChatMessage[] = [];
+  private readonly initialPrompt: string;
   private readonly onAsk: (prompt: string) => Promise<RecipeRefineModalData>;
+  private readonly onChat: (messages: ChatMessage[]) => Promise<string>;
   private readonly onApply: (
     result: RecipeRefineApplyResult,
   ) => Promise<void> | void;
@@ -28,6 +32,7 @@ export class RefineRecipeModal extends Modal {
   private reviewButtonEl: HTMLButtonElement | null = null;
   private applyButtonEl: HTMLButtonElement | null = null;
   private askButtonEl: HTMLButtonElement | null = null;
+  private suggestEditsButtonEl: HTMLButtonElement | null = null;
   private promptInputEl: HTMLTextAreaElement | null = null;
   private isReviewVisible = false;
   private isRequestInFlight = false;
@@ -36,12 +41,16 @@ export class RefineRecipeModal extends Modal {
   constructor(
     app: App,
     data: RecipeRefineModalData,
+    initialPrompt: string,
     onAsk: (prompt: string) => Promise<RecipeRefineModalData>,
+    onChat: (messages: ChatMessage[]) => Promise<string>,
     onApply: (result: RecipeRefineApplyResult) => Promise<void> | void,
   ) {
     super(app);
     this.data = data;
+    this.initialPrompt = initialPrompt;
     this.onAsk = onAsk;
+    this.onChat = onChat;
     this.onApply = onApply;
   }
 
@@ -131,33 +140,34 @@ export class RefineRecipeModal extends Modal {
   }
 
   private renderChatLog(): void {
-    if (!this.chatLogEl) {
-      return;
-    }
-
+    if (!this.chatLogEl) return;
     this.chatLogEl.empty();
 
-    const entry = this.chatLogEl.createDiv({ cls: "recipe-ai-summary-entry" });
-    entry.createEl("p", {
-      text: `You: ${this.data.prompt}`,
-      cls: "recipe-ai-summary-prompt",
-    });
-    entry.createEl("p", {
-      text: `AI: ${this.data.summary.trim() || "No summary provided."}`,
-      cls: "recipe-ai-summary-response",
-    });
+    for (const msg of this.chatMessages) {
+      const entry = this.chatLogEl.createDiv({ cls: "recipe-ai-chat-entry" });
+      entry.createDiv({
+        cls:
+          msg.role === "user"
+            ? "recipe-ai-chat-user"
+            : "recipe-ai-chat-assistant",
+        text: `${msg.role === "user" ? "You" : "AI"}: ${msg.content}`,
+      });
+    }
+
+    // Auto-scroll to latest message
+    this.chatLogEl.scrollTop = this.chatLogEl.scrollHeight;
   }
 
   private refreshReviewState(): void {
     const hasDiff = this.hasDiff(this.data);
+    const busy = this.isRequestInFlight || this.isApplyInFlight;
 
     if (this.reviewButtonEl) {
       this.reviewButtonEl.style.display = hasDiff ? "" : "none";
       this.reviewButtonEl.textContent = this.isReviewVisible
         ? "Hide suggested edits"
         : "Review suggested edits";
-      this.reviewButtonEl.disabled =
-        this.isRequestInFlight || this.isApplyInFlight;
+      this.reviewButtonEl.disabled = busy;
     }
 
     if (this.emptyDiffEl) {
@@ -191,24 +201,25 @@ export class RefineRecipeModal extends Modal {
     if (this.applyButtonEl) {
       this.applyButtonEl.style.display =
         hasDiff && this.isReviewVisible ? "" : "none";
-      this.applyButtonEl.disabled =
-        this.isRequestInFlight || this.isApplyInFlight || !hasDiff;
+      this.applyButtonEl.disabled = busy || !hasDiff;
       this.applyButtonEl.textContent = this.isApplyInFlight
         ? "Applying..."
         : "Apply edits";
     }
 
     if (this.askButtonEl) {
-      this.askButtonEl.disabled =
-        this.isRequestInFlight || this.isApplyInFlight;
+      this.askButtonEl.disabled = busy;
       this.askButtonEl.textContent = this.isRequestInFlight
         ? "Asking..."
-        : "Ask AI";
+        : "Ask";
+    }
+
+    if (this.suggestEditsButtonEl) {
+      this.suggestEditsButtonEl.disabled = busy;
     }
 
     if (this.promptInputEl) {
-      this.promptInputEl.disabled =
-        this.isRequestInFlight || this.isApplyInFlight;
+      this.promptInputEl.disabled = busy;
     }
   }
 

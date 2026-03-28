@@ -24,12 +24,15 @@ function shouldShowSectionHeader(sortMode: SortMode): boolean {
 interface RecipeGalleryProps {
   recipes: RecipeNote[];
   onOpen: (path: string) => void;
+  onCompare?: (selected: RecipeNote[]) => void;
   initialScrollTop?: number;
   onScrollTopChange?: (scrollTop: number) => void;
   initialSearchQuery?: string;
   initialSortMode?: SortMode;
   onSearchQueryChange?: (searchQuery: string) => void;
   onSortModeChange?: (sortMode: SortMode) => void;
+  initialShowArchived?: boolean;
+  onShowArchivedChange?: (show: boolean) => void;
 }
 
 const SORT_LABELS: Record<SortMode, string> = {
@@ -130,18 +133,23 @@ function buildSections(recipes: RecipeNote[], sortMode: SortMode): Section[] {
 export function RecipeGallery({
   recipes,
   onOpen,
+  onCompare,
   initialScrollTop = 0,
   onScrollTopChange,
   initialSearchQuery = "",
   initialSortMode = "name",
   onSearchQueryChange,
   onSortModeChange,
+  initialShowArchived = false,
+  onShowArchivedChange,
 }: RecipeGalleryProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
   const [activeSection, setActiveSection] = useState("");
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
   const [qsVisible, setQsVisible] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [showArchived, setShowArchived] = useState(initialShowArchived);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -152,13 +160,20 @@ export function RecipeGallery({
     onScrollTopChangeRef.current = onScrollTopChange;
   });
 
-  // Filter by title search
+  // Filter by archived visibility and search query (title or ingredients)
   const filtered = useMemo(() => {
+    const visible = showArchived
+      ? recipes
+      : recipes.filter((r) => !r.archived);
     const q = searchQuery.toLowerCase().trim();
     return q
-      ? recipes.filter((r) => r.title.toLowerCase().includes(q))
-      : recipes;
-  }, [recipes, searchQuery]);
+      ? visible.filter(
+          (r) =>
+            r.title.toLowerCase().includes(q) ||
+            r.ingredients.some((ing) => ing.toLowerCase().includes(q)),
+        )
+      : visible;
+  }, [recipes, searchQuery, showArchived]);
 
   // Build grouped sections
   const sections = useMemo(
@@ -175,6 +190,27 @@ export function RecipeGallery({
   useEffect(() => {
     onSortModeChange?.(sortMode);
   }, [sortMode, onSortModeChange]);
+
+  useEffect(() => {
+    onShowArchivedChange?.(showArchived);
+  }, [showArchived, onShowArchivedChange]);
+
+  const handleSelect = useCallback((path: string) => {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleCompare = useCallback(() => {
+    const selected = recipes.filter((r) => selectedPaths.has(r.path));
+    onCompare?.(selected);
+  }, [recipes, selectedPaths, onCompare]);
 
   // Track active section via scroll position
   useEffect(() => {
@@ -238,7 +274,7 @@ export function RecipeGallery({
 
   return (
     <div className="recipe-gallery-root">
-      {/* Toolbar: search + collapsible sort tabs */}
+      {/* Toolbar: search + archived toggle + collapsible sort tabs */}
       <div className="recipe-gallery-toolbar">
         <div className="rg-toolbar-top">
           <input
@@ -248,6 +284,15 @@ export function RecipeGallery({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
+          <button
+            type="button"
+            className={`rg-archived-toggle${showArchived ? " active" : ""}`}
+            onClick={() => setShowArchived((v) => !v)}
+            title={showArchived ? "Hide archived recipes" : "Show archived recipes"}
+            aria-pressed={showArchived}
+          >
+            Archived
+          </button>
           <button
             type="button"
             className={`rg-sort-toggle${toolbarExpanded ? " active" : sortMode !== "name" ? " filtered" : ""}`}
@@ -277,6 +322,29 @@ export function RecipeGallery({
           </div>
         )}
       </div>
+
+      {/* Compare bar — appears when at least one recipe is selected */}
+      {selectedPaths.size >= 1 && (
+        <div className="rg-compare-bar">
+          <span className="rg-compare-count">{selectedPaths.size} selected</span>
+          {selectedPaths.size >= 2 && (
+            <button
+              type="button"
+              className="rg-compare-btn mod-cta"
+              onClick={handleCompare}
+            >
+              Compare Recipes
+            </button>
+          )}
+          <button
+            type="button"
+            className="rg-compare-clear"
+            onClick={() => setSelectedPaths(new Set())}
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* Body: masonry + quick scroll */}
       <div className="recipe-gallery-body">
@@ -318,6 +386,8 @@ export function RecipeGallery({
                       key={recipe.path}
                       recipe={recipe}
                       onClick={() => onOpen(recipe.path)}
+                      onSelect={() => handleSelect(recipe.path)}
+                      isSelected={selectedPaths.has(recipe.path)}
                       cardRef={
                         !showSectionHeader && index === 0
                           ? (el) => {

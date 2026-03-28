@@ -13,4 +13,8 @@ export interface RecipeNote {
   cook_time_mins: number;
   /** Number of times the recipe has been made (frontmatter.times_made) */
   times_made: number;
+  /** Ingredient list from frontmatter.recipeIngredient */
+  ingredients: string[];
+  /** Whether the recipe is archived (from frontmatter.archived) */
+  archived: boolean;
 }
