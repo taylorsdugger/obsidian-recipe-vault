@@ -1,4 +1,11 @@
-import { App, FuzzySuggestModal, PluginSettingTab, Setting, TFile, TFolder } from "obsidian";
+import {
+  App,
+  FuzzySuggestModal,
+  PluginSettingTab,
+  Setting,
+  TFile,
+  TFolder,
+} from "obsidian";
 import RecipeVault from "./main";
 import * as c from "./constants";
 
@@ -71,8 +78,9 @@ class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
 
   getItems(): TFolder[] {
     return this.app.vault
-      .getAllFolders()
-      .sort((a, b) => a.path.localeCompare(b.path));
+      .getAllLoadedFiles()
+      .filter((f): f is TFolder => f instanceof TFolder)
+      .sort((a: TFolder, b: TFolder) => a.path.localeCompare(b.path));
   }
 
   getItemText(folder: TFolder): string {

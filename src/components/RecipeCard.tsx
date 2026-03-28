@@ -23,7 +23,7 @@ export function RecipeCard({
   const handlePointerDown = () => {
     if (!onSelect) return;
     didHoldRef.current = false;
-    holdTimerRef.current = window.setTimeout(() => {
+    holdTimerRef.current = setTimeout(() => {
       didHoldRef.current = true;
       holdTimerRef.current = null;
       onSelect();
@@ -32,7 +32,7 @@ export function RecipeCard({
 
   const handlePointerUp = () => {
     if (holdTimerRef.current !== null) {
-      window.clearTimeout(holdTimerRef.current);
+      clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
     }
   };

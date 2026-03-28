@@ -21,9 +21,13 @@ import type { ImageRecipeResult } from "./modal-image-recipe";
 import {
   RefineRecipeModal,
   RecipeRefineModalData,
+  RecipeRefineApplyResult,
 } from "./modal-refine-recipe";
 import { RecipeGalleryView } from "./view-recipe-gallery";
-import { requestRecipeEditSuggestion } from "./utils/openrouter";
+import {
+  requestRecipeEditSuggestion,
+  requestRecipeChatResponse,
+} from "./utils/openrouter";
 import dateFormat from "dateformat";
 
 interface ShoppingItem {
@@ -455,9 +459,17 @@ export default class RecipeVault extends Plugin {
       new RefineRecipeModal(
         this.app,
         initialData,
+        prompt,
         async (followUpPrompt) =>
           requestRefineData(followUpPrompt, "Asking AI follow-up..."),
-        async (result) => {
+        async (messages) =>
+          requestRecipeChatResponse({
+            apiKey,
+            model,
+            messages,
+            timeoutMs,
+          }),
+        async (result: RecipeRefineApplyResult) => {
           if (result.recipeIngredient.length === 0) {
             new Notice("Ingredients cannot be empty.");
             return;

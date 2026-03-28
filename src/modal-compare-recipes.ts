@@ -111,4 +111,3 @@ export class CompareRecipesModal extends Modal {
     this.contentEl.empty();
   }
 }
-

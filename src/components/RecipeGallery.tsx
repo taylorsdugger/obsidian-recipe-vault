@@ -164,9 +164,7 @@ export function RecipeGallery({
 
   // Filter by archived visibility and search query (title or ingredients)
   const filtered = useMemo(() => {
-    const visible = showArchived
-      ? recipes
-      : recipes.filter((r) => !r.archived);
+    const visible = showArchived ? recipes : recipes.filter((r) => !r.archived);
     const q = searchQuery.toLowerCase().trim();
     return q
       ? visible.filter(
@@ -290,7 +288,9 @@ export function RecipeGallery({
             type="button"
             className={`rg-archived-toggle${showArchived ? " active" : ""}`}
             onClick={() => setShowArchived((v) => !v)}
-            title={showArchived ? "Hide archived recipes" : "Show archived recipes"}
+            title={
+              showArchived ? "Hide archived recipes" : "Show archived recipes"
+            }
             aria-pressed={showArchived}
           >
             Archived
@@ -328,7 +328,9 @@ export function RecipeGallery({
       {/* Compare bar — appears when at least one recipe is selected */}
       {selectedPaths.size >= 1 && (
         <div className="rg-compare-bar">
-          <span className="rg-compare-count">{selectedPaths.size} selected</span>
+          <span className="rg-compare-count">
+            {selectedPaths.size} selected
+          </span>
           {selectedPaths.size >= 2 && (
             <button
               type="button"
