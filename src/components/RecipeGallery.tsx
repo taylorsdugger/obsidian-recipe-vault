@@ -146,6 +146,11 @@ export function RecipeGallery({
   const scrollRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const qsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stable ref so onScrollTopChange never needs to be a useEffect dependency
+  const onScrollTopChangeRef = useRef(onScrollTopChange);
+  useEffect(() => {
+    onScrollTopChangeRef.current = onScrollTopChange;
+  });
 
   // Filter by title search
   const filtered = useMemo(() => {
@@ -180,8 +185,8 @@ export function RecipeGallery({
       container.scrollTop = initialScrollTop;
     }
 
-    const onScroll = () => {
-      onScrollTopChange?.(container.scrollTop);
+    const updateActiveSection = () => {
+      onScrollTopChangeRef.current?.(container.scrollTop);
       const containerTop = container.getBoundingClientRect().top;
       let current = sectionLabels[0] ?? "";
       for (const label of sectionLabels) {
@@ -191,6 +196,10 @@ export function RecipeGallery({
         if (top <= 16) current = label;
       }
       setActiveSection(current);
+    };
+
+    const onScroll = () => {
+      updateActiveSection();
       // Show quickscroll, then auto-hide shortly after scroll activity stops
       setQsVisible(true);
       if (qsHideTimerRef.current !== null) clearTimeout(qsHideTimerRef.current);
@@ -198,13 +207,13 @@ export function RecipeGallery({
     };
 
     container.addEventListener("scroll", onScroll, { passive: true });
-    // Set initial active section
-    onScroll();
+    // Set initial active section without showing the quick-scroll bar
+    updateActiveSection();
     return () => {
       container.removeEventListener("scroll", onScroll);
       if (qsHideTimerRef.current !== null) clearTimeout(qsHideTimerRef.current);
     };
-  }, [sectionLabels, initialScrollTop, onScrollTopChange]);
+  }, [sectionLabels, initialScrollTop]);
 
   // Reset active section when sections change
   useEffect(() => {

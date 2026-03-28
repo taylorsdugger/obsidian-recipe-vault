@@ -567,7 +567,7 @@ export default class RecipeVault extends Plugin {
     });
 
     // This creates an icon in the left ribbon.
-    this.addRibbonIcon("chef-hat", this.manifest.name, (evt: MouseEvent) => {
+    this.addRibbonIcon("chef-hat", "Import Recipe", (evt: MouseEvent) => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
       const selection = view?.editor.getSelection()?.trim();
       // try and make sure its a url
@@ -1129,7 +1129,11 @@ export default class RecipeVault extends Plugin {
         url: url.href,
         method: "GET",
         headers: {
-          "Content-Type": "text/html",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
         },
       });
     } catch (err) {
@@ -1206,11 +1210,18 @@ export default class RecipeVault extends Plugin {
     // parse the dom of the page and look for any schema.org/Recipe
     $('script[type="application/ld+json"]').each((i, el) => {
       const content = $(el).text()?.trim();
-      const json = JSON.parse(content);
+      let json: unknown;
+      try {
+        json = JSON.parse(content);
+      } catch {
+        // Skip malformed ld+json blocks; other scripts on the page may still
+        // contain a valid Recipe entry.
+        return;
+      }
 
       // to make things consistent, we'll put all recipes into an array
-      const data = Array.isArray(json) ? json : [json];
-      handleSchemas(data);
+      const data = Array.isArray(json) ? (json as unknown[]) : [json];
+      handleSchemas(data as any[]);
     });
 
     // Fallback for WordPress Recipe Maker pages where notes may not be in JSON-LD.
@@ -1315,7 +1326,9 @@ export default class RecipeVault extends Plugin {
           }
 
           if (!Array.isArray(recipe.recipeInstructions)) {
-            return;
+            // No instruction list — skip instruction-image downloads but still
+            // render and save the recipe.
+            continue;
           }
 
           // Getting all the images in instructions
@@ -1383,10 +1396,9 @@ export default class RecipeVault extends Plugin {
         }
       }
     } catch (error) {
-      if (this.settings.debug) {
-        console.error(error);
-      }
-      return;
+      console.error("Recipe Pro: import failed", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      new Notice(`Recipe import failed: ${msg}`);
     }
   };
 

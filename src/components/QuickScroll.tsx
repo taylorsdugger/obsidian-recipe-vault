@@ -90,6 +90,14 @@ export function QuickScroll({
       className={`recipe-gallery-quickscroll${dragPreview ? " dragging" : ""}${isVisible || dragPreview ? " qs-visible" : ""}`}
       aria-label="Jump to section"
       onPointerDown={(event) => {
+        // Don't capture touch events near the screen edges to avoid conflicting
+        // with Android system back-gesture zones (~20px from either edge).
+        if (
+          event.pointerType === "touch" &&
+          (event.clientX < 20 || event.clientX > window.innerWidth - 20)
+        ) {
+          return;
+        }
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
         updateDragSelection(event.clientX, event.clientY);
