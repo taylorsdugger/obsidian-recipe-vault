@@ -223,10 +223,9 @@ export class RefineRecipeModal extends Modal {
     }
   }
 
-  private async runAsk(): Promise<void> {
-    if (!this.promptInputEl) {
-      return;
-    }
+  /** "Ask" — plain chat, no diff generated */
+  private async runChat(): Promise<void> {
+    if (!this.promptInputEl) return;
 
     const prompt = this.promptInputEl.value.trim();
     if (!prompt) {
@@ -235,16 +234,25 @@ export class RefineRecipeModal extends Modal {
     }
 
     this.promptInputEl.value = "";
+    this.chatMessages = [
+      ...this.chatMessages,
+      { role: "user", content: prompt },
+    ];
+    this.renderChatLog();
+
     this.isRequestInFlight = true;
     this.refreshReviewState();
 
     try {
-      const nextData = await this.onAsk(prompt);
-      this.data = nextData;
-      this.isReviewVisible = false;
+      const response = await this.onChat([...this.chatMessages]);
+      this.chatMessages = [
+        ...this.chatMessages,
+        { role: "assistant", content: response },
+      ];
       this.renderChatLog();
-      this.refreshReviewState();
     } catch (error) {
+      this.chatMessages = this.chatMessages.slice(0, -1);
+      this.renderChatLog();
       const message =
         error instanceof Error
           ? error.message
@@ -253,7 +261,56 @@ export class RefineRecipeModal extends Modal {
     } finally {
       this.isRequestInFlight = false;
       this.refreshReviewState();
-      this.promptInputEl.focus();
+      this.promptInputEl?.focus();
+    }
+  }
+
+  /** "Suggest Edits" — generates a diff of ingredient/instruction changes */
+  private async runAsk(): Promise<void> {
+    if (!this.promptInputEl) return;
+
+    const prompt = this.promptInputEl.value.trim();
+    if (!prompt) {
+      new Notice("Enter a question for AI first.");
+      return;
+    }
+
+    this.promptInputEl.value = "";
+    this.chatMessages = [
+      ...this.chatMessages,
+      { role: "user", content: prompt },
+    ];
+    this.renderChatLog();
+
+    this.isRequestInFlight = true;
+    this.isReviewVisible = false;
+    this.refreshReviewState();
+
+    try {
+      const nextData = await this.onAsk(prompt);
+      this.data = nextData;
+
+      if (nextData.summary) {
+        this.chatMessages = [
+          ...this.chatMessages,
+          { role: "assistant", content: nextData.summary },
+        ];
+      }
+
+      this.renderChatLog();
+      this.refreshReviewState();
+    } catch (error) {
+      this.chatMessages = this.chatMessages.slice(0, -1);
+      this.renderChatLog();
+      const message =
+        error instanceof Error
+          ? error.message
+          : "AI request failed. Please try again.";
+      new Notice(message, 8000);
+    } finally {
+      this.isRequestInFlight = false;
+      this.refreshReviewState();
+      this.promptInputEl?.focus();
     }
   }
 
