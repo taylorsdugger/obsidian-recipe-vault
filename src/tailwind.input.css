@@ -196,6 +196,43 @@
 	box-shadow: none;
 }
 
+.shopping-list-note-actions {
+	max-width: var(--file-line-width, 860px);
+	padding-left: var(--file-margins, 32px);
+	padding-right: var(--file-margins, 32px);
+	margin: 0.5rem auto 1.2rem;
+	box-sizing: border-box;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+.shopping-list-note-action-button {
+	appearance: none;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	border-radius: 999px;
+	padding: 10px 14px;
+	font-size: 0.92rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: transform 0.12s, box-shadow 0.12s, background 0.12s;
+}
+
+.shopping-list-note-action-button:hover {
+	background: var(--background-modifier-hover);
+	box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+	transform: translateY(-1px);
+}
+
+.shopping-list-note-action-button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+	transform: none;
+	box-shadow: none;
+}
+
 .recipe-ai-diff-section {
 	margin: 0.85rem 0;
 }

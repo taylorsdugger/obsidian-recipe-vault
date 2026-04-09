@@ -129,6 +129,12 @@ export default class RecipeVault extends Plugin {
     );
   }
 
+  private isShoppingListFile(file: TFile): boolean {
+    return (
+      normalizePath(file.path) === normalizePath(this.settings.shoppingListFile)
+    );
+  }
+
   private injectRecipeActions(
     el: HTMLElement,
     context: MarkdownPostProcessorContext,
@@ -518,6 +524,96 @@ export default class RecipeVault extends Plugin {
     return legacy || defaultModel;
   }
 
+  private getShoppingListActionsHost(container: HTMLElement): HTMLElement {
+    const readingView = container.closest(".markdown-reading-view");
+    if (readingView instanceof HTMLElement) {
+      return readingView;
+    }
+
+    return container;
+  }
+
+  private insertShoppingListActions(container: HTMLElement): void {
+    const host = this.getShoppingListActionsHost(container);
+    const existing = host.querySelector(":scope > .shopping-list-note-actions");
+    if (existing) {
+      return;
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "shopping-list-note-actions";
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "shopping-list-note-action-button";
+    clearButton.textContent = "Clear checked items";
+    clearButton.addEventListener("click", () => {
+      this.executeCommand(`${this.manifest.id}:${c.CMD_CLEAR_SHOPPING_LIST}`);
+    });
+
+    actions.appendChild(clearButton);
+    host.prepend(actions);
+  }
+
+  private injectShoppingListActions(
+    el: HTMLElement,
+    context: MarkdownPostProcessorContext,
+  ): void {
+    const container =
+      el.closest(".markdown-preview-sizer") ??
+      el.querySelector(".markdown-preview-sizer") ??
+      el.closest(".markdown-preview-view");
+    if (!(container instanceof HTMLElement)) {
+      return;
+    }
+
+    const file = this.app.vault.getAbstractFileByPath(context.sourcePath);
+    if (!(file instanceof TFile)) {
+      return;
+    }
+
+    if (!this.isShoppingListFile(file)) {
+      return;
+    }
+
+    const host = this.getShoppingListActionsHost(container);
+
+    if (
+      host.dataset.shoppingListActionsInjected === context.sourcePath &&
+      host.querySelector(":scope > .shopping-list-note-actions")
+    ) {
+      return;
+    }
+
+    host.dataset.shoppingListActionsInjected = context.sourcePath;
+
+    window.setTimeout(() => {
+      if (!host.isConnected) {
+        return;
+      }
+
+      this.insertShoppingListActions(host);
+    }, 0);
+  }
+
+  private queueInjectActiveShoppingListActions(): void {
+    window.setTimeout(() => {
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (!view?.file) return;
+
+      if (!this.isShoppingListFile(view.file)) return;
+      if (view.getMode() === "source") return;
+
+      const container =
+        view.containerEl.querySelector(".markdown-reading-view") ??
+        view.containerEl.querySelector(".markdown-preview-sizer") ??
+        view.containerEl.querySelector(".markdown-preview-view");
+      if (!(container instanceof HTMLElement)) return;
+
+      this.insertShoppingListActions(container);
+    }, 0);
+  }
+
   private queueInjectActiveRecipeActions(): void {
     window.setTimeout(() => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -540,23 +636,27 @@ export default class RecipeVault extends Plugin {
 
     this.registerMarkdownPostProcessor((el, context) => {
       this.injectRecipeActions(el, context);
+      this.injectShoppingListActions(el, context);
     });
 
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => {
         this.queueInjectActiveRecipeActions();
+        this.queueInjectActiveShoppingListActions();
       }),
     );
 
     this.registerEvent(
       this.app.workspace.on("file-open", () => {
         this.queueInjectActiveRecipeActions();
+        this.queueInjectActiveShoppingListActions();
       }),
     );
 
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
         this.queueInjectActiveRecipeActions();
+        this.queueInjectActiveShoppingListActions();
       }),
     );
 
@@ -762,7 +862,7 @@ export default class RecipeVault extends Plugin {
         // Rebuild and write the file
         const header = headerLines.length
           ? headerLines.join("\n") + "\n\n"
-          : "# Shopping List\n\n";
+          : "";
         const itemLines = existingItems.map((item) => {
           const check = item.checked ? "[x]" : "[ ]";
           const display =
