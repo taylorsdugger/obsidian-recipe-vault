@@ -525,9 +525,11 @@ export default class RecipeVault extends Plugin {
   }
 
   private getShoppingListActionsHost(container: HTMLElement): HTMLElement {
-    const readingView = container.closest(".markdown-reading-view");
-    if (readingView instanceof HTMLElement) {
-      return readingView;
+    const sizer =
+      container.querySelector<HTMLElement>(".markdown-preview-sizer") ??
+      container.closest<HTMLElement>(".markdown-preview-sizer");
+    if (sizer) {
+      return sizer;
     }
 
     return container;
