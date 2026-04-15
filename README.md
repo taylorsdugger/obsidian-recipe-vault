@@ -142,6 +142,16 @@ Recipe Vault can use an AI model to suggest edits to a recipe directly in the no
 
 The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
 
+## Network use and privacy disclosure
+
+Recipe Vault is primarily local, but it can make network requests for the following features:
+
+- **Recipe URL import**: Fetches the page you provide to read recipe JSON-LD data. The URL and page response are used only to create recipe notes in your vault.
+- **Recipe image download (optional)**: When enabled, recipe images referenced by imported recipes are downloaded into your vault.
+- **Ask AI via OpenRouter (optional)**: Sends your prompt plus recipe ingredients/instructions to OpenRouter to generate suggestions. Requests include your configured OpenRouter API key.
+
+No ads are shown, and no telemetry is collected by Recipe Vault itself.
+
 ---
 
 ## Releasing

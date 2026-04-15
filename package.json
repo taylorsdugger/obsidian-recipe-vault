@@ -1,7 +1,7 @@
 {
   "name": "recipe-vault",
   "version": "0.25.3",
-  "description": "Recipe Vault is a full recipe management system for Obsidian — import from web, image, or scratch, browse your vault visually, and build shopping lists automatically",
+  "description": "Import recipes from web pages and images, browse them in a gallery, and build shopping lists.",
   "main": "main.js",
   "repository": {
     "type": "git",

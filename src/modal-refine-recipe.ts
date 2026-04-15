@@ -163,7 +163,7 @@ export class RefineRecipeModal extends Modal {
     const busy = this.isRequestInFlight || this.isApplyInFlight;
 
     if (this.reviewButtonEl) {
-      this.reviewButtonEl.style.display = hasDiff ? "" : "none";
+      this.reviewButtonEl.hidden = !hasDiff;
       this.reviewButtonEl.textContent = this.isReviewVisible
         ? "Hide suggested edits"
         : "Review suggested edits";
@@ -171,7 +171,7 @@ export class RefineRecipeModal extends Modal {
     }
 
     if (this.emptyDiffEl) {
-      this.emptyDiffEl.style.display = hasDiff ? "none" : "";
+      this.emptyDiffEl.hidden = hasDiff;
       this.emptyDiffEl.textContent = this.data.suggestEdits
         ? "AI did not produce diffable edits for this response."
         : "No recipe edits suggested for this response.";
@@ -179,8 +179,7 @@ export class RefineRecipeModal extends Modal {
 
     if (this.diffWrapperEl) {
       this.diffWrapperEl.empty();
-      this.diffWrapperEl.style.display =
-        hasDiff && this.isReviewVisible ? "" : "none";
+      this.diffWrapperEl.hidden = !(hasDiff && this.isReviewVisible);
 
       if (hasDiff && this.isReviewVisible) {
         this.renderDiffSection(
@@ -199,8 +198,7 @@ export class RefineRecipeModal extends Modal {
     }
 
     if (this.applyButtonEl) {
-      this.applyButtonEl.style.display =
-        hasDiff && this.isReviewVisible ? "" : "none";
+      this.applyButtonEl.hidden = !(hasDiff && this.isReviewVisible);
       this.applyButtonEl.disabled = busy || !hasDiff;
       this.applyButtonEl.textContent = this.isApplyInFlight
         ? "Applying..."
@@ -351,7 +349,7 @@ export class RefineRecipeModal extends Modal {
       this.promptInputEl = text.inputEl;
       text.setPlaceholder("Try: I do not eat vinegar. What should I change?");
       text.inputEl.rows = 3;
-      text.inputEl.style.width = "100%";
+      text.inputEl.addClass("recipe-vault-input-full");
       if (this.initialPrompt) {
         text.setValue(this.initialPrompt);
       }

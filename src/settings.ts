@@ -349,7 +349,7 @@ export class SettingsTab extends PluginSettingTab {
           });
         text.inputEl.type = "password";
         text.inputEl.autocomplete = "off";
-        text.inputEl.style.width = "100%";
+        text.inputEl.addClass("recipe-vault-input-full");
       });
 
     new Setting(containerEl)
@@ -396,7 +396,7 @@ export class SettingsTab extends PluginSettingTab {
                 value.trim() || "google/gemini-2.5-flash-lite";
               await this.plugin.saveSettings();
             });
-          text.inputEl.style.width = "100%";
+          text.inputEl.addClass("recipe-vault-input-full");
         });
     }
 
@@ -431,8 +431,8 @@ export class SettingsTab extends PluginSettingTab {
             this.plugin.settings.aiSystemPrompt = value;
             await this.plugin.saveSettings();
           });
-        text.inputEl.style.width = "100%";
-        text.inputEl.style.minHeight = "80px";
+        text.inputEl.addClass("recipe-vault-input-full");
+        text.inputEl.addClass("recipe-vault-textarea-ai-prompt");
       });
 
     new Setting(containerEl)
@@ -444,8 +444,9 @@ export class SettingsTab extends PluginSettingTab {
         dropdown.addOption("auto", "Auto (built-in list)");
         dropdown.addOption("custom", "Custom list");
         dropdown.setValue(this.plugin.settings.fillerWordsMode || "auto");
-        dropdown.onChange(async (value: "auto" | "custom") => {
-          this.plugin.settings.fillerWordsMode = value;
+        dropdown.onChange(async (value) => {
+          this.plugin.settings.fillerWordsMode =
+            value === "custom" ? "custom" : "auto";
           await this.plugin.saveSettings();
           this.display();
         });
@@ -465,8 +466,8 @@ export class SettingsTab extends PluginSettingTab {
               this.plugin.settings.customFillerWords = value;
               await this.plugin.saveSettings();
             });
-          text.inputEl.style.width = "100%";
-          text.inputEl.style.minHeight = "90px";
+          text.inputEl.addClass("recipe-vault-input-full");
+          text.inputEl.addClass("recipe-vault-textarea-filler-words");
         });
     }
 

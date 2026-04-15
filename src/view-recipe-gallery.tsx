@@ -108,8 +108,7 @@ export class RecipeGalleryView extends ItemView {
     );
 
     const container = this.contentEl;
-    container.style.padding = "0";
-    container.style.overflow = "hidden";
+    container.addClass("recipe-gallery-view-container");
 
     if (!this.root) {
       this.root = createRoot(container);

@@ -56,12 +56,10 @@ class OcrReviewModal extends Modal {
       text: `Margin crop: ${meta.cropApplied ? "applied" : "not applied"}`,
     });
 
-    const img = contentEl.createEl("img", { cls: "recipe-image-preview" });
+    const img = contentEl.createEl("img", {
+      cls: "recipe-image-preview recipe-image-preview-ocr",
+    });
     img.src = meta.preprocessedImageDataUrl;
-    img.style.maxWidth = "100%";
-    img.style.maxHeight = "260px";
-    img.style.marginBottom = "1em";
-    img.style.borderRadius = "6px";
 
     new Setting(contentEl)
       .addButton((btn) =>
@@ -169,12 +167,10 @@ export class ImageRecipeModal extends Modal {
 
     // Preview
     if (this.imagePreviewUrl) {
-      const img = el.createEl("img", { cls: "recipe-image-preview" });
+      const img = el.createEl("img", {
+        cls: "recipe-image-preview recipe-image-preview-upload",
+      });
       img.src = this.imagePreviewUrl;
-      img.style.maxWidth = "100%";
-      img.style.maxHeight = "200px";
-      img.style.marginBottom = "1em";
-      img.style.borderRadius = "6px";
     }
 
     // Scan button
@@ -253,17 +249,17 @@ export class ImageRecipeModal extends Modal {
 
     new Setting(el).setName("Name").addText((text) => {
       text.setValue(recipe.name).onChange((v) => (recipe.name = v));
-      text.inputEl.style.width = "100%";
+      text.inputEl.addClass("recipe-vault-input-full");
     });
 
     new Setting(el).setName("Author").addText((text) => {
       text.setValue(recipe.author).onChange((v) => (recipe.author = v));
-      text.inputEl.style.width = "100%";
+      text.inputEl.addClass("recipe-vault-input-full");
     });
 
     new Setting(el).setName("Total time").addText((text) => {
       text.setValue(recipe.totalTime).onChange((v) => (recipe.totalTime = v));
-      text.inputEl.style.width = "100%";
+      text.inputEl.addClass("recipe-vault-input-full");
     });
 
     new Setting(el)
@@ -275,7 +271,7 @@ export class ImageRecipeModal extends Modal {
             (v) =>
               (recipe.recipeIngredient = v.split("\n").filter((l) => l.trim())),
           );
-        text.inputEl.style.width = "100%";
+        text.inputEl.addClass("recipe-vault-input-full");
         text.inputEl.rows = 8;
       });
 
@@ -290,7 +286,7 @@ export class ImageRecipeModal extends Modal {
                 .split("\n")
                 .filter((l) => l.trim())),
           );
-        text.inputEl.style.width = "100%";
+        text.inputEl.addClass("recipe-vault-input-full");
         text.inputEl.rows = 8;
       });
 

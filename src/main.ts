@@ -59,7 +59,37 @@ type CommandExecutorApp = App & {
 };
 
 export default class RecipeVault extends Plugin {
-  settings: settings.PluginSettings;
+  settings!: settings.PluginSettings;
+
+  private decodeHtmlEntities(value: string): string {
+    const namedEntities: Record<string, string> = {
+      amp: "&",
+      lt: "<",
+      gt: ">",
+      quot: '"',
+      apos: "'",
+      nbsp: " ",
+    };
+
+    return value.replace(
+      /&(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]+);/gi,
+      (match, entity) => {
+        const token = String(entity);
+
+        if (token.startsWith("#x") || token.startsWith("#X")) {
+          const code = Number.parseInt(token.slice(2), 16);
+          return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+        }
+
+        if (token.startsWith("#")) {
+          const code = Number.parseInt(token.slice(1), 10);
+          return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+        }
+
+        return namedEntities[token.toLowerCase()] ?? match;
+      },
+    );
+  }
 
   private executeCommand(commandId: string): boolean {
     return (
@@ -494,7 +524,7 @@ export default class RecipeVault extends Plugin {
             result.recipeInstructions,
           );
 
-          await this.app.vault.modify(file, updated);
+          await this.app.vault.process(file, () => updated);
           new Notice("Applied AI recipe edits.");
         },
       ).open();
@@ -664,8 +694,8 @@ export default class RecipeVault extends Plugin {
           return;
         }
 
-        // Uncheck the items in the recipe file
-        await this.app.vault.modify(view.file, newLines.join("\n"));
+        // Uncheck the items in the active recipe using the editor API.
+        view.editor.setValue(newLines.join("\n"));
 
         // Parse new items
         const newItems: ShoppingItem[] = checked.map((text) => {
@@ -783,7 +813,7 @@ export default class RecipeVault extends Plugin {
         const newContent = header + itemLines.join("\n") + "\n";
 
         if (existingFile && existingFile instanceof TFile) {
-          await this.app.vault.modify(existingFile, newContent);
+          await this.app.vault.process(existingFile, () => newContent);
         } else {
           const folder = listPath.includes("/")
             ? listPath.substring(0, listPath.lastIndexOf("/"))
@@ -891,7 +921,7 @@ export default class RecipeVault extends Plugin {
           new Notice("No checked items to clear.");
           return;
         }
-        await this.app.vault.modify(listFile, kept.join("\n") + "\n");
+        await this.app.vault.process(listFile, () => kept.join("\n") + "\n");
         new Notice(
           `Cleared ${removed} checked item${removed > 1 ? "s" : ""} from shopping list.`,
         );
@@ -1071,9 +1101,7 @@ export default class RecipeVault extends Plugin {
     });
   }
 
-  onunload() {
-    this.app.workspace.detachLeavesOfType(c.VIEW_TYPE_RECIPE_GALLERY);
-  }
+  onunload() {}
 
   refreshRecipeGalleryView() {
     for (const leaf of this.app.workspace.getLeavesOfType(
@@ -1402,10 +1430,7 @@ export default class RecipeVault extends Plugin {
         });
 
         if (this.settings.decodeEntities) {
-          // hack to decode html entities - https://stackoverflow.com/questions/1147359/how-to-decode-html-entities-using-jquery
-          const textArea = document.createElement("textarea");
-          textArea.innerHTML = md;
-          md = textArea.value;
+          md = this.decodeHtmlEntities(md);
         }
 
         md = this.ensureRequiredRecipeFrontmatter(md, {
@@ -1443,9 +1468,7 @@ export default class RecipeVault extends Plugin {
     let md = markdown(stub);
 
     if (this.settings.decodeEntities) {
-      const textArea = document.createElement("textarea");
-      textArea.innerHTML = md;
-      md = textArea.value;
+      md = this.decodeHtmlEntities(md);
     }
 
     md = this.ensureRequiredRecipeFrontmatter(md, {});
@@ -1537,9 +1560,7 @@ export default class RecipeVault extends Plugin {
     let md = markdown(templateData);
 
     if (this.settings.decodeEntities) {
-      const textArea = document.createElement("textarea");
-      textArea.innerHTML = md;
-      md = textArea.value;
+      md = this.decodeHtmlEntities(md);
     }
 
     md = this.ensureRequiredRecipeFrontmatter(md, {

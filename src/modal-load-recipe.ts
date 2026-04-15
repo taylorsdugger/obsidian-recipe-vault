@@ -22,7 +22,7 @@ export class LoadRecipeModal extends Modal {
       text.onChange((value) => {
         this.result = value;
       });
-      text.inputEl.style.width = "100%";
+      text.inputEl.addClass("recipe-vault-input-full");
     });
 
     new Setting(contentEl).addButton((btn) =>

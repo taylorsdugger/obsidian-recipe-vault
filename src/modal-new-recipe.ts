@@ -21,7 +21,7 @@ export class NewRecipeModal extends Modal {
       text.onChange((value) => {
         this.recipeName = value;
       });
-      text.inputEl.style.width = "100%";
+      text.inputEl.addClass("recipe-vault-input-full");
 
       // Submit on Enter
       text.inputEl.addEventListener("keydown", (e) => {

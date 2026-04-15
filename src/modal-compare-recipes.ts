@@ -43,7 +43,7 @@ export class CompareRecipesModal extends Modal {
           attr: { src: recipe.photo, alt: recipe.title },
         });
         img.addEventListener("error", () => {
-          img.style.display = "none";
+          img.hidden = true;
           card.createDiv({
             cls: "compare-modal-img-placeholder",
             text: "🍽️",
