@@ -1,7 +1,7 @@
 {
 	"id": "recipe-vault",
 	"name": "Recipe Vault",
-	"version": "0.25.3",
+	"version": "0.25.4",
 	"minAppVersion": "1.5.12",
 	"description": "Import recipes from web pages and images, browse them in a gallery, and build shopping lists.",
 	"author": "Taylor Dugger",
