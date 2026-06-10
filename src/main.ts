@@ -1205,6 +1205,54 @@ export default class RecipeVault extends Plugin {
     const recipes: Recipe[] = [];
 
     /**
+     * Many sites (Yoast/WordPress, etc.) express the whole page as a single
+     * JSON-LD `@graph` where nodes reference each other by `@id` instead of
+     * inlining them — e.g. a Recipe's author is `{ "@id": ".../person/123" }`
+     * pointing at a separate Person node. Index every node that carries an
+     * `@id` so those references can be resolved back to the real object.
+     */
+    const nodesById = new Map<string, any>();
+    const indexNodes = (value: any): void => {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value)) {
+        value.forEach(indexNodes);
+        return;
+      }
+      const id = value["@id"];
+      // Only index real nodes (more than just an "@id" pointer).
+      if (typeof id === "string" && Object.keys(value).length > 1) {
+        if (!nodesById.has(id)) nodesById.set(id, value);
+      }
+      for (const key of Object.keys(value)) {
+        indexNodes(value[key]);
+      }
+    };
+
+    /** Follow a bare `{ "@id": "..." }` pointer to its indexed node. */
+    const resolveRef = (value: any): any => {
+      if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        typeof value["@id"] === "string" &&
+        Object.keys(value).length === 1
+      ) {
+        return nodesById.get(value["@id"]) ?? value;
+      }
+      return value;
+    };
+
+    /** Reduce an author value (string | object | ref | array) to a plain name. */
+    const authorName = (value: any): string => {
+      const resolved = resolveRef(value);
+      if (typeof resolved === "string") return resolved.trim();
+      if (resolved && typeof resolved === "object") {
+        return typeof resolved.name === "string" ? resolved.name.trim() : "";
+      }
+      return "";
+    };
+
+    /**
      * Some details are in varying formats, for templating to be easier,
      * lets attempt to normalize them
      */
@@ -1224,18 +1272,17 @@ export default class RecipeVault extends Plugin {
         (json as any).recipeNotes,
       );
 
-      // Normalize author to a plain string
+      // Normalize author to a plain string, resolving any `@id` references.
       if (json.author) {
         const raw = json.author as any;
         if (Array.isArray(raw)) {
           (json as any).author = raw
-            .map((a: any) => (typeof a === "string" ? a : a?.name ?? ""))
+            .map((a: any) => authorName(a))
             .filter(Boolean)
             .join(", ");
-        } else if (typeof raw === "object") {
-          (json as any).author = raw?.name ?? "";
+        } else {
+          (json as any).author = authorName(raw);
         }
-        // if already a string, leave it as-is
       }
 
       recipes.push(json);
@@ -1264,6 +1311,7 @@ export default class RecipeVault extends Plugin {
     }
 
     // parse the dom of the page and look for any schema.org/Recipe
+    const parsedBlocks: any[][] = [];
     $('script[type="application/ld+json"]').each((i, el) => {
       const content = $(el).text()?.trim();
       let json: unknown;
@@ -1277,8 +1325,14 @@ export default class RecipeVault extends Plugin {
 
       // to make things consistent, we'll put all recipes into an array
       const data = Array.isArray(json) ? (json as unknown[]) : [json];
-      handleSchemas(data as any[]);
+      parsedBlocks.push(data as any[]);
     });
+
+    // Index every node by `@id` first so `@id` references (e.g. an author
+    // pointing at a Person node) resolve regardless of node ordering or which
+    // script block they live in. Then walk the blocks for Recipe entries.
+    parsedBlocks.forEach((data) => indexNodes(data));
+    parsedBlocks.forEach((data) => handleSchemas(data));
 
     // Fallback for WordPress Recipe Maker pages where notes may not be in JSON-LD.
     const fallbackNotes = this.extractWprmRecipeNotes($, url.hash);
