@@ -8,9 +8,9 @@ import {
   normalizePath,
   TFolder,
   TFile,
+  Vault,
 } from "obsidian";
 import * as handlebars from "handlebars";
-import type { Recipe } from "schema-dts";
 import * as cheerio from "cheerio";
 
 import * as c from "./constants";
@@ -55,6 +55,54 @@ type CommandExecutorApp = App & {
   commands: {
     executeCommandById(commandId: string): boolean;
   };
+};
+
+/** A plain object node from parsed JSON-LD (values are still untyped JSON). */
+type JsonRecord = Record<string, unknown>;
+
+/** Narrow an unknown JSON value to a plain object (not null, not an array). */
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** One normalized instruction line: a step or an item within a HowToSection. */
+interface InstructionItem {
+  text: string;
+  image?: unknown;
+}
+
+/** A normalized recipe instruction — either a plain step or a HowToSection. */
+interface InstructionStep {
+  name?: string;
+  text?: string;
+  image?: unknown;
+  itemListElement?: InstructionItem[];
+}
+
+/**
+ * A recipe parsed from a page's JSON-LD and normalized for templating. JSON-LD
+ * is free-form, so unknown-typed index access is intentional; the fields the
+ * importer reads or writes are declared explicitly so they stay type-safe.
+ */
+interface ParsedRecipe {
+  [key: string]: unknown;
+  name?: unknown;
+  image?: unknown;
+  author?: unknown;
+  url?: string;
+  totalTime?: unknown;
+  recipeIngredient?: string[];
+  recipeInstructions?: InstructionStep[];
+  recipeNotes?: string[];
+}
+
+/** Vault augmented with the (untyped) attachment-path helper Obsidian exposes. */
+type VaultWithAttachments = Vault & {
+  getAvailablePathForAttachments(
+    fileName: string,
+    extension: string,
+    file: TFile | null,
+  ): Promise<string>;
 };
 
 export default class RecipeVault extends Plugin {
@@ -113,22 +161,26 @@ export default class RecipeVault extends Plugin {
       return false;
     }
 
-    await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-      const existing = frontmatter.cssclasses;
-      if (Array.isArray(existing)) {
-        frontmatter.cssclasses = existing.includes("recipe-note")
-          ? existing
-          : [...existing, "recipe-note"];
-      } else if (typeof existing === "string" && existing.trim()) {
-        const parts = existing.split(/[\s,]+/).filter(Boolean);
-        if (!parts.includes("recipe-note")) {
-          parts.push("recipe-note");
+    await this.app.fileManager.processFrontMatter(
+      file,
+      (frontmatter: JsonRecord) => {
+        const existing = frontmatter.cssclasses;
+        if (Array.isArray(existing)) {
+          const arr = existing as unknown[];
+          frontmatter.cssclasses = arr.includes("recipe-note")
+            ? arr
+            : [...arr, "recipe-note"];
+        } else if (typeof existing === "string" && existing.trim()) {
+          const parts = existing.split(/[\s,]+/).filter(Boolean);
+          if (!parts.includes("recipe-note")) {
+            parts.push("recipe-note");
+          }
+          frontmatter.cssclasses = parts.join(" ");
+        } else {
+          frontmatter.cssclasses = "recipe-note";
         }
-        frontmatter.cssclasses = parts.join(" ");
-      } else {
-        frontmatter.cssclasses = "recipe-note";
-      }
-    });
+      },
+    );
 
     return true;
   }
@@ -137,7 +189,7 @@ export default class RecipeVault extends Plugin {
     const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
     if (!fm) return false;
 
-    const tags = fm.tags;
+    const tags: unknown = fm.tags;
     const hasRecipeTag = Array.isArray(tags)
       ? tags.some(
           (tag: string) =>
@@ -220,9 +272,11 @@ export default class RecipeVault extends Plugin {
       text: "Mark as made",
       attr: { type: "button" },
     });
-    markMadeButton.addEventListener("click", async () => {
-      await this.app.workspace.openLinkText(file.path, "", false);
-      this.executeCommand(`${this.manifest.id}:${c.CMD_MARK_MADE}`);
+    markMadeButton.addEventListener("click", () => {
+      void (async () => {
+        await this.app.workspace.openLinkText(file.path, "", false);
+        this.executeCommand(`${this.manifest.id}:${c.CMD_MARK_MADE}`);
+      })();
     });
 
     const shoppingListButton = actions.createEl("button", {
@@ -230,9 +284,13 @@ export default class RecipeVault extends Plugin {
       text: "Add ingredients to shopping list",
       attr: { type: "button" },
     });
-    shoppingListButton.addEventListener("click", async () => {
-      await this.app.workspace.openLinkText(file.path, "", false);
-      this.executeCommand(`${this.manifest.id}:${c.CMD_ADD_TO_SHOPPING_LIST}`);
+    shoppingListButton.addEventListener("click", () => {
+      void (async () => {
+        await this.app.workspace.openLinkText(file.path, "", false);
+        this.executeCommand(
+          `${this.manifest.id}:${c.CMD_ADD_TO_SHOPPING_LIST}`,
+        );
+      })();
     });
 
     const aiControls = actions.createDiv({ cls: "recipe-note-ai-controls" });
@@ -601,7 +659,7 @@ export default class RecipeVault extends Plugin {
 
     // Ribbon icon to open/reveal the gallery
     this.addRibbonIcon("utensils", "Open recipe gallery", () => {
-      this.activateRecipeGalleryView();
+      void this.activateRecipeGalleryView();
     });
 
     // Command: open/reveal gallery
@@ -617,9 +675,11 @@ export default class RecipeVault extends Plugin {
       const selection = view?.editor.getSelection()?.trim();
       // try and make sure its a url
       if (selection?.startsWith("http") && selection.split(" ").length === 1) {
-        this.addRecipeToMarkdown(selection);
+        void this.addRecipeToMarkdown(selection);
       } else {
-        new LoadRecipeModal(this.app, this.addRecipeToMarkdown).open();
+        new LoadRecipeModal(this.app, (recipeUrl) => {
+          void this.addRecipeToMarkdown(recipeUrl);
+        }).open();
       }
     });
 
@@ -628,7 +688,9 @@ export default class RecipeVault extends Plugin {
       id: c.CMD_OPEN_MODAL,
       name: "Import recipe",
       callback: () => {
-        new LoadRecipeModal(this.app, this.addRecipeToMarkdown).open();
+        new LoadRecipeModal(this.app, (recipeUrl) => {
+          void this.addRecipeToMarkdown(recipeUrl);
+        }).open();
       },
     });
 
@@ -642,11 +704,15 @@ export default class RecipeVault extends Plugin {
           new Notice("No active recipe file open.");
           return;
         }
-        await this.app.fileManager.processFrontMatter(view.file, (fm) => {
-          const current = typeof fm.times_made === "number" ? fm.times_made : 0;
-          fm.times_made = current + 1;
-          fm.last_made = dateFormat(new Date(), "yyyy-mm-dd");
-        });
+        await this.app.fileManager.processFrontMatter(
+          view.file,
+          (fm: JsonRecord) => {
+            const current =
+              typeof fm.times_made === "number" ? fm.times_made : 0;
+            fm.times_made = current + 1;
+            fm.last_made = dateFormat(new Date(), "yyyy-mm-dd");
+          },
+        );
         new Notice("Marked as made!");
       },
     });
@@ -879,7 +945,7 @@ export default class RecipeVault extends Plugin {
           }
           // Small delay to avoid hammering servers back-to-back
           if (i < urls.length - 1) {
-            await new Promise((r) => setTimeout(r, 800));
+            await new Promise((r) => window.setTimeout(r, 800));
           }
         }
 
@@ -1072,7 +1138,9 @@ export default class RecipeVault extends Plugin {
       id: c.CMD_NEW_RECIPE_STUB,
       name: "Add recipe (manual)",
       callback: () => {
-        new NewRecipeModal(this.app, this.createRecipeStub).open();
+        new NewRecipeModal(this.app, (recipeName) => {
+          void this.createRecipeStub(recipeName);
+        }).open();
       },
     });
   }
@@ -1096,7 +1164,7 @@ export default class RecipeVault extends Plugin {
     );
     if (existing.length > 0) {
       this.app.workspace.setActiveLeaf(existing[0], { focus: true });
-      this.app.workspace.revealLeaf(existing[0]);
+      await this.app.workspace.revealLeaf(existing[0]);
       return;
     }
 
@@ -1106,14 +1174,14 @@ export default class RecipeVault extends Plugin {
       active: true,
     });
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
-    this.app.workspace.revealLeaf(leaf);
+    await this.app.workspace.revealLeaf(leaf);
   }
 
   async loadSettings() {
     this.settings = Object.assign(
       {},
       settings.DEFAULT_SETTINGS,
-      await this.loadData(),
+      (await this.loadData()) as Partial<settings.PluginSettings>,
     );
 
     // Migrate saved templates that predate the current template version.
@@ -1138,7 +1206,7 @@ export default class RecipeVault extends Plugin {
   /**
    * The main function to go get the recipe, and format it for the template
    */
-  async fetchRecipes(_url: string): Promise<Recipe[]> {
+  async fetchRecipes(_url: string): Promise<ParsedRecipe[]> {
     let url: URL;
     try {
       url = new URL(_url);
@@ -1210,7 +1278,7 @@ export default class RecipeVault extends Plugin {
      * the main recipes list, we'll use to render from
      * its an array instead because a page can technically have multiple recipes on it
      */
-    const recipes: Recipe[] = [];
+    const recipes: ParsedRecipe[] = [];
 
     /**
      * Many sites (Yoast/WordPress, etc.) express the whole page as a single
@@ -1219,13 +1287,13 @@ export default class RecipeVault extends Plugin {
      * pointing at a separate Person node. Index every node that carries an
      * `@id` so those references can be resolved back to the real object.
      */
-    const nodesById = new Map<string, any>();
-    const indexNodes = (value: any): void => {
-      if (!value || typeof value !== "object") return;
+    const nodesById = new Map<string, JsonRecord>();
+    const indexNodes = (value: unknown): void => {
       if (Array.isArray(value)) {
         value.forEach(indexNodes);
         return;
       }
+      if (!isJsonRecord(value)) return;
       const id = value["@id"];
       // Only index real nodes (more than just an "@id" pointer).
       if (typeof id === "string" && Object.keys(value).length > 1) {
@@ -1237,25 +1305,21 @@ export default class RecipeVault extends Plugin {
     };
 
     /** Follow a bare `{ "@id": "..." }` pointer to its indexed node. */
-    const resolveRef = (value: any): any => {
-      if (
-        value &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        typeof value["@id"] === "string" &&
-        Object.keys(value).length === 1
-      ) {
-        return nodesById.get(value["@id"]) ?? value;
+    const resolveRef = (value: unknown): unknown => {
+      if (isJsonRecord(value) && Object.keys(value).length === 1) {
+        const id = value["@id"];
+        if (typeof id === "string") return nodesById.get(id) ?? value;
       }
       return value;
     };
 
     /** Reduce an author value (string | object | ref | array) to a plain name. */
-    const authorName = (value: any): string => {
+    const authorName = (value: unknown): string => {
       const resolved = resolveRef(value);
       if (typeof resolved === "string") return resolved.trim();
-      if (resolved && typeof resolved === "object") {
-        return typeof resolved.name === "string" ? resolved.name.trim() : "";
+      if (isJsonRecord(resolved)) {
+        const name = resolved.name;
+        return typeof name === "string" ? name.trim() : "";
       }
       return "";
     };
@@ -1264,10 +1328,10 @@ export default class RecipeVault extends Plugin {
      * Reduce an ingredient value (string | object | `@id` ref) to a clean
      * line, resolving references and stripping any inline HTML.
      */
-    const ingredientText = (value: any): string => {
+    const ingredientText = (value: unknown): string => {
       const resolved = resolveRef(value);
       if (typeof resolved === "string") return this.stripHtml(resolved);
-      if (resolved && typeof resolved === "object") {
+      if (isJsonRecord(resolved)) {
         const text = resolved.name ?? resolved.text;
         return typeof text === "string" ? this.stripHtml(text) : "";
       }
@@ -1281,12 +1345,12 @@ export default class RecipeVault extends Plugin {
      * strips inline HTML from every text value. `image` is preserved verbatim
      * so the downstream instruction-image download loop is unaffected.
      */
-    const normalizeInstructionStep = (step: any): any => {
+    const normalizeInstructionStep = (step: unknown): InstructionStep => {
       const resolved = resolveRef(step);
       if (typeof resolved === "string") {
         return { text: this.stripHtml(resolved) };
       }
-      if (!resolved || typeof resolved !== "object") {
+      if (!isJsonRecord(resolved)) {
         return { text: "" };
       }
 
@@ -1295,17 +1359,19 @@ export default class RecipeVault extends Plugin {
         ? type.includes("HowToSection")
         : type === "HowToSection";
 
-      if (isSection || Array.isArray(resolved.itemListElement)) {
-        const itemListElement = (resolved.itemListElement ?? [])
-          .map((el: any) => {
+      const rawItems = resolved.itemListElement;
+      if (isSection || Array.isArray(rawItems)) {
+        const list: unknown[] = Array.isArray(rawItems) ? rawItems : [];
+        const itemListElement = list
+          .map((el): InstructionItem => {
             const r = resolveRef(el);
             if (typeof r === "string") return { text: this.stripHtml(r) };
-            if (r && typeof r === "object") {
+            if (isJsonRecord(r)) {
               return { text: this.stripHtml(r.text ?? r.name), image: r.image };
             }
             return { text: "" };
           })
-          .filter((s: any) => s.text);
+          .filter((s) => s.text);
         return { name: this.stripHtml(resolved.name), itemListElement };
       }
 
@@ -1319,54 +1385,51 @@ export default class RecipeVault extends Plugin {
      * Some details are in varying formats, for templating to be easier,
      * lets attempt to normalize them
      */
-    const normalizeSchema = (json: Recipe): void => {
+    const normalizeSchema = (node: JsonRecord): void => {
+      const json = node as ParsedRecipe;
       json.url = url.href;
-      json = this.normalizeImages(json);
+      this.normalizeImages(json);
 
-      if (json.name) {
-        json.name = this.cleanRecipeName(json.name as string);
+      if (typeof node.name === "string") {
+        json.name = this.cleanRecipeName(node.name);
       }
 
       // Ingredients may be a string, an array of strings, or objects — flatten
       // to a clean string[] so the template renders consistently.
-      const rawIngredient = (json as any).recipeIngredient;
+      const rawIngredient = node.recipeIngredient;
       if (rawIngredient != null) {
-        const list = Array.isArray(rawIngredient)
+        const list: unknown[] = Array.isArray(rawIngredient)
           ? rawIngredient
           : [rawIngredient];
-        (json as any).recipeIngredient = list
-          .map(ingredientText)
-          .filter(Boolean);
+        json.recipeIngredient = list.map(ingredientText).filter(Boolean);
       }
 
       // Instructions may be a single string, a single object, or an array of
       // strings / HowToStep / HowToSection. Coerce to an array of the shapes
       // the template understands; without this a string or single object makes
       // `{{#each recipeInstructions}}` iterate characters / object keys.
-      const rawInstructions = (json as any).recipeInstructions;
+      const rawInstructions = node.recipeInstructions;
       if (rawInstructions != null) {
-        const list = Array.isArray(rawInstructions)
+        const list: unknown[] = Array.isArray(rawInstructions)
           ? rawInstructions
           : [rawInstructions];
-        (json as any).recipeInstructions = list
+        json.recipeInstructions = list
           .map(normalizeInstructionStep)
-          .filter((s: any) => (s.itemListElement?.length ?? 0) > 0 || s.text);
+          .filter((s) => (s.itemListElement?.length ?? 0) > 0 || s.text);
       }
 
-      (json as any).recipeNotes = this.normalizeRecipeNotes(
-        (json as any).recipeNotes,
-      );
+      json.recipeNotes = this.normalizeRecipeNotes(node.recipeNotes);
 
       // Normalize author to a plain string, resolving any `@id` references.
-      if (json.author) {
-        const raw = json.author as any;
-        if (Array.isArray(raw)) {
-          (json as any).author = raw
-            .map((a: any) => authorName(a))
+      const rawAuthor = node.author;
+      if (rawAuthor != null) {
+        if (Array.isArray(rawAuthor)) {
+          json.author = (rawAuthor as unknown[])
+            .map((a) => authorName(a))
             .filter(Boolean)
             .join(", ");
         } else {
-          (json as any).author = authorName(raw);
+          json.author = authorName(rawAuthor);
         }
       }
 
@@ -1380,17 +1443,17 @@ export default class RecipeVault extends Plugin {
      * reference, and skip bare `@id` pointers (a Recipe ref with no content) so
      * nested recipes are found without double-counting.
      */
-    const seenRecipes = new Set<any>();
-    const isRecipeNode = (value: any): boolean => {
-      const type = value?.["@type"];
+    const seenRecipes = new Set<JsonRecord>();
+    const isRecipeNode = (value: JsonRecord): boolean => {
+      const type = value["@type"];
       return Array.isArray(type) ? type.includes("Recipe") : type === "Recipe";
     };
-    const collectRecipes = (value: any): void => {
-      if (!value || typeof value !== "object") return;
+    const collectRecipes = (value: unknown): void => {
       if (Array.isArray(value)) {
         value.forEach(collectRecipes);
         return;
       }
+      if (!isJsonRecord(value)) return;
       const isRealRecipe =
         isRecipeNode(value) &&
         (value.name != null ||
@@ -1407,7 +1470,7 @@ export default class RecipeVault extends Plugin {
     };
 
     // parse the dom of the page and look for any schema.org/Recipe
-    const parsedBlocks: any[][] = [];
+    const parsedBlocks: unknown[][] = [];
     $('script[type="application/ld+json"]').each((i, el) => {
       const content = $(el).text()?.trim();
       let json: unknown;
@@ -1421,7 +1484,7 @@ export default class RecipeVault extends Plugin {
 
       // to make things consistent, we'll put all recipes into an array
       const data = Array.isArray(json) ? (json as unknown[]) : [json];
-      parsedBlocks.push(data as any[]);
+      parsedBlocks.push(data);
     });
 
     // Index every node by `@id` first so `@id` references (e.g. an author
@@ -1434,11 +1497,10 @@ export default class RecipeVault extends Plugin {
     const fallbackNotes = this.extractWprmRecipeNotes($, url.hash);
     if (fallbackNotes.length > 0) {
       const hasNotesInSchema = recipes.some(
-        (recipe) =>
-          this.normalizeRecipeNotes((recipe as any).recipeNotes).length > 0,
+        (recipe) => this.normalizeRecipeNotes(recipe.recipeNotes).length > 0,
       );
       if (!hasNotesInSchema && recipes[0]) {
-        (recipes[0] as any).recipeNotes = fallbackNotes;
+        recipes[0].recipeNotes = fallbackNotes;
       }
     }
 
@@ -1511,11 +1573,15 @@ export default class RecipeVault extends Plugin {
         }
         // this will download the images and replace the json "recipe.image" value with the path of the image file.
         if (this.settings.saveImg && file) {
-          const filename = (recipe?.name as string)
-            // replace any whitespace with dashes
-            ?.replace(/\s+/g, "-")
-            // replace disallowed characters
-            .replace(/"|\*|\\|\/|<|>|:|\?/g, "");
+          const rawName = recipe.name;
+          const filename =
+            typeof rawName === "string"
+              ? rawName
+                  // replace any whitespace with dashes
+                  .replace(/\s+/g, "-")
+                  // replace disallowed characters
+                  .replace(/"|\*|\\|\/|<|>|:|\?/g, "")
+              : "";
           if (!filename) {
             return;
           }
@@ -1538,33 +1604,37 @@ export default class RecipeVault extends Plugin {
             continue;
           }
 
-          // Getting all the images in instructions
+          // Getting all the images in instructions. Schema.org expresses a
+          // step image as a URL string or an array; only the array form is
+          // rewritten in place to the saved attachment path.
           let imageCounter = 0;
           for (const instruction of recipe.recipeInstructions) {
-            if (instruction.image) {
+            if (Array.isArray(instruction.image)) {
+              const images = instruction.image as unknown[];
               const imgFile = await this.fetchImage(
                 filename,
-                instruction.image[0],
+                images[0],
                 file,
                 imageCounter,
               );
               if (imgFile) {
                 imageCounter += 1;
-                instruction.image[0] = imgFile.path;
+                images[0] = imgFile.path;
               }
               // Not sure if this would occur, but in theory it's possible
             } else if (instruction.itemListElement) {
               for (const element of instruction.itemListElement) {
-                if (element.image) {
+                if (Array.isArray(element.image)) {
+                  const images = element.image as unknown[];
                   const imgFile = await this.fetchImage(
                     filename,
-                    element.image[0],
+                    images[0],
                     file,
                     imageCounter,
                   );
                   if (imgFile) {
                     imageCounter += 1;
-                    element.image[0] = imgFile.path;
+                    images[0] = imgFile.path;
                   }
                 }
               }
@@ -1590,12 +1660,12 @@ export default class RecipeVault extends Plugin {
         });
         md = this.ensureRecipeNotesSection(
           md,
-          this.normalizeRecipeNotes((recipe as any).recipeNotes),
+          this.normalizeRecipeNotes(recipe.recipeNotes),
         );
 
         if (view.getMode() === "source") {
           view.editor.replaceSelection(md);
-        } else {
+        } else if (view.file) {
           await this.app.vault.append(view.file, md);
         }
       }
@@ -1638,7 +1708,7 @@ export default class RecipeVault extends Plugin {
     }
 
     const file = await this.app.vault.create(filePath, md);
-    await this.app.fileManager.processFrontMatter(file, (fm) => {
+    await this.app.fileManager.processFrontMatter(file, (fm: JsonRecord) => {
       fm.source = "manual";
     });
     new Notice(`Recipe "${name}" created.`);
@@ -1669,33 +1739,39 @@ export default class RecipeVault extends Plugin {
     });
 
     const formatIsoDuration = this.formatIsoDuration.bind(this);
-    handlebars.registerHelper("magicTime", function (arg1, arg2) {
-      if (typeof arg1 === "undefined") {
-        return "";
-      }
-      if (arguments.length === 1) {
-        return dateFormat(new Date(), "yyyy-mm-dd HH:MM");
-      } else if (arguments.length === 2) {
-        if (!isNaN(Date.parse(arg1))) {
-          return dateFormat(new Date(arg1), "yyyy-mm-dd HH:MM");
-        }
-        if (arg1.trim().startsWith("PT")) {
-          return formatIsoDuration(arg1);
-        }
-        try {
-          return dateFormat(new Date(), arg1);
-        } catch (error) {
+    handlebars.registerHelper(
+      "magicTime",
+      function (arg1: unknown, arg2: unknown) {
+        if (typeof arg1 === "undefined") {
           return "";
         }
-      } else if (arguments.length === 3) {
-        if (!isNaN(Date.parse(arg1))) {
-          return dateFormat(new Date(arg1), arg2);
+        if (arguments.length === 1) {
+          return dateFormat(new Date(), "yyyy-mm-dd HH:MM");
         }
-        return "Error in template or source";
-      } else {
-        return "Error in template";
-      }
-    });
+        const value = typeof arg1 === "string" ? arg1 : String(arg1);
+        if (arguments.length === 2) {
+          if (!isNaN(Date.parse(value))) {
+            return dateFormat(new Date(value), "yyyy-mm-dd HH:MM");
+          }
+          if (value.trim().startsWith("PT")) {
+            return formatIsoDuration(value);
+          }
+          try {
+            return dateFormat(new Date(), value);
+          } catch {
+            return "";
+          }
+        } else if (arguments.length === 3) {
+          const mask = typeof arg2 === "string" ? arg2 : String(arg2);
+          if (!isNaN(Date.parse(value))) {
+            return dateFormat(new Date(value), mask);
+          }
+          return "Error in template or source";
+        } else {
+          return "Error in template";
+        }
+      },
+    );
   }
 
   /**
@@ -2064,31 +2140,31 @@ export default class RecipeVault extends Plugin {
       .trim();
   }
 
-  private normalizeImages(recipe: Recipe): Recipe {
-    if (typeof recipe.image === "string") {
-      return recipe;
+  private normalizeImages(recipe: ParsedRecipe): void {
+    const image = recipe.image;
+    if (typeof image === "string") {
+      return;
     }
 
-    if (Array.isArray(recipe.image)) {
-      const image = recipe.image?.[0];
-      if (typeof image === "string") {
-        recipe.image = image;
-        return recipe;
+    if (Array.isArray(image)) {
+      const first: unknown = image[0];
+      if (typeof first === "string") {
+        recipe.image = first;
+        return;
       }
-      if (image?.url) {
-        recipe.image = image.url;
-        return recipe;
+      if (isJsonRecord(first) && typeof first.url === "string") {
+        recipe.image = first.url;
+        return;
       }
     }
 
     /**
-     * Although the spec does not show ImageObject as a top level option, it is used in some big sites.
+     * Although the spec does not show ImageObject as a top level option, it is
+     * used in some big sites.
      */
-    if ((recipe as any).image?.url) {
-      recipe.image = (recipe as any)?.image?.url || "";
+    if (isJsonRecord(image) && typeof image.url === "string") {
+      recipe.image = image.url;
     }
-
-    return recipe;
   }
 
   /**
@@ -2151,8 +2227,8 @@ export default class RecipeVault extends Plugin {
    * This function fetches the image (as an array buffer) and saves as a file, returns the path of the file.
    */
   private async fetchImage(
-    filename: Recipe["name"],
-    imgUrl: Recipe["image"],
+    filename: string,
+    imgUrl: unknown,
     file: TFile,
     imgNum?: number,
   ): Promise<false | TFile> {
@@ -2160,9 +2236,7 @@ export default class RecipeVault extends Plugin {
       return false;
     }
     const subDir = filename;
-    if (imgNum && !isNaN(imgNum)) {
-      filename += "_" + imgNum.toString();
-    }
+    const name = imgNum && !isNaN(imgNum) ? `${filename}_${imgNum}` : filename;
 
     try {
       const res = await requestUrl({
@@ -2175,15 +2249,15 @@ export default class RecipeVault extends Plugin {
       }
       let path = "";
       if (this.settings.imgFolder === "") {
-        path = await (this.app.vault as any)?.getAvailablePathForAttachments(
-          filename,
-          type.ext,
-          file,
-        ); // fetches the exact save path to create the file according to obsidian default attachment settings
+        // Resolve the save path from Obsidian's default attachment settings.
+        // The helper is not part of the public Vault typings.
+        path = await (
+          this.app.vault as VaultWithAttachments
+        ).getAvailablePathForAttachments(name, type.ext, file);
       } else if (this.settings.saveImgSubdir) {
-        path = `${normalizePath(this.settings.imgFolder)}/${subDir}/${filename}.${type.ext}`;
+        path = `${normalizePath(this.settings.imgFolder)}/${subDir}/${name}.${type.ext}`;
       } else {
-        path = `${normalizePath(this.settings.imgFolder)}/${filename}.${type.ext}`;
+        path = `${normalizePath(this.settings.imgFolder)}/${name}.${type.ext}`;
       }
 
       const fileByPath = this.app.vault.getAbstractFileByPath(path);
@@ -2192,7 +2266,7 @@ export default class RecipeVault extends Plugin {
       }
 
       return await this.app.vault.createBinary(path, res.arrayBuffer);
-    } catch (err) {
+    } catch {
       return false;
     }
   }

@@ -82,7 +82,7 @@ function parseSuggestionPayload(content: string): RecipeEditSuggestion {
 
   try {
     parsed = JSON.parse(jsonText) as ParsedRecipeEditPayload;
-  } catch (_error) {
+  } catch {
     throw new Error("AI response was not valid JSON.");
   }
 

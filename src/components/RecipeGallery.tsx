@@ -243,7 +243,7 @@ export function RecipeGallery({
             type="search"
             placeholder={`Search ${recipes.length} recipes…`}
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
           <button
             type="button"

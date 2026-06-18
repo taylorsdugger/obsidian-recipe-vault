@@ -33,6 +33,17 @@ const context = await esbuild.context({
 	format: "cjs",
 	target: "es2018",
 	jsx: "automatic",
+	jsxImportSource: "preact",
+	// Render with Preact's React-compatible layer instead of react-dom. The
+	// plugin only uses hooks, memo and createRoot, all of which preact/compat
+	// supports, and this keeps react-dom's resource-hoisting code (which injects
+	// <script>/<link> elements) out of the bundle.
+	alias: {
+		react: "preact/compat",
+		"react-dom": "preact/compat",
+		"react-dom/client": "preact/compat/client",
+		"react/jsx-runtime": "preact/jsx-runtime",
+	},
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,

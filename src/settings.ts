@@ -144,10 +144,12 @@ export class SettingsTab extends PluginSettingTab {
       })
       .addButton((btn) =>
         btn.setButtonText("Browse").onClick(() => {
-          new FolderSuggestModal(this.app, async (path) => {
-            this.plugin.settings.folder = path;
-            await this.plugin.saveSettings();
-            this.display();
+          new FolderSuggestModal(this.app, (path) => {
+            void (async () => {
+              this.plugin.settings.folder = path;
+              await this.plugin.saveSettings();
+              this.display();
+            })();
           }).open();
         }),
       );
@@ -166,7 +168,7 @@ export class SettingsTab extends PluginSettingTab {
           });
       });
 
-    const saveImgDescription = document.createDocumentFragment();
+    const saveImgDescription = activeDocument.createDocumentFragment();
     saveImgDescription.append(
       "Save images imported by recipes. If empty, will follow: Files and links > new attachment location. See ",
       saveImgDescription.createEl("a", {
@@ -190,10 +192,12 @@ export class SettingsTab extends PluginSettingTab {
       })
       .addButton((btn) =>
         btn.setButtonText("Browse").onClick(() => {
-          new FolderSuggestModal(this.app, async (path) => {
-            this.plugin.settings.imgFolder = path;
-            await this.plugin.saveSettings();
-            this.display();
+          new FolderSuggestModal(this.app, (path) => {
+            void (async () => {
+              this.plugin.settings.imgFolder = path;
+              await this.plugin.saveSettings();
+              this.display();
+            })();
           }).open();
         }),
       )
@@ -206,7 +210,7 @@ export class SettingsTab extends PluginSettingTab {
           });
       });
 
-    const saveImgSubdirDescription = document.createDocumentFragment();
+    const saveImgSubdirDescription = activeDocument.createDocumentFragment();
     saveImgSubdirDescription.append(
       "Create a subdirectory for each recipe to store images. A parent directory needs to be set above.",
     );
@@ -223,7 +227,7 @@ export class SettingsTab extends PluginSettingTab {
           });
       });
 
-    const templateDescription = document.createDocumentFragment();
+    const templateDescription = activeDocument.createDocumentFragment();
     templateDescription.append(
       "Here you can edit the Template for newly created files. See ",
       templateDescription.createEl("a", {
@@ -302,10 +306,12 @@ export class SettingsTab extends PluginSettingTab {
       })
       .addButton((btn) =>
         btn.setButtonText("Browse").onClick(() => {
-          new FileSuggestModal(this.app, async (path) => {
-            this.plugin.settings.shoppingListFile = path;
-            await this.plugin.saveSettings();
-            this.display();
+          new FileSuggestModal(this.app, (path) => {
+            void (async () => {
+              this.plugin.settings.shoppingListFile = path;
+              await this.plugin.saveSettings();
+              this.display();
+            })();
           }).open();
         }),
       );
@@ -326,10 +332,12 @@ export class SettingsTab extends PluginSettingTab {
       })
       .addButton((btn) =>
         btn.setButtonText("Browse").onClick(() => {
-          new FolderSuggestModal(this.app, async (path) => {
-            this.plugin.settings.recipeGalleryFolder = path;
-            await this.plugin.saveSettings();
-            this.display();
+          new FolderSuggestModal(this.app, (path) => {
+            void (async () => {
+              this.plugin.settings.recipeGalleryFolder = path;
+              await this.plugin.saveSettings();
+              this.display();
+            })();
           }).open();
         }),
       );

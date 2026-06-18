@@ -36,8 +36,7 @@ export function loadRecipes(
       const meal_type = parseMealType(fm.meal_type);
       const cook_time = String((fm.cook_time as string) ?? "");
       const cook_time_mins = parseCookTimeMins(cook_time);
-      const times_made =
-        typeof fm.times_made === "number" ? (fm.times_made as number) : 0;
+      const times_made = typeof fm.times_made === "number" ? fm.times_made : 0;
       const ingredients = parseMealType(fm.recipeIngredient);
 
       return {

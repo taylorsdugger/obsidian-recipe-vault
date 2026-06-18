@@ -15,9 +15,17 @@ export default defineConfig({
       obsidian: fileURLToPath(
         new URL("./test/helpers/obsidian-stub.ts", import.meta.url),
       ),
+      // Match the production build: render through preact/compat, not react-dom.
+      // `src/main` transitively imports the React views, so the test runtime
+      // must resolve the same way the bundle does.
+      "react-dom/client": "preact/compat/client",
+      "react/jsx-runtime": "preact/jsx-runtime",
+      "react-dom": "preact/compat",
+      react: "preact/compat",
     },
   },
   esbuild: {
     jsx: "automatic",
+    jsxImportSource: "preact",
   },
 });

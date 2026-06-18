@@ -72,18 +72,20 @@ export class CompareRecipesModal extends Modal {
         text: "Open →",
         cls: "compare-modal-open-btn",
       });
-      openBtn.addEventListener("click", async () => {
-        const file = this.app.vault.getAbstractFileByPath(recipe.path);
-        if (file instanceof TFile) {
-          await this.plugin.ensureRecipeNoteCssClass(file);
-          const leaf = this.app.workspace.getLeaf();
-          await leaf.setViewState({
-            type: "markdown",
-            state: { file: file.path, mode: "preview" },
-            active: true,
-          });
-        }
-        this.close();
+      openBtn.addEventListener("click", () => {
+        void (async () => {
+          const file = this.app.vault.getAbstractFileByPath(recipe.path);
+          if (file instanceof TFile) {
+            await this.plugin.ensureRecipeNoteCssClass(file);
+            const leaf = this.app.workspace.getLeaf();
+            await leaf.setViewState({
+              type: "markdown",
+              state: { file: file.path, mode: "preview" },
+              active: true,
+            });
+          }
+          this.close();
+        })();
       });
 
       if (recipe.ingredients.length > 0) {

@@ -17,13 +17,13 @@ export function RecipeCard({
   cardRef,
 }: RecipeCardProps) {
   const [imgFailed, setImgFailed] = React.useState(false);
-  const holdTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdTimerRef = React.useRef<number | null>(null);
   const didHoldRef = React.useRef(false);
 
   const handlePointerDown = () => {
     if (!onSelect) return;
     didHoldRef.current = false;
-    holdTimerRef.current = setTimeout(() => {
+    holdTimerRef.current = window.setTimeout(() => {
       didHoldRef.current = true;
       holdTimerRef.current = null;
       onSelect();
@@ -32,14 +32,14 @@ export function RecipeCard({
 
   const handlePointerUp = () => {
     if (holdTimerRef.current !== null) {
-      clearTimeout(holdTimerRef.current);
+      window.clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
     }
   };
 
   const handlePointerLeave = () => {
     if (holdTimerRef.current !== null) {
-      clearTimeout(holdTimerRef.current);
+      window.clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
     }
   };

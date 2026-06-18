@@ -1,5 +1,5 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
-import { createRoot, Root } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import { RecipeGallery, type SortMode } from "./components/RecipeGallery";
 import { loadRecipes } from "./utils/recipeLoader";
 import { CompareRecipesModal } from "./modal-compare-recipes";
@@ -8,7 +8,7 @@ import type RecipeVault from "./main";
 
 export class RecipeGalleryView extends ItemView {
   private plugin: RecipeVault;
-  private root: Root | null = null;
+  private root: ReturnType<typeof createRoot> | null = null;
   private savedScrollTop = 0;
   private savedSearchQuery = "";
   private savedSortMode: SortMode = "name";
@@ -92,7 +92,7 @@ export class RecipeGalleryView extends ItemView {
     this.render();
   }
 
-  getState(): unknown {
+  getState(): Record<string, unknown> {
     return {
       scrollTop: this.savedScrollTop,
       searchQuery: this.savedSearchQuery,
@@ -129,34 +129,38 @@ export class RecipeGalleryView extends ItemView {
         onSortModeChange={(sortMode) => {
           this.savedSortMode = sortMode;
         }}
-        onOpen={async (path: string) => {
-          const abstractFile = this.app.vault.getAbstractFileByPath(path);
-          if (abstractFile instanceof TFile) {
-            await this.plugin.ensureRecipeNoteCssClass(abstractFile);
-            // Open in this leaf and force Reading mode when entering from gallery.
-            await this.leaf.setViewState({
-              type: "markdown",
-              state: { file: abstractFile.path, mode: "preview" },
-              active: true,
-            });
-          }
+        onOpen={(path: string) => {
+          void (async () => {
+            const abstractFile = this.app.vault.getAbstractFileByPath(path);
+            if (abstractFile instanceof TFile) {
+              await this.plugin.ensureRecipeNoteCssClass(abstractFile);
+              // Open in this leaf and force Reading mode when entering from gallery.
+              await this.leaf.setViewState({
+                type: "markdown",
+                state: { file: abstractFile.path, mode: "preview" },
+                active: true,
+              });
+            }
+          })();
         }}
         onCompare={(selected) => {
           new CompareRecipesModal(this.app, this.plugin, selected).open();
         }}
-        onOpenInSplit={async (paths) => {
-          for (const path of paths) {
-            const file = this.app.vault.getAbstractFileByPath(path);
-            if (file instanceof TFile) {
-              await this.plugin.ensureRecipeNoteCssClass(file);
-              const leaf = this.app.workspace.getLeaf("split");
-              await leaf.setViewState({
-                type: "markdown",
-                state: { file: file.path, mode: "preview" },
-                active: true,
-              });
+        onOpenInSplit={(paths) => {
+          void (async () => {
+            for (const path of paths) {
+              const file = this.app.vault.getAbstractFileByPath(path);
+              if (file instanceof TFile) {
+                await this.plugin.ensureRecipeNoteCssClass(file);
+                const leaf = this.app.workspace.getLeaf("split");
+                await leaf.setViewState({
+                  type: "markdown",
+                  state: { file: file.path, mode: "preview" },
+                  active: true,
+                });
+              }
             }
-          }
+          })();
         }}
       />,
     );
