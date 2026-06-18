@@ -19,6 +19,7 @@ export interface PluginSettings {
   templateVersion: number;
   decodeEntities: boolean;
   ocrStrictCleanup: boolean;
+  proxyFallback: boolean;
   debug: boolean;
   shoppingListFile: string;
   recipeGalleryFolder: string;
@@ -44,7 +45,7 @@ const AI_MODEL_PRESETS: Array<{ id: string; label: string }> = [
 const AI_MODEL_OTHER = "__other__";
 
 export const DEFAULT_SETTINGS: PluginSettings = {
-  folder: "",
+  folder: "Recipes",
   saveInActiveFile: false,
   imgFolder: "",
   saveImg: false,
@@ -53,6 +54,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   templateVersion: c.TEMPLATE_VERSION,
   decodeEntities: true,
   ocrStrictCleanup: true,
+  proxyFallback: false,
   debug: false,
   shoppingListFile: "Shopping List.md",
   recipeGalleryFolder: "Recipes/All Recipes",
@@ -281,6 +283,20 @@ export class SettingsTab extends PluginSettingTab {
           .setValue(this.plugin.settings.ocrStrictCleanup)
           .onChange(async (value) => {
             this.plugin.settings.ocrStrictCleanup = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Proxy fallback for blocked imports")
+      .setDesc(
+        "If a recipe page blocks the import (e.g. a 403 from bot protection, most common on mobile), retry once through a public read proxy (allorigins.win). This sends the recipe URL to a third-party service. Off by default.",
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.proxyFallback)
+          .onChange(async (value) => {
+            this.plugin.settings.proxyFallback = value;
             await this.plugin.saveSettings();
           });
       });

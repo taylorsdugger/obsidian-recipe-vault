@@ -9,6 +9,8 @@
   },
   "scripts": {
     "dev": "node esbuild.config.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build": "npm run tailwind:build && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "tailwind:build": "tailwindcss -i ./src/tailwind.input.css -o ./styles.css",
     "tailwind:watch": "tailwindcss -i ./src/tailwind.input.css -o ./styles.css --watch",
@@ -45,7 +47,8 @@
     "tailwindcss": "^4.2.1",
     "tslib": "2.6.2",
     "typescript": "^5.3.3",
-    "typescript-eslint": "^7.7.1"
+    "typescript-eslint": "^7.7.1",
+    "vitest": "^3.2.6"
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",

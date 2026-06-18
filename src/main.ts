@@ -1174,26 +1174,58 @@ export default class RecipeVault extends Plugin {
       throw new Error("Recipe URL must start with http:// or https://.");
     }
 
-    new Notice(`Fetching: ${url.href}`);
-    let response;
+    // A URL fragment (`#wprm-recipe-container-…`) is client-side only and must
+    // never be sent to the server. Desktop's network stack strips it
+    // automatically, but Obsidian's mobile (Capacitor) `requestUrl` forwards
+    // the fragment to the native HTTP client, which hosts reject (403/404) —
+    // breaking "jump to recipe" imports on Android while they work on desktop.
+    // Keep `url` (with the hash) for extractWprmRecipeNotes below; fetch clean.
+    const fetchUrl = new URL(url.href);
+    fetchUrl.hash = "";
 
+    new Notice(`Fetching: ${fetchUrl.href}`);
+
+    const reqHeaders = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+    };
+
+    let response;
     try {
       response = await requestUrl({
-        url: url.href,
+        url: fetchUrl.href,
         method: "GET",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
+        headers: reqHeaders,
       });
     } catch (err) {
-      const detail = err instanceof Error ? ` (${err.message})` : "";
-      throw new Error(
-        `Could not fetch that page. Check the URL and your connection, then try again.${detail}`,
-      );
+      // Some hosts' bot protection (e.g. Cloudflare) blocks the request
+      // outright with a 403 — most often on mobile, where the native HTTP
+      // client's fingerprint differs from a real browser. When enabled, retry
+      // once through a public read proxy that fetches the page server-side.
+      if (!this.settings.proxyFallback) {
+        const detail = err instanceof Error ? ` (${err.message})` : "";
+        throw new Error(
+          `Could not fetch that page. Check the URL and your connection, then try again.${detail}`,
+        );
+      }
+
+      try {
+        new Notice("Direct fetch failed — retrying via proxy…");
+        response = await requestUrl({
+          url: `https://api.allorigins.win/raw?url=${encodeURIComponent(fetchUrl.href)}`,
+          method: "GET",
+          headers: reqHeaders,
+        });
+      } catch (proxyErr) {
+        const detail =
+          proxyErr instanceof Error ? ` (${proxyErr.message})` : "";
+        throw new Error(
+          `Could not fetch that page, even via the proxy fallback. Check the URL and your connection, then try again.${detail}`,
+        );
+      }
     }
 
     const $ = cheerio.load(response.text, {});
@@ -1253,6 +1285,61 @@ export default class RecipeVault extends Plugin {
     };
 
     /**
+     * Reduce an ingredient value (string | object | `@id` ref) to a clean
+     * line, resolving references and stripping any inline HTML.
+     */
+    const ingredientText = (value: any): string => {
+      const resolved = resolveRef(value);
+      if (typeof resolved === "string") return this.stripHtml(resolved);
+      if (resolved && typeof resolved === "object") {
+        const text = resolved.name ?? resolved.text;
+        return typeof text === "string" ? this.stripHtml(text) : "";
+      }
+      return "";
+    };
+
+    /**
+     * Normalize one instruction entry into the shape the template expects: a
+     * HowToSection `{ name, itemListElement: [{ text, image? }] }` or a plain
+     * step `{ text, image? }`. Coerces bare strings, resolves `@id` refs, and
+     * strips inline HTML from every text value. `image` is preserved verbatim
+     * so the downstream instruction-image download loop is unaffected.
+     */
+    const normalizeInstructionStep = (step: any): any => {
+      const resolved = resolveRef(step);
+      if (typeof resolved === "string") {
+        return { text: this.stripHtml(resolved) };
+      }
+      if (!resolved || typeof resolved !== "object") {
+        return { text: "" };
+      }
+
+      const type = resolved["@type"];
+      const isSection = Array.isArray(type)
+        ? type.includes("HowToSection")
+        : type === "HowToSection";
+
+      if (isSection || Array.isArray(resolved.itemListElement)) {
+        const itemListElement = (resolved.itemListElement ?? [])
+          .map((el: any) => {
+            const r = resolveRef(el);
+            if (typeof r === "string") return { text: this.stripHtml(r) };
+            if (r && typeof r === "object") {
+              return { text: this.stripHtml(r.text ?? r.name), image: r.image };
+            }
+            return { text: "" };
+          })
+          .filter((s: any) => s.text);
+        return { name: this.stripHtml(resolved.name), itemListElement };
+      }
+
+      return {
+        text: this.stripHtml(resolved.text ?? resolved.name),
+        image: resolved.image,
+      };
+    };
+
+    /**
      * Some details are in varying formats, for templating to be easier,
      * lets attempt to normalize them
      */
@@ -1264,8 +1351,30 @@ export default class RecipeVault extends Plugin {
         json.name = this.cleanRecipeName(json.name as string);
       }
 
-      if (typeof json.recipeIngredient === "string") {
-        json.recipeIngredient = [json.recipeIngredient];
+      // Ingredients may be a string, an array of strings, or objects — flatten
+      // to a clean string[] so the template renders consistently.
+      const rawIngredient = (json as any).recipeIngredient;
+      if (rawIngredient != null) {
+        const list = Array.isArray(rawIngredient)
+          ? rawIngredient
+          : [rawIngredient];
+        (json as any).recipeIngredient = list
+          .map(ingredientText)
+          .filter(Boolean);
+      }
+
+      // Instructions may be a single string, a single object, or an array of
+      // strings / HowToStep / HowToSection. Coerce to an array of the shapes
+      // the template understands; without this a string or single object makes
+      // `{{#each recipeInstructions}}` iterate characters / object keys.
+      const rawInstructions = (json as any).recipeInstructions;
+      if (rawInstructions != null) {
+        const list = Array.isArray(rawInstructions)
+          ? rawInstructions
+          : [rawInstructions];
+        (json as any).recipeInstructions = list
+          .map(normalizeInstructionStep)
+          .filter((s: any) => (s.itemListElement?.length ?? 0) > 0 || s.text);
       }
 
       (json as any).recipeNotes = this.normalizeRecipeNotes(
@@ -1289,26 +1398,37 @@ export default class RecipeVault extends Plugin {
     };
 
     /**
-     * Unfortunately, some schemas are arrays, some not. Some in @graph, some not.
-     * Here we attempt to move all kinds into a single array of RecipeLeafs
+     * Schemas come in every arrangement: bare arrays, `@graph` wrappers, or a
+     * Recipe nested under `mainEntity` / `mainEntityOfPage` / some custom key.
+     * Walk the whole tree and normalize each real Recipe node. Dedupe by
+     * reference, and skip bare `@id` pointers (a Recipe ref with no content) so
+     * nested recipes are found without double-counting.
      */
-    function handleSchemas(schemas: any[]): void {
-      schemas.forEach((schema) => {
-        if ("@graph" in schema && Array.isArray(schema?.["@graph"])) {
-          return handleSchemas(schema["@graph"]);
-        } else {
-          const _type = schema?.["@type"];
-
-          if (
-            Array.isArray(_type)
-              ? _type.includes("Recipe")
-              : schema?.["@type"] === "Recipe"
-          ) {
-            normalizeSchema(schema);
-          }
+    const seenRecipes = new Set<any>();
+    const isRecipeNode = (value: any): boolean => {
+      const type = value?.["@type"];
+      return Array.isArray(type) ? type.includes("Recipe") : type === "Recipe";
+    };
+    const collectRecipes = (value: any): void => {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value)) {
+        value.forEach(collectRecipes);
+        return;
+      }
+      const isRealRecipe =
+        isRecipeNode(value) &&
+        (value.name != null ||
+          value.recipeIngredient != null ||
+          value.recipeInstructions != null);
+      if (isRealRecipe) {
+        if (!seenRecipes.has(value)) {
+          seenRecipes.add(value);
+          normalizeSchema(value);
         }
-      });
-    }
+        return;
+      }
+      for (const key of Object.keys(value)) collectRecipes(value[key]);
+    };
 
     // parse the dom of the page and look for any schema.org/Recipe
     const parsedBlocks: any[][] = [];
@@ -1332,7 +1452,7 @@ export default class RecipeVault extends Plugin {
     // pointing at a Person node) resolve regardless of node ordering or which
     // script block they live in. Then walk the blocks for Recipe entries.
     parsedBlocks.forEach((data) => indexNodes(data));
-    parsedBlocks.forEach((data) => handleSchemas(data));
+    parsedBlocks.forEach((data) => collectRecipes(data));
 
     // Fallback for WordPress Recipe Maker pages where notes may not be in JSON-LD.
     const fallbackNotes = this.extractWprmRecipeNotes($, url.hash);
@@ -2040,6 +2160,19 @@ export default class RecipeVault extends Plugin {
    * In order to make templating easier. Lets normalize the types of recipe images
    * to a single string url
    */
+  /**
+   * Strip inline HTML tags from a schema text value and collapse whitespace.
+   * Each tag becomes a space so adjacent words aren't joined. Entity decoding
+   * is intentionally left to the final, settings-gated decodeHtmlEntities pass.
+   */
+  private stripHtml(value: unknown): string {
+    if (typeof value !== "string") return "";
+    return value
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   private normalizeImages(recipe: Recipe): Recipe {
     if (typeof recipe.image === "string") {
       return recipe;
@@ -2182,34 +2315,46 @@ export default class RecipeVault extends Plugin {
   ): Omit<ShoppingItem, "checked" | "original"> | null {
     if (!text.trim()) return null;
 
-    // Replace unicode fractions with decimals
-    const ucFracs: [RegExp, number][] = [
-      [/½/g, 0.5],
-      [/¼/g, 0.25],
-      [/¾/g, 0.75],
-      [/⅓/g, 1 / 3],
-      [/⅔/g, 2 / 3],
-      [/⅛/g, 0.125],
-      [/⅜/g, 0.375],
-      [/⅝/g, 0.625],
-      [/⅞/g, 0.875],
+    // Replace unicode fractions with ASCII `n/d` so the numeric regex below
+    // can parse them. A leading space keeps mixed numbers separate
+    // ("1½" → "1 1/2"); decimals (" 0.5") must NOT be used here — the regex
+    // only understands integers and `n/d`, so a decimal silently parses as 0.
+    const ucFracs: [RegExp, string][] = [
+      [/½/g, "1/2"],
+      [/¼/g, "1/4"],
+      [/¾/g, "3/4"],
+      [/⅓/g, "1/3"],
+      [/⅔/g, "2/3"],
+      [/⅛/g, "1/8"],
+      [/⅜/g, "3/8"],
+      [/⅝/g, "5/8"],
+      [/⅞/g, "7/8"],
     ];
     let s = text.trim();
     for (const [re, val] of ucFracs) s = s.replace(re, ` ${val}`);
+    s = s.trim();
 
     // Normalise spaces around slashes in fractions so "1 /4" parses as "1/4"
     s = s.replace(/(\d+)\s+\/\s*(\d+)/g, "$1/$2");
 
-    // Match optional whole number + optional fraction (e.g. "1 1/2" or "1/2" or "2")
-    const numRe = /^(\d+)?\s*(\d+\/\d+)?\s*/;
+    // Match a leading quantity as one token: a mixed number ("1 1/2"), a bare
+    // fraction ("1/2"), or a whole number ("2"). Ordered alternation matters —
+    // listing the fraction forms before the bare integer stops a fraction's
+    // numerator (the "1" in "1/2") from being consumed as a standalone whole.
+    const numRe = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+)\s*/;
     const numMatch = s.match(numRe);
     let amount = 0;
     let rest = s;
-    if (numMatch && (numMatch[1] || numMatch[2])) {
-      if (numMatch[1]) amount += parseFloat(numMatch[1]);
-      if (numMatch[2]) {
-        const [n, d] = numMatch[2].split("/").map(Number);
-        amount += n / d;
+    if (numMatch) {
+      const token = numMatch[1];
+      const mixed = token.match(/^(\d+)\s+(\d+)\/(\d+)$/);
+      const frac = token.match(/^(\d+)\/(\d+)$/);
+      if (mixed) {
+        amount = Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
+      } else if (frac) {
+        amount = Number(frac[1]) / Number(frac[2]);
+      } else {
+        amount = parseFloat(token);
       }
       rest = s.slice(numMatch[0].length).trim();
     }
