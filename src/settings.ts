@@ -18,7 +18,6 @@ export interface PluginSettings {
   recipeTemplate: string;
   templateVersion: number;
   decodeEntities: boolean;
-  ocrStrictCleanup: boolean;
   proxyFallback: boolean;
   debug: boolean;
   shoppingListFile: string;
@@ -53,7 +52,6 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   recipeTemplate: c.DEFAULT_TEMPLATE,
   templateVersion: c.TEMPLATE_VERSION,
   decodeEntities: true,
-  ocrStrictCleanup: true,
   proxyFallback: false,
   debug: false,
   shoppingListFile: "Shopping List.md",
@@ -260,7 +258,7 @@ export class SettingsTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Decode Entities")
+      .setName("Decode entities")
       .setDesc(
         "We decode entities in the recipe to make it more readable in edit mode. If you don't want this, just turn it off here!",
       )
@@ -269,20 +267,6 @@ export class SettingsTab extends PluginSettingTab {
           .setValue(this.plugin.settings.decodeEntities)
           .onChange(async (value) => {
             this.plugin.settings.decodeEntities = value;
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(containerEl)
-      .setName("OCR strict cleanup")
-      .setDesc(
-        "For image-scanned recipes, aggressively filters likely OCR garbage from title, ingredients, and instructions. Turn off if valid lines are being dropped.",
-      )
-      .addToggle((toggle) => {
-        toggle
-          .setValue(this.plugin.settings.ocrStrictCleanup)
-          .onChange(async (value) => {
-            this.plugin.settings.ocrStrictCleanup = value;
             await this.plugin.saveSettings();
           });
       });

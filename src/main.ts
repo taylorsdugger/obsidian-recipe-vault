@@ -17,7 +17,6 @@ import * as c from "./constants";
 import * as settings from "./settings";
 import { LoadRecipeModal } from "./modal-load-recipe";
 import { NewRecipeModal } from "./modal-new-recipe";
-import type { ImageRecipeResult } from "./modal-image-recipe";
 import {
   RefineRecipeModal,
   RecipeRefineModalData,
@@ -214,43 +213,43 @@ export default class RecipeVault extends Plugin {
       return;
     }
 
-    const actions = document.createElement("div");
-    actions.className = "recipe-note-actions";
+    const actions = createDiv({ cls: "recipe-note-actions" });
 
-    const markMadeButton = document.createElement("button");
-    markMadeButton.type = "button";
-    markMadeButton.className = "recipe-note-action-button primary";
-    markMadeButton.textContent = "Mark as made";
+    const markMadeButton = actions.createEl("button", {
+      cls: ["recipe-note-action-button", "primary"],
+      text: "Mark as made",
+      attr: { type: "button" },
+    });
     markMadeButton.addEventListener("click", async () => {
       await this.app.workspace.openLinkText(file.path, "", false);
       this.executeCommand(`${this.manifest.id}:${c.CMD_MARK_MADE}`);
     });
 
-    const shoppingListButton = document.createElement("button");
-    shoppingListButton.type = "button";
-    shoppingListButton.className = "recipe-note-action-button";
-    shoppingListButton.textContent = "Add ingredients to shopping list";
+    const shoppingListButton = actions.createEl("button", {
+      cls: "recipe-note-action-button",
+      text: "Add ingredients to shopping list",
+      attr: { type: "button" },
+    });
     shoppingListButton.addEventListener("click", async () => {
       await this.app.workspace.openLinkText(file.path, "", false);
       this.executeCommand(`${this.manifest.id}:${c.CMD_ADD_TO_SHOPPING_LIST}`);
     });
 
-    actions.appendChild(markMadeButton);
-    actions.appendChild(shoppingListButton);
+    const aiControls = actions.createDiv({ cls: "recipe-note-ai-controls" });
 
-    const aiControls = document.createElement("div");
-    aiControls.className = "recipe-note-ai-controls";
+    const aiPromptInput = aiControls.createEl("input", {
+      cls: "recipe-note-ai-input",
+      attr: {
+        type: "text",
+        placeholder: "Ask AI: swap ingredients, tweak steps, simplify prep...",
+      },
+    });
 
-    const aiPromptInput = document.createElement("input");
-    aiPromptInput.type = "text";
-    aiPromptInput.className = "recipe-note-ai-input";
-    aiPromptInput.placeholder =
-      "Ask AI: swap ingredients, tweak steps, simplify prep...";
-
-    const aiPromptButton = document.createElement("button");
-    aiPromptButton.type = "button";
-    aiPromptButton.className = "recipe-note-action-button";
-    aiPromptButton.textContent = "Ask AI";
+    const aiPromptButton = aiControls.createEl("button", {
+      cls: "recipe-note-action-button",
+      text: "Ask AI",
+      attr: { type: "button" },
+    });
 
     let aiRequestInFlight = false;
     const runAiRefine = async () => {
@@ -287,10 +286,6 @@ export default class RecipeVault extends Plugin {
         void runAiRefine();
       }
     });
-
-    aiControls.appendChild(aiPromptInput);
-    aiControls.appendChild(aiPromptButton);
-    actions.appendChild(aiControls);
 
     const targetHeading = Array.from(
       container.querySelectorAll<HTMLElement>("h2, h3, h4"),
@@ -605,19 +600,19 @@ export default class RecipeVault extends Plugin {
     this.registerHandlebarsHelpers();
 
     // Ribbon icon to open/reveal the gallery
-    this.addRibbonIcon("utensils", "Open Recipe Gallery", () => {
+    this.addRibbonIcon("utensils", "Open recipe gallery", () => {
       this.activateRecipeGalleryView();
     });
 
     // Command: open/reveal gallery
     this.addCommand({
       id: c.CMD_OPEN_RECIPE_GALLERY,
-      name: "Open Recipe Gallery",
+      name: "Open recipe gallery",
       callback: () => this.activateRecipeGalleryView(),
     });
 
     // This creates an icon in the left ribbon.
-    this.addRibbonIcon("chef-hat", "Import Recipe", (evt: MouseEvent) => {
+    this.addRibbonIcon("chef-hat", "Import recipe", (evt: MouseEvent) => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
       const selection = view?.editor.getSelection()?.trim();
       // try and make sure its a url
@@ -631,7 +626,7 @@ export default class RecipeVault extends Plugin {
     // This adds a simple command that can be triggered anywhere
     this.addCommand({
       id: c.CMD_OPEN_MODAL,
-      name: "Import Recipe",
+      name: "Import recipe",
       callback: () => {
         new LoadRecipeModal(this.app, this.addRecipeToMarkdown).open();
       },
@@ -640,7 +635,7 @@ export default class RecipeVault extends Plugin {
     // Command to increment times_made on the active recipe file
     this.addCommand({
       id: c.CMD_MARK_MADE,
-      name: "Mark Recipe as Made",
+      name: "Mark recipe as made",
       callback: async () => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view?.file) {
@@ -1078,25 +1073,6 @@ export default class RecipeVault extends Plugin {
       name: "Add recipe (manual)",
       callback: () => {
         new NewRecipeModal(this.app, this.createRecipeStub).open();
-      },
-    });
-
-    // Command to create a recipe by scanning an image with OCR
-    // Uses a dynamic import so that tesseract.js (and its WASM/Worker
-    // bootstrap) is never evaluated at plugin startup — it only loads when
-    // the user actually invokes this command. This is what allows the plugin
-    // to load on Android where tesseract.js's startup code would otherwise
-    // crash the entire bundle before onload() could run.
-    this.addCommand({
-      id: c.CMD_RECIPE_FROM_IMAGE,
-      name: "Add recipe from image",
-      callback: async () => {
-        const { ImageRecipeModal } = await import("./modal-image-recipe");
-        new ImageRecipeModal(
-          this.app,
-          this.createRecipeFromImage,
-          this.settings.ocrStrictCleanup,
-        ).open();
       },
     });
   }
@@ -1666,91 +1642,6 @@ export default class RecipeVault extends Plugin {
       fm.source = "manual";
     });
     new Notice(`Recipe "${name}" created.`);
-    await this.app.workspace.openLinkText(file.path, "", true);
-  };
-
-  /**
-   * Creates a recipe note from an image-scanned result and opens it for editing.
-   */
-  private createRecipeFromImage = async (
-    result: ImageRecipeResult,
-  ): Promise<void> => {
-    const { recipe, imageOption, originalImageFile, differentImageFile } =
-      result;
-    const rawName = (recipe.name || "").trim();
-    const cleanedName = this.cleanRecipeName(rawName).trim();
-    const name = cleanedName || rawName || "Scanned Recipe";
-    if (!name) return;
-
-    const folder =
-      this.settings.folder !== ""
-        ? this.settings.folder
-        : c.MANUAL_RECIPE_DEFAULT_FOLDER;
-    await this.folderCheck(folder);
-
-    const safeName = name.replace(/"|\*|\\|\/|<|>|:|\?/g, "");
-    let filePath = `${normalizePath(folder)}/${safeName}.md`;
-    let counter = 2;
-    while (this.app.vault.getAbstractFileByPath(filePath)) {
-      filePath = `${normalizePath(folder)}/${safeName} (${counter}).md`;
-      counter++;
-    }
-
-    // Save the chosen image file into the vault attachment folder
-    let imagePath = "";
-    const imgFile =
-      imageOption === "use"
-        ? originalImageFile
-        : imageOption === "different"
-          ? differentImageFile
-          : undefined;
-    if (imgFile) {
-      const imgExt = imgFile.name.split(".").pop() ?? "jpg";
-      const imgFolder =
-        this.settings.imgFolder !== "" ? this.settings.imgFolder : folder;
-      await this.folderCheck(imgFolder);
-
-      const imgSafeName = safeName.replace(/\s+/g, "-");
-      imagePath = `${normalizePath(imgFolder)}/${imgSafeName}.${imgExt}`;
-      const buf = await imgFile.arrayBuffer();
-      if (!this.app.vault.getAbstractFileByPath(imagePath)) {
-        await this.app.vault.createBinary(imagePath, buf);
-      }
-    }
-
-    // Build template data matching the shape used by addRecipeToMarkdown
-    const templateData = {
-      name,
-      author: recipe.author,
-      totalTime: recipe.totalTime,
-      image: imagePath || undefined,
-      recipeIngredient: recipe.recipeIngredient,
-      recipeInstructions: recipe.recipeInstructions.map((step) => ({
-        text: step,
-      })),
-    };
-
-    const markdown = handlebars.compile(this.settings.recipeTemplate);
-    let md = markdown(templateData);
-
-    if (this.settings.decodeEntities) {
-      md = this.decodeHtmlEntities(md);
-    }
-
-    md = this.ensureRequiredRecipeFrontmatter(md, {
-      cookTime: recipe.totalTime,
-      image: imagePath || undefined,
-    });
-    md = this.ensureRecipeNotesSection(
-      md,
-      this.normalizeRecipeNotes((recipe as any).recipeNotes),
-    );
-
-    const file = await this.app.vault.create(filePath, md);
-    await this.app.fileManager.processFrontMatter(file, (fm) => {
-      fm.source = "image";
-    });
-    new Notice(`Recipe "${name}" created from image.`);
     await this.app.workspace.openLinkText(file.path, "", true);
   };
 

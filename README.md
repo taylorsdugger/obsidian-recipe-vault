@@ -1,6 +1,6 @@
 # Recipe Vault
 
-**Recipe Vault** is a full recipe management system for Obsidian — import from web, image, or scratch, browse your vault visually, and build shopping lists automatically
+**Recipe Vault** is a full recipe management system for Obsidian — import from the web or from scratch, browse your vault visually, and build shopping lists automatically
 
 Paste a URL, get a clean recipe note. Browse your collection in a visual gallery. Build a shopping list straight from your ingredients. No subscriptions, no accounts, no ads — just your recipes in your vault.
 
@@ -9,15 +9,12 @@ Paste a URL, get a clean recipe note. Browse your collection in a visual gallery
 ## Features
 
 - **Import from URL** — Fetches structured recipe data (JSON-LD) from any recipe page and creates a formatted note instantly.
-- **Import from image** — Scan a photographed recipe card or cookbook page with OCR, then review and save it as a recipe note.
 - **Add recipes manually** — Create a recipe note from scratch using the same template.
 - **Recipe Gallery** — Browse your recipe vault visually with a dedicated gallery view.
 - **Shopping list** — Check off ingredients in a recipe note and send them directly to your shopping list file. Handles unit merging automatically.
 - **Mark as made** — Track when you last made a recipe and how many times.
 - **Ask AI for recipe edits** — Request modifications to a recipe using an AI model via OpenRouter (API key required).
 - **Customizable templates** — Full Handlebars template support so your notes look exactly how you want.
-
-> **Note:** Image-based OCR import is included as an early experimental feature. It works in basic cases but is not yet reliable enough for everyday use.
 
 ---
 
@@ -57,7 +54,6 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Add checked ingredients to shopping list** | Sends checked ingredients from the active recipe to your shopping list file |
 | **Clear checked items from shopping list** | Removes completed items from your shopping list |
 | **Add recipe (manual)** | Creates a new recipe note from a title prompt |
-| **Add recipe from image** | Scans a recipe from a photo using OCR and lets you review it before saving |
 | **Batch import recipes from URL list** | Imports multiple recipes from a list of URLs (one per line) in the active note |
 
 ---
@@ -71,8 +67,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Save images** | Download recipe images into your vault |
 | **Save images in subdirectories** | Create a per-recipe subfolder under the image folder |
 | **Recipe template** | Handlebars template used when creating recipe notes |
-| **Decode Entities** | Decodes HTML entities in imported data |
-| **OCR strict cleanup** | More aggressively filters OCR noise during image-based recipe import |
+| **Decode entities** | Decodes HTML entities in imported data |
 | **Shopping list file** | Path to your shopping list note (created automatically if missing) |
 | **Recipe gallery folder** | The folder the Recipe Gallery browses |
 | **OpenRouter API key** | Required for Ask AI features |

@@ -1,7 +1,7 @@
 {
   "name": "recipe-vault",
   "version": "0.25.5",
-  "description": "Import recipes from web pages and images, browse them in a gallery, and build shopping lists.",
+  "description": "Import recipes from web pages, browse them in a gallery, and build shopping lists.",
   "main": "main.js",
   "repository": {
     "type": "git",
@@ -56,7 +56,6 @@
     "handlebars": "^4.7.8",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "schema-dts": "^1.1.2",
-    "tesseract.js": "^7.0.0"
+    "schema-dts": "^1.1.2"
   }
 }
