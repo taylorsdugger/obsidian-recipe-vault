@@ -12,7 +12,6 @@ export class RecipeGalleryView extends ItemView {
   private savedScrollTop = 0;
   private savedSearchQuery = "";
   private savedSortMode: SortMode = "name";
-  private savedMealTypeFilter: string[] = [];
 
   private isValidSortMode(value: unknown): value is SortMode {
     return (
@@ -78,7 +77,6 @@ export class RecipeGalleryView extends ItemView {
       scrollTop?: unknown;
       searchQuery?: unknown;
       sortMode?: unknown;
-      mealTypeFilter?: unknown;
     } | null;
     const scrollTop = next?.scrollTop;
     this.savedScrollTop =
@@ -91,9 +89,6 @@ export class RecipeGalleryView extends ItemView {
     this.savedSortMode = this.isValidSortMode(next?.sortMode)
       ? next.sortMode
       : "name";
-    this.savedMealTypeFilter = Array.isArray(next?.mealTypeFilter)
-      ? next.mealTypeFilter.filter((t): t is string => typeof t === "string")
-      : [];
     this.render();
   }
 
@@ -102,7 +97,6 @@ export class RecipeGalleryView extends ItemView {
       scrollTop: this.savedScrollTop,
       searchQuery: this.savedSearchQuery,
       sortMode: this.savedSortMode,
-      mealTypeFilter: this.savedMealTypeFilter,
     };
   }
 
@@ -126,7 +120,6 @@ export class RecipeGalleryView extends ItemView {
         initialScrollTop={this.savedScrollTop}
         initialSearchQuery={this.savedSearchQuery}
         initialSortMode={this.savedSortMode}
-        initialMealTypeFilter={this.savedMealTypeFilter}
         onScrollTopChange={(scrollTop) => {
           this.savedScrollTop = scrollTop;
         }}
@@ -135,9 +128,6 @@ export class RecipeGalleryView extends ItemView {
         }}
         onSortModeChange={(sortMode) => {
           this.savedSortMode = sortMode;
-        }}
-        onMealTypeFilterChange={(mealTypeFilter) => {
-          this.savedMealTypeFilter = mealTypeFilter;
         }}
         onOpen={(path: string) => {
           void (async () => {
