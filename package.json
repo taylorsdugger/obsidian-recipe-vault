@@ -1,6 +1,6 @@
 {
   "name": "recipe-vault",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Import recipes from web pages, browse them in a gallery, and build shopping lists.",
   "main": "main.js",
   "repository": {
