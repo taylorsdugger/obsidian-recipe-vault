@@ -12,6 +12,10 @@ on:
                     - patch
                     - minor
                     - major
+            release_notes:
+                description: Release description (optional — leave blank to auto-generate from commits/PRs)
+                required: false
+                type: string
 
 env:
     PLUGIN_NAME: recipe-vault
@@ -90,3 +94,5 @@ jobs:
                   name: ${{ env.VERSION }}
                   tag_name: ${{ env.VERSION }}
                   repository: ${{ github.repository }}
+                  body: ${{ inputs.release_notes }}
+                  generate_release_notes: ${{ inputs.release_notes == '' }}
