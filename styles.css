@@ -361,6 +361,16 @@
   flex-wrap: wrap;
   margin-top: 12px;
 }
+.is-mobile .rg-filter-row {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.is-mobile .rg-filter-row::-webkit-scrollbar {
+  display: none;
+}
 .rg-filter-chip {
   flex: 0 0 auto;
   padding: 6px 12px;
@@ -666,6 +676,10 @@
   align-self: start;
   content-visibility: auto;
   contain-intrinsic-size: auto 270px;
+}
+.recipe-gallery-root.rg-search-active .rg-card {
+  content-visibility: visible;
+  contain-intrinsic-size: auto;
 }
 .rg-card--selected {
   border-color: var(--interactive-accent);

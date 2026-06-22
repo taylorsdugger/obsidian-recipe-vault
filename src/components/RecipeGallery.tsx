@@ -151,6 +151,12 @@ export function RecipeGallery({
   );
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
   const [filterExpanded, setFilterExpanded] = useState(false);
+  // While the search box is focused the on-screen keyboard is up. Android
+  // WebView fails to re-run `content-visibility: auto` relevancy after a
+  // keyboard-induced viewport resize, leaving freshly-filtered cards stuck
+  // blank. Eagerly paint cards during that window (the filtered set is small)
+  // and let the lazy-paint optimization resume on blur. See .rg-search-active.
+  const [searchActive, setSearchActive] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -275,7 +281,9 @@ export function RecipeGallery({
   const showSectionHeader = shouldShowSectionHeader(sortMode);
 
   return (
-    <div className="recipe-gallery-root">
+    <div
+      className={`recipe-gallery-root${searchActive ? " rg-search-active" : ""}`}
+    >
       {/* Toolbar: search + collapsible sort tabs */}
       <div className="recipe-gallery-toolbar">
         <div className="rg-toolbar-top">
@@ -285,6 +293,8 @@ export function RecipeGallery({
             placeholder={`Search ${recipes.length} recipes…`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.currentTarget.value)}
+            onFocus={() => setSearchActive(true)}
+            onBlur={() => setSearchActive(false)}
           />
           {availableMealTypes.length > 0 && (
             <button
@@ -306,6 +316,7 @@ export function RecipeGallery({
           <button
             type="button"
             className={`rg-sort-toggle${toolbarExpanded ? " active" : sortMode !== "name" ? " filtered" : ""}`}
+            style={{ paddingLeft: "8px" }}
             onClick={() => {
               setToolbarExpanded((v) => !v);
               setFilterExpanded(false);

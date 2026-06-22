@@ -473,13 +473,27 @@
 	border-color: var(--color-accent);
 }
 
-/* Meal-type filter: a wrapping row of toggle chips revealed by the Filter
-   button, so every meal type stays visible (no horizontal run-off on desktop). */
+/* Meal-type filter: chips revealed by the Filter button. On desktop they wrap
+   so every meal type stays visible without horizontal run-off. */
 .rg-filter-row {
 	display: flex;
 	gap: 8px;
 	flex-wrap: wrap;
 	margin-top: 12px;
+}
+
+/* On mobile the wrapped chips can fill the whole screen (vaults may have dozens
+   of meal types), so keep them to a single side-scrolling row instead. */
+.is-mobile .rg-filter-row {
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	padding-bottom: 4px;
+	scrollbar-width: none;
+	-webkit-overflow-scrolling: touch;
+}
+
+.is-mobile .rg-filter-row::-webkit-scrollbar {
+	display: none;
 }
 
 .rg-filter-chip {
@@ -823,6 +837,15 @@
 	   card's real measured height once it has been rendered. */
 	content-visibility: auto;
 	contain-intrinsic-size: auto 270px;
+}
+
+/* While the search box is focused (keyboard up on mobile), Android WebView
+   doesn't re-run content-visibility relevancy after the viewport resize, so
+   freshly-filtered cards stay blank. Paint them eagerly during search — the
+   filtered set is small — and lazy paint resumes the moment search blurs. */
+.recipe-gallery-root.rg-search-active .rg-card {
+	content-visibility: visible;
+	contain-intrinsic-size: auto;
 }
 
 .rg-card--selected {
