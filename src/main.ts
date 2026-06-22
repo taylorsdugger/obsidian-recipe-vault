@@ -24,6 +24,11 @@ import {
 } from "./modal-refine-recipe";
 import { RecipeGalleryView } from "./view-recipe-gallery";
 import {
+  getRecipeFiles,
+  resolveImageFile,
+  thumbPathForImage,
+} from "./utils/recipeLoader";
+import {
   requestRecipeEditSuggestion,
   requestRecipeChatResponse,
 } from "./utils/openrouter";
@@ -1143,6 +1148,14 @@ export default class RecipeVault extends Plugin {
         }).open();
       },
     });
+
+    this.addCommand({
+      id: c.CMD_BACKFILL_THUMBNAILS,
+      name: "Generate gallery thumbnails for existing recipes",
+      callback: () => {
+        void this.backfillThumbnails();
+      },
+    });
   }
 
   onunload() {}
@@ -1592,8 +1605,14 @@ export default class RecipeVault extends Plugin {
               await this.folderCheck(this.settings.imgFolder + "/" + filename);
             }
           }
-          // Getting the recipe main image
-          const imgFile = await this.fetchImage(filename, recipe.image, file);
+          // Getting the recipe main image (with a gallery thumbnail alongside)
+          const imgFile = await this.fetchImage(
+            filename,
+            recipe.image,
+            file,
+            undefined,
+            { thumbnail: true },
+          );
           if (imgFile) {
             recipe.image = imgFile.path;
           }
@@ -2225,12 +2244,15 @@ export default class RecipeVault extends Plugin {
 
   /**
    * This function fetches the image (as an array buffer) and saves as a file, returns the path of the file.
+   * When `options.thumbnail` is set, a downscaled gallery thumbnail is also
+   * generated alongside the saved image (see {@link createThumbnail}).
    */
   private async fetchImage(
     filename: string,
     imgUrl: unknown,
     file: TFile,
     imgNum?: number,
+    options: { thumbnail?: boolean } = {},
   ): Promise<false | TFile> {
     if (!imgUrl) {
       return false;
@@ -2261,14 +2283,158 @@ export default class RecipeVault extends Plugin {
       }
 
       const fileByPath = this.app.vault.getAbstractFileByPath(path);
-      if (fileByPath && fileByPath instanceof TFile) {
-        return fileByPath;
+      const imageFile =
+        fileByPath instanceof TFile
+          ? fileByPath
+          : await this.app.vault.createBinary(path, res.arrayBuffer);
+
+      if (options.thumbnail) {
+        // Best-effort — a failed thumbnail just means the gallery falls back to
+        // the full image, so never let it abort the import.
+        await this.createThumbnail(res.arrayBuffer, type, imageFile.path);
       }
 
-      return await this.app.vault.createBinary(path, res.arrayBuffer);
+      return imageFile;
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Downscale `source` to a small JPEG sibling next to `fullImagePath` so the
+   * gallery loads a decode-cheap thumbnail instead of a full-resolution photo —
+   * decoded-image memory is `naturalW × naturalH × 4` regardless of the ~220px
+   * display size, which is what makes the gallery heavy on Android.
+   *
+   * Returns the saved thumbnail file, or null when no thumbnail is produced
+   * (vector source, already small enough, unsupported environment, or any
+   * failure) — callers treat null as "use the full image".
+   */
+  private async createThumbnail(
+    source: ArrayBuffer,
+    type: { ext: string; mime: string },
+    fullImagePath: string,
+  ): Promise<TFile | null> {
+    // Vector images are already tiny and don't benefit from raster downscaling.
+    if (type.ext === "svg") return null;
+
+    const thumbPath = thumbPathForImage(fullImagePath);
+    const existing = this.app.vault.getAbstractFileByPath(thumbPath);
+    if (existing instanceof TFile) return existing;
+
+    // `createImageBitmap` / canvas are renderer-only; guard so a headless or
+    // older environment degrades to the full image instead of throwing.
+    if (
+      typeof createImageBitmap !== "function" ||
+      typeof document === "undefined"
+    ) {
+      return null;
+    }
+
+    const MAX_EDGE = 480;
+    let bitmap: ImageBitmap | null = null;
+    try {
+      bitmap = await createImageBitmap(new Blob([source], { type: type.mime }));
+      const longest = Math.max(bitmap.width, bitmap.height);
+      if (longest <= MAX_EDGE) {
+        // Already small enough — keep the original, no second copy on disk.
+        return null;
+      }
+
+      const scale = MAX_EDGE / longest;
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(bitmap, 0, 0, width, height);
+
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.7),
+      );
+      if (!blob) return null;
+
+      const buffer = await blob.arrayBuffer();
+      return await this.app.vault.createBinary(thumbPath, buffer);
+    } catch (err) {
+      console.error("Recipe Vault: thumbnail generation failed", err);
+      return null;
+    } finally {
+      bitmap?.close();
+    }
+  }
+
+  /**
+   * Generate gallery thumbnails for already-imported recipes that don't have
+   * one yet. Recipes imported before thumbnails existed (or imported in an
+   * environment where generation was skipped) keep loading the full-resolution
+   * photo in the gallery until this runs.
+   */
+  private async backfillThumbnails(): Promise<void> {
+    const files = getRecipeFiles(
+      this.app.vault,
+      this.settings.recipeGalleryFolder,
+    );
+    if (files.length === 0) {
+      new Notice("Recipe Vault: no recipes found to backfill thumbnails for.");
+      return;
+    }
+
+    new Notice(
+      `Recipe Vault: generating gallery thumbnails for ${files.length} recipes…`,
+    );
+
+    let generated = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const file of files) {
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const imageFile = resolveImageFile(file, this.app.vault, fm?.photo);
+      if (!imageFile) {
+        skipped++;
+        continue;
+      }
+
+      const thumbPath = thumbPathForImage(imageFile.path);
+      if (this.app.vault.getAbstractFileByPath(thumbPath) instanceof TFile) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        const bytes = await this.app.vault.readBinary(imageFile);
+        const type = this.detectImageType(bytes);
+        if (!type) {
+          skipped++;
+          continue;
+        }
+        const thumb = await this.createThumbnail(bytes, type, imageFile.path);
+        if (thumb) {
+          generated++;
+        } else {
+          // Vector or already-small image — nothing to downscale.
+          skipped++;
+        }
+      } catch (err) {
+        console.error(
+          "Recipe Vault: thumbnail backfill failed for",
+          file.path,
+          err,
+        );
+        failed++;
+      }
+    }
+
+    this.refreshRecipeGalleryView();
+    new Notice(
+      `Recipe Vault: thumbnails done — ${generated} created, ${skipped} skipped` +
+        (failed ? `, ${failed} failed` : "") +
+        ".",
+    );
   }
 
   /**

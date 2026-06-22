@@ -355,6 +355,36 @@
   color: var(--text-on-accent);
   border-color: var(--color-accent);
 }
+.rg-filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.rg-filter-chip {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+  appearance: none;
+  white-space: nowrap;
+}
+.rg-filter-chip:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.rg-filter-chip.active {
+  background: var(--color-accent);
+  color: var(--text-on-accent);
+  border-color: var(--color-accent);
+}
 .recipe-gallery-body {
   display: flex;
   flex: 1;
@@ -634,6 +664,8 @@
   text-align: left;
   box-sizing: border-box;
   align-self: start;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 270px;
 }
 .rg-card--selected {
   border-color: var(--interactive-accent);

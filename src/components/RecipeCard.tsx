@@ -1,20 +1,34 @@
-import React from "react";
+import React, { memo } from "react";
 import { RecipeNote } from "../types/recipe";
 
 interface RecipeCardProps {
   recipe: RecipeNote;
-  onClick: () => void;
-  onSelect?: () => void;
+  /** Open the recipe note. Stable across renders so the card can be memo()'d. */
+  onOpen: (path: string) => void;
+  /** Toggle selection. Stable across renders so the card can be memo()'d. */
+  onSelect?: (path: string) => void;
   isSelected?: boolean;
-  cardRef?: React.Ref<HTMLElement>;
+  /**
+   * True when at least one recipe is already selected. Once selection is
+   * active, a plain click toggles selection instead of opening the recipe —
+   * so only the first card needs a long-press to start a bulk selection.
+   */
+  selectionActive?: boolean;
 }
 
-export function RecipeCard({
+/**
+ * A single recipe card. Wrapped in memo() so that typing in search or toggling
+ * one selection only re-renders the cards whose props actually changed — with a
+ * few hundred cards live in the DOM that is the difference between a smooth and
+ * a janky gallery on mobile. Handlers take `recipe.path` and call out instead of
+ * closing over per-card closures, which keeps the props referentially stable.
+ */
+function RecipeCardComponent({
   recipe,
-  onClick,
+  onOpen,
   onSelect,
   isSelected = false,
-  cardRef,
+  selectionActive = false,
 }: RecipeCardProps) {
   const [imgFailed, setImgFailed] = React.useState(false);
   const holdTimerRef = React.useRef<number | null>(null);
@@ -26,7 +40,7 @@ export function RecipeCard({
     holdTimerRef.current = window.setTimeout(() => {
       didHoldRef.current = true;
       holdTimerRef.current = null;
-      onSelect();
+      onSelect(recipe.path);
     }, 400);
   };
 
@@ -49,11 +63,13 @@ export function RecipeCard({
       didHoldRef.current = false;
       return;
     }
-    if (isSelected) {
-      onSelect?.();
+    // Once a selection is underway, a plain tap toggles selection — only the
+    // first recipe needs a long-press to enter selection mode.
+    if (isSelected || selectionActive) {
+      onSelect?.(recipe.path);
       return;
     }
-    onClick();
+    onOpen(recipe.path);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -69,7 +85,6 @@ export function RecipeCard({
 
   return (
     <article
-      ref={cardRef}
       className={className}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
@@ -86,6 +101,8 @@ export function RecipeCard({
           className="rg-card-img"
           src={recipe.photo}
           alt={recipe.title}
+          loading="lazy"
+          decoding="async"
           onError={() => setImgFailed(true)}
         />
       ) : (
@@ -113,3 +130,5 @@ export function RecipeCard({
     </article>
   );
 }
+
+export const RecipeCard = memo(RecipeCardComponent);

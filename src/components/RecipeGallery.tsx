@@ -29,8 +29,10 @@ interface RecipeGalleryProps {
   onScrollTopChange?: (scrollTop: number) => void;
   initialSearchQuery?: string;
   initialSortMode?: SortMode;
+  initialMealTypeFilter?: string[];
   onSearchQueryChange?: (searchQuery: string) => void;
   onSortModeChange?: (sortMode: SortMode) => void;
+  onMealTypeFilterChange?: (mealTypeFilter: string[]) => void;
 }
 
 const SORT_LABELS: Record<SortMode, string> = {
@@ -137,33 +139,62 @@ export function RecipeGallery({
   onScrollTopChange,
   initialSearchQuery = "",
   initialSortMode = "name",
+  initialMealTypeFilter = [],
   onSearchQueryChange,
   onSortModeChange,
+  onMealTypeFilterChange,
 }: RecipeGalleryProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
+  const [mealTypeFilter, setMealTypeFilter] = useState<string[]>(
+    initialMealTypeFilter,
+  );
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
+  const [filterExpanded, setFilterExpanded] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   // Stable ref so onScrollTopChange never needs to be a useEffect dependency
   const onScrollTopChangeRef = useRef(onScrollTopChange);
   useEffect(() => {
     onScrollTopChangeRef.current = onScrollTopChange;
   });
 
-  // Filter by search query (title or ingredients)
+  // All meal types present across the (unfiltered) recipe set, for the chip row.
+  const availableMealTypes = useMemo(() => {
+    const set = new Set<string>();
+    recipes.forEach((r) => r.meal_type.forEach((t) => set.add(t)));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [recipes]);
+
+  // Drop any selected meal type that no longer exists (e.g. after a retag/delete).
+  useEffect(() => {
+    setMealTypeFilter((prev) => {
+      const next = prev.filter((t) => availableMealTypes.includes(t));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [availableMealTypes]);
+
+  // Filter by search query (title or ingredients) and selected meal types (OR).
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    return q
-      ? recipes.filter(
-          (r) =>
-            r.title.toLowerCase().includes(q) ||
-            r.ingredients.some((ing) => ing.toLowerCase().includes(q)),
-        )
-      : recipes;
-  }, [recipes, searchQuery]);
+    return recipes.filter((r) => {
+      if (
+        q &&
+        !r.title.toLowerCase().includes(q) &&
+        !r.ingredients.some((ing) => ing.toLowerCase().includes(q))
+      ) {
+        return false;
+      }
+      if (
+        mealTypeFilter.length > 0 &&
+        !mealTypeFilter.some((t) => r.meal_type.includes(t))
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [recipes, searchQuery, mealTypeFilter]);
 
   // Build grouped sections
   const sections = useMemo(
@@ -180,6 +211,16 @@ export function RecipeGallery({
   useEffect(() => {
     onSortModeChange?.(sortMode);
   }, [sortMode, onSortModeChange]);
+
+  useEffect(() => {
+    onMealTypeFilterChange?.(mealTypeFilter);
+  }, [mealTypeFilter, onMealTypeFilterChange]);
+
+  const toggleMealType = useCallback((type: string) => {
+    setMealTypeFilter((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
+    );
+  }, []);
 
   const handleSelect = useCallback((path: string) => {
     setSelectedPaths((prev) => {
@@ -245,10 +286,30 @@ export function RecipeGallery({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
+          {availableMealTypes.length > 0 && (
+            <button
+              type="button"
+              className={`rg-sort-toggle${filterExpanded ? " active" : mealTypeFilter.length > 0 ? " filtered" : ""}`}
+              onClick={() => {
+                setFilterExpanded((v) => !v);
+                setToolbarExpanded(false);
+              }}
+              title="Filter by meal type"
+              aria-label="Toggle meal type filter"
+              aria-expanded={filterExpanded}
+            >
+              {mealTypeFilter.length > 0
+                ? `Filter (${mealTypeFilter.length})`
+                : "Filter"}
+            </button>
+          )}
           <button
             type="button"
             className={`rg-sort-toggle${toolbarExpanded ? " active" : sortMode !== "name" ? " filtered" : ""}`}
-            onClick={() => setToolbarExpanded((v) => !v)}
+            onClick={() => {
+              setToolbarExpanded((v) => !v);
+              setFilterExpanded(false);
+            }}
             title="Sort options"
             aria-label="Toggle sort options"
             aria-expanded={toolbarExpanded}
@@ -256,6 +317,33 @@ export function RecipeGallery({
             {sortMode !== "name" ? SORT_LABELS[sortMode] : "Sort"}
           </button>
         </div>
+        {filterExpanded && availableMealTypes.length > 0 && (
+          <div
+            className="rg-filter-row"
+            role="group"
+            aria-label="Filter by meal type"
+          >
+            <button
+              type="button"
+              className={`rg-filter-chip${mealTypeFilter.length === 0 ? " active" : ""}`}
+              aria-pressed={mealTypeFilter.length === 0}
+              onClick={() => setMealTypeFilter([])}
+            >
+              All
+            </button>
+            {availableMealTypes.map((type) => (
+              <button
+                key={type}
+                type="button"
+                className={`rg-filter-chip${mealTypeFilter.includes(type) ? " active" : ""}`}
+                aria-pressed={mealTypeFilter.includes(type)}
+                onClick={() => toggleMealType(type)}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+        )}
         {toolbarExpanded && (
           <div className="recipe-gallery-sort-tabs">
             {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
@@ -319,8 +407,8 @@ export function RecipeGallery({
             <div className="recipe-gallery-empty">
               <span style={{ fontSize: 32 }}>🍽️</span>
               <span>
-                {searchQuery
-                  ? "No recipes match your search."
+                {searchQuery || mealTypeFilter.length > 0
+                  ? "No recipes match your filters."
                   : "No recipes found."}
               </span>
             </div>
@@ -329,12 +417,7 @@ export function RecipeGallery({
               {sections.map((section) => (
                 <React.Fragment key={section.label}>
                   {showSectionHeader ? (
-                    <div
-                      className="rg-section-header"
-                      ref={(el) => {
-                        sectionRefs.current[section.label] = el;
-                      }}
-                    >
+                    <div className="rg-section-header">
                       {section.label}
                       <span
                         style={{
@@ -347,20 +430,14 @@ export function RecipeGallery({
                       </span>
                     </div>
                   ) : null}
-                  {section.recipes.map((recipe, index) => (
+                  {section.recipes.map((recipe) => (
                     <RecipeCard
                       key={recipe.path}
                       recipe={recipe}
-                      onClick={() => onOpen(recipe.path)}
-                      onSelect={() => handleSelect(recipe.path)}
+                      onOpen={onOpen}
+                      onSelect={handleSelect}
                       isSelected={selectedPaths.has(recipe.path)}
-                      cardRef={
-                        !showSectionHeader && index === 0
-                          ? (el) => {
-                              sectionRefs.current[section.label] = el;
-                            }
-                          : undefined
-                      }
+                      selectionActive={selectedPaths.size >= 1}
                     />
                   ))}
                 </React.Fragment>

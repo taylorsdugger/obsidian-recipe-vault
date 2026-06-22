@@ -1,6 +1,27 @@
 import { MetadataCache, TFile, Vault } from "obsidian";
 import { RecipeNote } from "../types/recipe";
 
+/** All markdown files under the configured recipe-gallery folder (recursively). */
+export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
+  if (!folderPath.trim()) return [];
+
+  const normalizedFolder = folderPath
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+
+  return vault.getMarkdownFiles().filter((file) => {
+    const fileFolder = (file.parent?.path ?? "")
+      .replace(/\\/g, "/")
+      .toLowerCase();
+    return (
+      fileFolder === normalizedFolder ||
+      fileFolder.startsWith(normalizedFolder + "/")
+    );
+  });
+}
+
 /**
  * Load all recipe notes from the given folder path using the metadata cache.
  * No file reads are performed — only the in-memory metadata index is used.
@@ -10,25 +31,7 @@ export function loadRecipes(
   metadataCache: MetadataCache,
   folderPath: string,
 ): RecipeNote[] {
-  if (!folderPath.trim()) return [];
-
-  const normalizedFolder = folderPath
-    .trim()
-    .replace(/\\/g, "/")
-    .replace(/\/+$/, "")
-    .toLowerCase();
-
-  const files = vault.getMarkdownFiles().filter((file) => {
-    const fileFolder = (file.parent?.path ?? "")
-      .replace(/\\/g, "/")
-      .toLowerCase();
-    return (
-      fileFolder === normalizedFolder ||
-      fileFolder.startsWith(normalizedFolder + "/")
-    );
-  });
-
-  return files
+  return getRecipeFiles(vault, folderPath)
     .map((file) => {
       const fm = (metadataCache.getFileCache(file)?.frontmatter ??
         {}) as Record<string, unknown>;
@@ -53,8 +56,8 @@ export function loadRecipes(
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
-/** Strip WikiLink/Markdown wrappers and resolve local vault files to a usable URL. */
-function resolvePhoto(sourceFile: TFile, vault: Vault, raw: unknown): string {
+/** Strip WikiLink/Markdown wrappers from a frontmatter image reference. */
+function normalizeImageRef(raw: unknown): string {
   if (!raw) return "";
   let p = String(raw).trim();
 
@@ -76,16 +79,57 @@ function resolvePhoto(sourceFile: TFile, vault: Vault, raw: unknown): string {
   const mdMatch = p.match(/!\[.*?\]\((.+?)\)/);
   if (mdMatch) p = mdMatch[1];
 
+  return p.trim();
+}
+
+/**
+ * Resolve a frontmatter image reference to a local vault file.
+ * Returns null for remote URLs or references that don't resolve to a file —
+ * callers use this to find the full-resolution image (e.g. to backfill thumbs).
+ */
+export function resolveImageFile(
+  sourceFile: TFile,
+  vault: Vault,
+  raw: unknown,
+): TFile | null {
+  const p = normalizeImageRef(raw);
+  if (!p || /^https?:\/\//i.test(p)) return null;
+  const file =
+    vault.getAbstractFileByPath(p) ??
+    metadataCachePathLookup(vault, sourceFile, p);
+  return file instanceof TFile ? file : null;
+}
+
+/**
+ * The gallery-thumbnail path that sits next to a full-resolution image.
+ * `Recipe Images/pie.jpg` → `Recipe Images/pie.thumb.jpg`. Generated at import
+ * (and via the backfill command) so the gallery can load a small decode-cheap
+ * image while the note body keeps the full-resolution photo.
+ */
+export function thumbPathForImage(imagePath: string): string {
+  const slash = imagePath.lastIndexOf("/");
+  const dot = imagePath.lastIndexOf(".");
+  const base = dot > slash ? imagePath.slice(0, dot) : imagePath;
+  return `${base}.thumb.jpg`;
+}
+
+/** Strip WikiLink/Markdown wrappers and resolve local vault files to a usable URL. */
+function resolvePhoto(sourceFile: TFile, vault: Vault, raw: unknown): string {
+  const p = normalizeImageRef(raw);
   if (!p) return "";
 
   // Already an absolute URL — use as-is
   if (/^https?:\/\//i.test(p)) return p;
 
-  // Local vault file — resolve to a resource URL Obsidian can render
-  const file =
-    vault.getAbstractFileByPath(p) ??
-    metadataCachePathLookup(vault, sourceFile, p);
-  if (file instanceof TFile) {
+  // Local vault file — prefer a generated thumbnail sibling, fall back to the
+  // full-resolution image, then to the bare path so the <img> onError handler
+  // can show the placeholder.
+  const file = resolveImageFile(sourceFile, vault, raw);
+  if (file) {
+    const thumb = vault.getAbstractFileByPath(thumbPathForImage(file.path));
+    if (thumb instanceof TFile) {
+      return vault.getResourcePath(thumb);
+    }
     return vault.getResourcePath(file);
   }
 
