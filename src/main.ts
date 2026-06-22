@@ -23,11 +23,7 @@ import {
   RecipeRefineApplyResult,
 } from "./modal-refine-recipe";
 import { RecipeGalleryView } from "./view-recipe-gallery";
-import {
-  getRecipeFiles,
-  resolveImageFile,
-  thumbPathForImage,
-} from "./utils/recipeLoader";
+import { thumbPathForImage } from "./utils/recipeLoader";
 import {
   requestRecipeEditSuggestion,
   requestRecipeChatResponse,
@@ -997,147 +993,6 @@ export default class RecipeVault extends Plugin {
     // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new settings.SettingsTab(this.app, this));
 
-    /**
-     * Command to update frontmatter properties on existing recipe files
-     *
-     * This is commented out since this is a DEBUG feature only.
-     * You only need it when you need to backfill new properties into recipes
-     * that do not have them. If you need to debug/develop, then comment this back in
-     */
-    // this.addCommand({
-    //   id: c.CMD_UPDATE_RECIPES_PROPERTIES,
-    //   name: "Update existing recipe properties",
-    //   callback: async () => {
-    //     const files = this.app.vault.getMarkdownFiles();
-    //     let photoUpdated = 0;
-    //     let authorUpdated = 0;
-    //     let cookTimeUpdated = 0;
-    //     let notesUpdated = 0;
-    //     let cssClassesUpdated = 0;
-    //     let skipped = 0;
-
-    //     for (const file of files) {
-    //       const cache = this.app.metadataCache.getFileCache(file);
-    //       const fm = cache?.frontmatter;
-
-    //       // Skip non-recipe files (must have "recipe" tag in frontmatter)
-    //       if (!fm) continue;
-    //       const tags = fm.tags;
-    //       const isRecipe = Array.isArray(tags)
-    //         ? tags.some((t: string) => t === "recipe")
-    //         : tags === "recipe";
-    //       if (!isRecipe) continue;
-
-    //       let fileChanged = false;
-
-    //       if (await this.ensureRecipeNoteCssClass(file)) {
-    //         cssClassesUpdated++;
-    //         fileChanged = true;
-    //       }
-
-    //       // Backfill photo if missing
-    //       if (!fm.photo) {
-    //         const content = await this.app.vault.read(file);
-    //         const imgMatch = content.match(/!\[[^\]]*\]\(([^)]+)\)/);
-    //         if (imgMatch && imgMatch[1]) {
-    //           const photoValue = this.formatPhotoValue(imgMatch[1]);
-    //           await this.app.fileManager.processFrontMatter(
-    //             file,
-    //             (frontmatter) => {
-    //               frontmatter.photo = photoValue;
-    //             },
-    //           );
-    //           photoUpdated++;
-    //           fileChanged = true;
-    //         } else {
-    //           skipped++;
-    //         }
-    //       }
-
-    //       // Backfill author and cook_time if missing and a url is available
-    //       const needsAuthor = !fm.author;
-    //       const needsCookTime = !fm.cook_time;
-    //       const content = await this.app.vault.read(file);
-    //       const needsNotes = this.isRecipeNotesSectionEmpty(content);
-
-    //       if ((needsAuthor || needsCookTime || needsNotes) && fm.url) {
-    //         try {
-    //           const recipes = await this.fetchRecipes(fm.url);
-    //           const recipe = needsNotes
-    //             ? recipes.find(
-    //                 (r) =>
-    //                   this.normalizeRecipeNotes((r as any).recipeNotes).length >
-    //                   0,
-    //               ) ?? recipes?.[0]
-    //             : recipes?.[0];
-    //           if (recipe) {
-    //             let authorValue: string | undefined;
-    //             let cookTimeValue: string | undefined;
-    //             let notesContent = content;
-    //             if (needsAuthor && recipe.author) {
-    //               // normalizeSchema (called inside fetchRecipes) ensures author is a string
-    //               authorValue = recipe.author as string;
-    //             }
-    //             if (needsCookTime && recipe.totalTime) {
-    //               cookTimeValue = this.formatIsoDuration(
-    //                 String(recipe.totalTime),
-    //               );
-    //             }
-    //             if (needsNotes) {
-    //               const recipeNotes = this.normalizeRecipeNotes(
-    //                 (recipe as any).recipeNotes,
-    //               );
-    //               if (recipeNotes.length > 0) {
-    //                 notesContent = this.ensureRecipeNotesSection(
-    //                   content,
-    //                   recipeNotes,
-    //                 );
-    //               }
-    //             }
-    //             if (authorValue !== undefined || cookTimeValue !== undefined) {
-    //               await this.app.fileManager.processFrontMatter(
-    //                 file,
-    //                 (frontmatter) => {
-    //                   if (authorValue !== undefined) {
-    //                     frontmatter.author = authorValue;
-    //                   }
-    //                   if (cookTimeValue !== undefined) {
-    //                     frontmatter.cook_time = cookTimeValue;
-    //                   }
-    //                 },
-    //               );
-    //               if (authorValue !== undefined) {
-    //                 authorUpdated++;
-    //                 fileChanged = true;
-    //               }
-    //               if (cookTimeValue !== undefined) {
-    //                 cookTimeUpdated++;
-    //                 fileChanged = true;
-    //               }
-    //             }
-
-    //             if (notesContent !== content) {
-    //               await this.app.vault.modify(file, notesContent);
-    //               notesUpdated++;
-    //               fileChanged = true;
-    //             }
-    //           }
-    //         } catch (err) {
-    //           console.warn(`Recipe Vault: failed to fetch ${fm.url}`, err);
-    //         }
-    //       }
-
-    //       if (!fileChanged) {
-    //         skipped++;
-    //       }
-    //     }
-
-    //     new Notice(
-    //       `Recipe property update complete: ${photoUpdated} photo, ${authorUpdated} author, ${cookTimeUpdated} cook_time, ${notesUpdated} notes, ${cssClassesUpdated} styled; ${skipped} skipped.`,
-    //     );
-    //   },
-    // });
-
     // Command to create a new manual recipe from the current template
     this.addCommand({
       id: c.CMD_NEW_RECIPE_STUB,
@@ -1146,14 +1001,6 @@ export default class RecipeVault extends Plugin {
         new NewRecipeModal(this.app, (recipeName) => {
           void this.createRecipeStub(recipeName);
         }).open();
-      },
-    });
-
-    this.addCommand({
-      id: c.CMD_BACKFILL_THUMBNAILS,
-      name: "Generate gallery thumbnails for existing recipes",
-      callback: () => {
-        void this.backfillThumbnails();
       },
     });
   }
@@ -2365,76 +2212,6 @@ export default class RecipeVault extends Plugin {
     } finally {
       bitmap?.close();
     }
-  }
-
-  /**
-   * Generate gallery thumbnails for already-imported recipes that don't have
-   * one yet. Recipes imported before thumbnails existed (or imported in an
-   * environment where generation was skipped) keep loading the full-resolution
-   * photo in the gallery until this runs.
-   */
-  private async backfillThumbnails(): Promise<void> {
-    const files = getRecipeFiles(
-      this.app.vault,
-      this.settings.recipeGalleryFolder,
-    );
-    if (files.length === 0) {
-      new Notice("Recipe Vault: no recipes found to backfill thumbnails for.");
-      return;
-    }
-
-    new Notice(
-      `Recipe Vault: generating gallery thumbnails for ${files.length} recipes…`,
-    );
-
-    let generated = 0;
-    let skipped = 0;
-    let failed = 0;
-
-    for (const file of files) {
-      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      const imageFile = resolveImageFile(file, this.app.vault, fm?.photo);
-      if (!imageFile) {
-        skipped++;
-        continue;
-      }
-
-      const thumbPath = thumbPathForImage(imageFile.path);
-      if (this.app.vault.getAbstractFileByPath(thumbPath) instanceof TFile) {
-        skipped++;
-        continue;
-      }
-
-      try {
-        const bytes = await this.app.vault.readBinary(imageFile);
-        const type = this.detectImageType(bytes);
-        if (!type) {
-          skipped++;
-          continue;
-        }
-        const thumb = await this.createThumbnail(bytes, type, imageFile.path);
-        if (thumb) {
-          generated++;
-        } else {
-          // Vector or already-small image — nothing to downscale.
-          skipped++;
-        }
-      } catch (err) {
-        console.error(
-          "Recipe Vault: thumbnail backfill failed for",
-          file.path,
-          err,
-        );
-        failed++;
-      }
-    }
-
-    this.refreshRecipeGalleryView();
-    new Notice(
-      `Recipe Vault: thumbnails done — ${generated} created, ${skipped} skipped` +
-        (failed ? `, ${failed} failed` : "") +
-        ".",
-    );
   }
 
   /**
