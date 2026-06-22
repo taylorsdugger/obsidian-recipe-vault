@@ -1,6 +1,6 @@
 # Recipe Vault
 
-**Recipe Vault** is a full recipe management system for Obsidian — import from the web or from scratch, browse your vault visually, and build shopping lists automatically
+**Recipe Vault** is a full recipe management system for Obsidian — import from the web or from scratch, browse your vault visually, and build shopping lists automatically.
 
 Paste a URL, get a clean recipe note. Browse your collection in a visual gallery. Build a shopping list straight from your ingredients. No subscriptions, no accounts, no ads — just your recipes in your vault.
 
@@ -68,6 +68,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Save images in subdirectories** | Create a per-recipe subfolder under the image folder |
 | **Recipe template** | Handlebars template used when creating recipe notes |
 | **Decode entities** | Decodes HTML entities in imported data |
+| **Proxy fallback for blocked imports** | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default |
 | **Shopping list file** | Path to your shopping list note (created automatically if missing) |
 | **Recipe gallery folder** | The folder the Recipe Gallery browses |
 | **OpenRouter API key** | Required for Ask AI features |
@@ -142,6 +143,7 @@ The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible m
 Recipe Vault is primarily local, but it can make network requests for the following features:
 
 - **Recipe URL import**: Fetches the page you provide to read recipe JSON-LD data. The URL and page response are used only to create recipe notes in your vault.
+- **Proxy fallback (optional, off by default)**: If an import is blocked and you enable this setting, the recipe URL is retried once through a public read proxy (allorigins.win), which sends that URL to a third-party service.
 - **Recipe image download (optional)**: When enabled, recipe images referenced by imported recipes are downloaded into your vault.
 - **Ask AI via OpenRouter (optional)**: Sends your prompt plus recipe ingredients/instructions to OpenRouter to generate suggestions. Requests include your configured OpenRouter API key.
 
