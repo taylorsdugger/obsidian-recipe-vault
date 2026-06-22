@@ -181,10 +181,10 @@
 .recipe-ai-summary-entry p {
   margin: 0;
 }
-.recipe-ai-summary-prompt {
+.recipe-ai-summary-entry .recipe-ai-summary-prompt {
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 0.35rem !important;
+  margin-bottom: 0.35rem;
 }
 .recipe-ai-summary-response {
   color: var(--text-normal);
@@ -434,9 +434,9 @@
 .rg-section-header:first-child {
   padding-top: 0;
 }
-.rg-compare-modal {
-  width: min(92vw, 860px) !important;
-  max-height: 80vh !important;
+.modal.rg-compare-modal {
+  width: min(92vw, 860px);
+  max-height: 80vh;
 }
 .rg-compare-modal .modal-content {
   padding: 20px 24px 24px;

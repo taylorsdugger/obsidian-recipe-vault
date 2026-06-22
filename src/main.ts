@@ -1598,13 +1598,15 @@ export default class RecipeVault extends Plugin {
       return tagString;
     });
 
-    const formatPhotoValue = this.formatPhotoValue.bind(this);
+    const formatPhotoValue = (imgPath: string): string =>
+      this.formatPhotoValue(imgPath);
     handlebars.registerHelper("photoFrontmatter", function (imgPath) {
       if (!imgPath) return "";
       return formatPhotoValue(String(imgPath));
     });
 
-    const formatIsoDuration = this.formatIsoDuration.bind(this);
+    const formatIsoDuration = (duration: string): string =>
+      this.formatIsoDuration(duration);
     handlebars.registerHelper(
       "magicTime",
       function (arg1: unknown, arg2: unknown) {
@@ -2173,7 +2175,7 @@ export default class RecipeVault extends Plugin {
     // older environment degrades to the full image instead of throwing.
     if (
       typeof createImageBitmap !== "function" ||
-      typeof document === "undefined"
+      typeof activeDocument === "undefined"
     ) {
       return null;
     }
@@ -2192,7 +2194,7 @@ export default class RecipeVault extends Plugin {
       const width = Math.max(1, Math.round(bitmap.width * scale));
       const height = Math.max(1, Math.round(bitmap.height * scale));
 
-      const canvas = document.createElement("canvas");
+      const canvas = activeDocument.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d");

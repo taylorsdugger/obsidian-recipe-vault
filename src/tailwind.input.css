@@ -236,10 +236,10 @@
 	margin: 0;
 }
 
-.recipe-ai-summary-prompt {
+.recipe-ai-summary-entry .recipe-ai-summary-prompt {
 	font-weight: 600;
 	color: var(--text-muted);
-	margin-bottom: 0.35rem !important;
+	margin-bottom: 0.35rem;
 }
 
 .recipe-ai-summary-response {
@@ -575,9 +575,9 @@
 }
 
 /* Compare Recipes Modal */
-.rg-compare-modal {
-	width: min(92vw, 860px) !important;
-	max-height: 80vh !important;
+.modal.rg-compare-modal {
+	width: min(92vw, 860px);
+	max-height: 80vh;
 }
 
 .rg-compare-modal .modal-content {
