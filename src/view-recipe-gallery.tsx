@@ -6,12 +6,38 @@ import { CompareRecipesModal } from "./modal-compare-recipes";
 import * as c from "./constants";
 import type RecipeVault from "./main";
 
+// Remembered gallery UI state, shared across view instances for the plugin's
+// lifetime. Obsidian builds a fresh RecipeGalleryView when you open a recipe and
+// come back (or reopen the gallery), which would otherwise reset the search.
+// Seeding new instances from this cache keeps the search, sort, and scroll.
+const lastGalleryState: {
+  scrollTop: number;
+  searchQuery: string;
+  sortMode: SortMode;
+} = {
+  scrollTop: 0,
+  searchQuery: "",
+  sortMode: "name",
+};
+
+/**
+ * Clear the remembered gallery UI state so the next gallery instance opens
+ * fresh. Called when the user explicitly opens the gallery (ribbon/command);
+ * navigating into a recipe and back leaves the cache intact so the search
+ * survives the round trip.
+ */
+export function resetGalleryUiState(): void {
+  lastGalleryState.scrollTop = 0;
+  lastGalleryState.searchQuery = "";
+  lastGalleryState.sortMode = "name";
+}
+
 export class RecipeGalleryView extends ItemView {
   private plugin: RecipeVault;
   private root: ReturnType<typeof createRoot> | null = null;
-  private savedScrollTop = 0;
-  private savedSearchQuery = "";
-  private savedSortMode: SortMode = "name";
+  private savedScrollTop = lastGalleryState.scrollTop;
+  private savedSearchQuery = lastGalleryState.searchQuery;
+  private savedSortMode: SortMode = lastGalleryState.sortMode;
 
   private isValidSortMode(value: unknown): value is SortMode {
     return (
@@ -79,16 +105,24 @@ export class RecipeGalleryView extends ItemView {
       sortMode?: unknown;
     } | null;
     const scrollTop = next?.scrollTop;
+    // Fall back to the shared cache (not the defaults) so a fresh instance
+    // restored without explicit history state keeps the last-used search/sort.
     this.savedScrollTop =
       typeof scrollTop === "number" && Number.isFinite(scrollTop)
         ? Math.max(0, scrollTop)
-        : 0;
+        : lastGalleryState.scrollTop;
 
     this.savedSearchQuery =
-      typeof next?.searchQuery === "string" ? next.searchQuery : "";
+      typeof next?.searchQuery === "string"
+        ? next.searchQuery
+        : lastGalleryState.searchQuery;
     this.savedSortMode = this.isValidSortMode(next?.sortMode)
       ? next.sortMode
-      : "name";
+      : lastGalleryState.sortMode;
+
+    lastGalleryState.scrollTop = this.savedScrollTop;
+    lastGalleryState.searchQuery = this.savedSearchQuery;
+    lastGalleryState.sortMode = this.savedSortMode;
     this.render();
   }
 
@@ -122,12 +156,15 @@ export class RecipeGalleryView extends ItemView {
         initialSortMode={this.savedSortMode}
         onScrollTopChange={(scrollTop) => {
           this.savedScrollTop = scrollTop;
+          lastGalleryState.scrollTop = scrollTop;
         }}
         onSearchQueryChange={(searchQuery) => {
           this.savedSearchQuery = searchQuery;
+          lastGalleryState.searchQuery = searchQuery;
         }}
         onSortModeChange={(sortMode) => {
           this.savedSortMode = sortMode;
+          lastGalleryState.sortMode = sortMode;
         }}
         onOpen={(path: string) => {
           void (async () => {
