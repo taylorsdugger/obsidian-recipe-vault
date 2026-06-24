@@ -6,6 +6,7 @@ import {
   Notice,
   requestUrl,
   normalizePath,
+  TAbstractFile,
   TFolder,
   TFile,
   Vault,
@@ -22,8 +23,8 @@ import {
   RecipeRefineModalData,
   RecipeRefineApplyResult,
 } from "./modal-refine-recipe";
-import { RecipeGalleryView } from "./view-recipe-gallery";
-import { thumbPathForImage } from "./utils/recipeLoader";
+import { RecipeGalleryView, resetGalleryUiState } from "./view-recipe-gallery";
+import { getRecipeFiles, thumbPathForImage } from "./utils/recipeLoader";
 import {
   requestRecipeEditSuggestion,
   requestRecipeChatResponse,
@@ -108,6 +109,14 @@ type VaultWithAttachments = Vault & {
 
 export default class RecipeVault extends Plugin {
   settings!: settings.PluginSettings;
+
+  /**
+   * Last ingredient list (JSON-encoded) written to each note's frontmatter,
+   * keyed by path. Lets {@link syncIngredientIndex} skip redundant writes and,
+   * crucially, breaks the modify→write→modify loop without depending on
+   * metadata-cache timing.
+   */
+  private syncedIngredients = new Map<string, string>();
 
   private decodeHtmlEntities(value: string): string {
     const namedEntities: Record<string, string> = {
@@ -483,6 +492,51 @@ export default class RecipeVault extends Plugin {
     }
 
     return nextMarkdown;
+  }
+
+  /**
+   * Mirror a note's `### Ingredients` body section into its `recipeIngredient`
+   * frontmatter, which the gallery search reads (see recipeLoader.loadRecipes).
+   * Returns true when the frontmatter was changed.
+   *
+   * The body stays the single source of truth — this only keeps the searchable
+   * frontmatter copy in sync. No write happens when the list is unchanged, so
+   * it's safe to call from a vault `modify` handler: our own write re-triggers
+   * modify, but the JSON guard recognizes the list we just wrote and bails.
+   */
+  private async syncIngredientIndex(file: TFile): Promise<boolean> {
+    const content = await this.app.vault.cachedRead(file);
+    const range = this.findMarkdownSection(content, "Ingredients");
+    const ingredients = range
+      ? this.parseSectionList(
+          content.slice(range.bodyStart, range.bodyEnd),
+          true,
+        )
+      : [];
+    const key = JSON.stringify(ingredients);
+
+    // We already wrote exactly this list — nothing to do (and don't loop).
+    if (this.syncedIngredients.get(file.path) === key) return false;
+
+    const current =
+      this.app.metadataCache.getFileCache(file)?.frontmatter?.recipeIngredient;
+    const currentList = Array.isArray(current)
+      ? current.map((s) => String(s))
+      : [];
+    if (JSON.stringify(currentList) === key) {
+      this.syncedIngredients.set(file.path, key);
+      return false;
+    }
+
+    await this.app.fileManager.processFrontMatter(file, (fm: JsonRecord) => {
+      if (ingredients.length > 0) {
+        fm.recipeIngredient = ingredients;
+      } else {
+        delete fm.recipeIngredient;
+      }
+    });
+    this.syncedIngredients.set(file.path, key);
+    return true;
   }
 
   private async askAiToRefineRecipe(
@@ -1003,6 +1057,49 @@ export default class RecipeVault extends Plugin {
         }).open();
       },
     });
+
+    // Command to (re)build the ingredient search index for existing recipes by
+    // copying each note's body Ingredients section into searchable frontmatter.
+    this.addCommand({
+      id: c.CMD_BACKFILL_INGREDIENTS,
+      name: "Backfill ingredient search index",
+      callback: async () => {
+        const files = getRecipeFiles(
+          this.app.vault,
+          this.settings.recipeGalleryFolder,
+        );
+        if (files.length === 0) {
+          new Notice("No recipes found in the gallery folder.");
+          return;
+        }
+        new Notice(`Indexing ingredients for ${files.length} recipes…`);
+        let updated = 0;
+        for (const file of files) {
+          try {
+            if (await this.syncIngredientIndex(file)) updated++;
+          } catch (err) {
+            console.error(
+              "Recipe Vault: ingredient backfill failed for",
+              file.path,
+              err,
+            );
+          }
+        }
+        new Notice(
+          `Ingredient search ready — indexed ${updated} of ${files.length} recipes.`,
+        );
+      },
+    });
+
+    // Keep the searchable ingredient frontmatter in sync as recipe notes are
+    // created or edited (covers manual notes, web imports, and AI refinement).
+    const maybeSyncIngredients = (file: TAbstractFile) => {
+      if (file instanceof TFile && this.isRecipeFile(file)) {
+        void this.syncIngredientIndex(file);
+      }
+    };
+    this.registerEvent(this.app.vault.on("modify", maybeSyncIngredients));
+    this.registerEvent(this.app.vault.on("create", maybeSyncIngredients));
   }
 
   onunload() {}
@@ -1028,6 +1125,9 @@ export default class RecipeVault extends Plugin {
       return;
     }
 
+    // Opening the gallery explicitly starts fresh — discard any search/sort
+    // remembered from a previous navigate-into-recipe-and-back round trip.
+    resetGalleryUiState();
     const leaf = this.app.workspace.getLeaf("tab");
     await leaf.setViewState({
       type: c.VIEW_TYPE_RECIPE_GALLERY,
