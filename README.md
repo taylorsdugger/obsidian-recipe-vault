@@ -71,7 +71,8 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Proxy fallback for blocked imports** | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default |
 | **Shopping list file** | Path to your shopping list note (created automatically if missing) |
 | **Recipe gallery folder** | The folder the Recipe Gallery browses |
-| **OpenRouter API key** | Required for Ask AI features |
+| **Ask AI recipe chat** | Enables/disables all Ask AI features. When off, the Ask AI controls are hidden from recipe notes |
+| **OpenRouter API key** | Required for Ask AI features. Stored in the Obsidian Keychain (OS secret storage), not in plain text. Requires Obsidian 1.11.4+ |
 | **AI model ID** | Which model to use for Ask AI (default: `google/gemini-2.5-flash-lite`) |
 | **AI request timeout (ms)** | Timeout for AI requests (minimum 5000 ms) |
 | **Custom AI system prompt** | Optional override for the built-in Ask AI instructions |
@@ -134,9 +135,9 @@ last_made:
 
 ## Ask AI
 
-Recipe Vault can use an AI model to suggest edits to a recipe directly in the note preview (e.g., "make this dairy-free" or "scale to 2 servings"). This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add in plugin settings.
+Recipe Vault can use an AI model to suggest edits to a recipe directly in the note preview (e.g., "make this dairy-free" or "scale to 2 servings"). This requires an [OpenRouter](https://openrouter.ai/) API key, which you add through the Obsidian Keychain (secret storage) in plugin settings — it is stored in your OS secret store, not in plain text in the vault. The Keychain requires Obsidian 1.11.4 or newer.
 
-The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
+Ask AI is controlled by the **Ask AI recipe chat** toggle in settings. Turn it off to hide the Ask AI controls from recipe notes entirely. The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
 
 ## Network use and privacy disclosure
 

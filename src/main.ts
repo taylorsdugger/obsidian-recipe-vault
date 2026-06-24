@@ -294,57 +294,60 @@ export default class RecipeVault extends Plugin {
       })();
     });
 
-    const aiControls = actions.createDiv({ cls: "recipe-note-ai-controls" });
+    if (this.settings.aiChatEnabled) {
+      const aiControls = actions.createDiv({ cls: "recipe-note-ai-controls" });
 
-    const aiPromptInput = aiControls.createEl("input", {
-      cls: "recipe-note-ai-input",
-      attr: {
-        type: "text",
-        placeholder: "Ask AI: swap ingredients, tweak steps, simplify prep...",
-      },
-    });
+      const aiPromptInput = aiControls.createEl("input", {
+        cls: "recipe-note-ai-input",
+        attr: {
+          type: "text",
+          placeholder:
+            "Ask AI: swap ingredients, tweak steps, simplify prep...",
+        },
+      });
 
-    const aiPromptButton = aiControls.createEl("button", {
-      cls: "recipe-note-action-button",
-      text: "Ask AI",
-      attr: { type: "button" },
-    });
+      const aiPromptButton = aiControls.createEl("button", {
+        cls: "recipe-note-action-button",
+        text: "Ask AI",
+        attr: { type: "button" },
+      });
 
-    let aiRequestInFlight = false;
-    const runAiRefine = async () => {
-      const prompt = aiPromptInput.value.trim();
-      if (!prompt) {
-        new Notice("Enter a short edit request before asking AI.");
-        return;
-      }
-      if (aiRequestInFlight) {
-        return;
-      }
+      let aiRequestInFlight = false;
+      const runAiRefine = async () => {
+        const prompt = aiPromptInput.value.trim();
+        if (!prompt) {
+          new Notice("Enter a short edit request before asking AI.");
+          return;
+        }
+        if (aiRequestInFlight) {
+          return;
+        }
 
-      aiPromptInput.value = "";
-      aiRequestInFlight = true;
-      aiPromptButton.disabled = true;
-      aiPromptButton.textContent = "Asking...";
+        aiPromptInput.value = "";
+        aiRequestInFlight = true;
+        aiPromptButton.disabled = true;
+        aiPromptButton.textContent = "Asking...";
 
-      try {
-        await this.askAiToRefineRecipe(file, prompt);
-      } finally {
-        aiRequestInFlight = false;
-        aiPromptButton.disabled = false;
-        aiPromptButton.textContent = "Ask AI";
-      }
-    };
+        try {
+          await this.askAiToRefineRecipe(file, prompt);
+        } finally {
+          aiRequestInFlight = false;
+          aiPromptButton.disabled = false;
+          aiPromptButton.textContent = "Ask AI";
+        }
+      };
 
-    aiPromptButton.addEventListener("click", () => {
-      void runAiRefine();
-    });
-
-    aiPromptInput.addEventListener("keydown", (event: KeyboardEvent) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
+      aiPromptButton.addEventListener("click", () => {
         void runAiRefine();
-      }
-    });
+      });
+
+      aiPromptInput.addEventListener("keydown", (event: KeyboardEvent) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void runAiRefine();
+        }
+      });
+    }
 
     const targetHeading = Array.from(
       container.querySelectorAll<HTMLElement>("h2, h3, h4"),
@@ -489,9 +492,11 @@ export default class RecipeVault extends Plugin {
     file: TFile,
     prompt: string,
   ): Promise<void> {
-    const apiKey = this.settings.openRouterApiKey?.trim();
+    const apiKey = this.resolveOpenRouterApiKey();
     if (!apiKey) {
-      new Notice("Set your OpenRouter API key in Recipe Vault settings first.");
+      new Notice(
+        "Add your OpenRouter API key in Recipe Vault settings (Keychain) first.",
+      );
       return;
     }
 
@@ -589,6 +594,15 @@ export default class RecipeVault extends Plugin {
           : "AI request failed. Please try again.";
       new Notice(message, 8000);
     }
+  }
+
+  private resolveOpenRouterApiKey(): string | null {
+    const id = this.settings.openRouterSecretId?.trim();
+    if (!id) {
+      return null;
+    }
+    const key = this.app.secretStorage?.getSecret(id)?.trim();
+    return key || null;
   }
 
   private resolveAiModelId(): string {
@@ -1044,6 +1058,8 @@ export default class RecipeVault extends Plugin {
       (await this.loadData()) as Partial<settings.PluginSettings>,
     );
 
+    await this.migrateLegacyOpenRouterKey();
+
     // Migrate saved templates that predate the current template version.
     // When new required frontmatter fields are added, bump TEMPLATE_VERSION in constants.ts.
     if ((this.settings.templateVersion ?? 0) < c.TEMPLATE_VERSION) {
@@ -1061,6 +1077,50 @@ export default class RecipeVault extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
     this.refreshRecipeGalleryView();
+  }
+
+  /**
+   * Move a plaintext OpenRouter API key written by older versions (stored in
+   * the vault config) into the OS Keychain, then drop the plaintext value. If
+   * the Keychain isn't available on this build, the legacy value is left in
+   * place so it can be migrated after Obsidian is updated.
+   */
+  private async migrateLegacyOpenRouterKey(): Promise<void> {
+    const legacy = this.settings as unknown as { openRouterApiKey?: string };
+    const legacyKey = legacy.openRouterApiKey?.trim();
+
+    if (!legacyKey) {
+      // Drop any leftover empty plaintext field from older configs.
+      if ("openRouterApiKey" in legacy) {
+        delete legacy.openRouterApiKey;
+        await this.saveData(this.settings);
+      }
+      return;
+    }
+
+    const store = this.app.secretStorage;
+    if (!store) {
+      // Keychain unavailable; keep the legacy value for a later migration.
+      return;
+    }
+
+    if (!this.settings.openRouterSecretId) {
+      try {
+        const id = "recipe-vault-openrouter";
+        store.setSecret(id, legacyKey);
+        this.settings.openRouterSecretId = id;
+        new Notice(
+          "Recipe Vault: your OpenRouter API key was moved into the Obsidian Keychain.",
+          8000,
+        );
+      } catch {
+        // Could not store the secret; leave the legacy value untouched.
+        return;
+      }
+    }
+
+    delete legacy.openRouterApiKey;
+    await this.saveData(this.settings);
   }
 
   /**

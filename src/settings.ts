@@ -2,6 +2,7 @@ import {
   App,
   FuzzySuggestModal,
   PluginSettingTab,
+  SecretComponent,
   Setting,
   TFile,
   TFolder,
@@ -22,7 +23,8 @@ export interface PluginSettings {
   debug: boolean;
   shoppingListFile: string;
   recipeGalleryFolder: string;
-  openRouterApiKey: string;
+  aiChatEnabled: boolean;
+  openRouterSecretId: string;
   aiModelPreset: string;
   aiCustomModelId: string;
   aiModelId: string;
@@ -56,7 +58,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   debug: false,
   shoppingListFile: "Shopping List.md",
   recipeGalleryFolder: "Recipes/All Recipes",
-  openRouterApiKey: "",
+  aiChatEnabled: true,
+  openRouterSecretId: "",
   aiModelPreset: "google/gemini-2.5-flash-lite",
   aiCustomModelId: "",
   aiModelId: "google/gemini-2.5-flash-lite",
@@ -343,22 +346,120 @@ export class SettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("OpenRouter API key")
+      .setName("Ask AI recipe chat")
       .setDesc(
-        "Used for Ask AI recipe edits. Stored in this vault config as plain text.",
+        "Show the Ask AI controls on recipe notes to edit recipes with an LLM via OpenRouter. Turn off to hide all AI features.",
       )
-      .addText((text) => {
-        text
-          .setPlaceholder("sk-or-v1-...")
-          .setValue(this.plugin.settings.openRouterApiKey)
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.aiChatEnabled)
           .onChange(async (value) => {
-            this.plugin.settings.openRouterApiKey = value.trim();
+            this.plugin.settings.aiChatEnabled = value;
+            await this.plugin.saveSettings();
+            this.display();
+          });
+      });
+
+    if (this.plugin.settings.aiChatEnabled) {
+      this.displayAiSettings(containerEl);
+    }
+
+    new Setting(containerEl)
+      .setName("Recipe title filler words")
+      .setDesc(
+        "Choose how recipe-title cleanup words are applied during imports.",
+      )
+      .addDropdown((dropdown) => {
+        dropdown.addOption("auto", "Auto (built-in list)");
+        dropdown.addOption("custom", "Custom list");
+        dropdown.setValue(this.plugin.settings.fillerWordsMode || "auto");
+        dropdown.onChange(async (value) => {
+          this.plugin.settings.fillerWordsMode =
+            value === "custom" ? "custom" : "auto";
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      });
+
+    if (this.plugin.settings.fillerWordsMode === "custom") {
+      new Setting(containerEl)
+        .setName("Custom filler words")
+        .setDesc(
+          "Words/phrases to remove from imported recipe titles. Separate with commas or new lines.",
+        )
+        .addTextArea((text) => {
+          text
+            .setPlaceholder("best, easy, one-pot")
+            .setValue(this.plugin.settings.customFillerWords)
+            .onChange(async (value) => {
+              this.plugin.settings.customFillerWords = value;
+              await this.plugin.saveSettings();
+            });
+          text.inputEl.addClass("recipe-vault-input-full");
+          text.inputEl.addClass("recipe-vault-textarea-filler-words");
+        });
+    }
+
+    new Setting(containerEl)
+      .setName("Filter vegan words")
+      .setDesc(
+        "When cleaning imported recipe titles, remove vegan-related words.",
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.filterVeganWords)
+          .onChange(async (value) => {
+            this.plugin.settings.filterVeganWords = value;
             await this.plugin.saveSettings();
           });
-        text.inputEl.type = "password";
-        text.inputEl.autocomplete = "off";
-        text.inputEl.addClass("recipe-vault-input-full");
       });
+
+    new Setting(containerEl)
+      .setName("Filter gluten-free words")
+      .setDesc(
+        "When cleaning imported recipe titles, remove gluten-free-related words.",
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.filterGlutenFreeWords)
+          .onChange(async (value) => {
+            this.plugin.settings.filterGlutenFreeWords = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Debug mode")
+      .setDesc("Just adds some things to make dev life a little easier.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.debug).onChange(async (value) => {
+          this.plugin.settings.debug = value;
+          await this.plugin.saveSettings();
+        });
+      });
+  }
+
+  private displayAiSettings(containerEl: HTMLElement): void {
+    const keySetting = new Setting(containerEl).setName("OpenRouter API key");
+
+    if (this.app.secretStorage) {
+      keySetting
+        .setDesc(
+          "Used for Ask AI recipe edits. Stored securely in the Obsidian Keychain (OS secret storage), not in plain text.",
+        )
+        .addComponent((el) =>
+          new SecretComponent(this.app, el)
+            .setValue(this.plugin.settings.openRouterSecretId)
+            .onChange(async (value) => {
+              this.plugin.settings.openRouterSecretId = value;
+              await this.plugin.saveSettings();
+            }),
+        );
+    } else {
+      keySetting.setDesc(
+        "Storing the API key uses Obsidian's Keychain (secret storage), available in Obsidian 1.11.4 or newer. Update Obsidian to configure Ask AI.",
+      );
+    }
 
     new Setting(containerEl)
       .setName("AI model ID")
@@ -441,80 +542,6 @@ export class SettingsTab extends PluginSettingTab {
           });
         text.inputEl.addClass("recipe-vault-input-full");
         text.inputEl.addClass("recipe-vault-textarea-ai-prompt");
-      });
-
-    new Setting(containerEl)
-      .setName("Recipe title filler words")
-      .setDesc(
-        "Choose how recipe-title cleanup words are applied during imports.",
-      )
-      .addDropdown((dropdown) => {
-        dropdown.addOption("auto", "Auto (built-in list)");
-        dropdown.addOption("custom", "Custom list");
-        dropdown.setValue(this.plugin.settings.fillerWordsMode || "auto");
-        dropdown.onChange(async (value) => {
-          this.plugin.settings.fillerWordsMode =
-            value === "custom" ? "custom" : "auto";
-          await this.plugin.saveSettings();
-          this.display();
-        });
-      });
-
-    if (this.plugin.settings.fillerWordsMode === "custom") {
-      new Setting(containerEl)
-        .setName("Custom filler words")
-        .setDesc(
-          "Words/phrases to remove from imported recipe titles. Separate with commas or new lines.",
-        )
-        .addTextArea((text) => {
-          text
-            .setPlaceholder("best, easy, one-pot")
-            .setValue(this.plugin.settings.customFillerWords)
-            .onChange(async (value) => {
-              this.plugin.settings.customFillerWords = value;
-              await this.plugin.saveSettings();
-            });
-          text.inputEl.addClass("recipe-vault-input-full");
-          text.inputEl.addClass("recipe-vault-textarea-filler-words");
-        });
-    }
-
-    new Setting(containerEl)
-      .setName("Filter vegan words")
-      .setDesc(
-        "When cleaning imported recipe titles, remove vegan-related words.",
-      )
-      .addToggle((toggle) => {
-        toggle
-          .setValue(this.plugin.settings.filterVeganWords)
-          .onChange(async (value) => {
-            this.plugin.settings.filterVeganWords = value;
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(containerEl)
-      .setName("Filter gluten-free words")
-      .setDesc(
-        "When cleaning imported recipe titles, remove gluten-free-related words.",
-      )
-      .addToggle((toggle) => {
-        toggle
-          .setValue(this.plugin.settings.filterGlutenFreeWords)
-          .onChange(async (value) => {
-            this.plugin.settings.filterGlutenFreeWords = value;
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(containerEl)
-      .setName("Debug mode")
-      .setDesc("Just adds some things to make dev life a little easier.")
-      .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.debug).onChange(async (value) => {
-          this.plugin.settings.debug = value;
-          await this.plugin.saveSettings();
-        });
       });
   }
 }
