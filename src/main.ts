@@ -53,6 +53,14 @@ interface ParsedRecipeSections {
   instructionRange: MarkdownSectionRange;
 }
 
+/** One note's entry in the persisted ingredient search index. */
+interface IngredientIndexEntry {
+  /** The file's modified time when it was indexed, so we can skip re-reads. */
+  mtime: number;
+  /** Ingredient lines parsed from the note's body `### Ingredients` section. */
+  ingredients: string[];
+}
+
 type CommandExecutorApp = App & {
   commands: {
     executeCommandById(commandId: string): boolean;
@@ -111,12 +119,17 @@ export default class RecipeVault extends Plugin {
   settings!: settings.PluginSettings;
 
   /**
-   * Last ingredient list (JSON-encoded) written to each note's frontmatter,
-   * keyed by path. Lets {@link syncIngredientIndex} skip redundant writes and,
-   * crucially, breaks the modify→write→modify loop without depending on
-   * metadata-cache timing.
+   * In-memory ingredient search index, keyed by note path. Built from each
+   * recipe's body `### Ingredients` section — the body stays the single source
+   * of truth and nothing is written to user notes. The gallery search reads
+   * from this map (see {@link getIngredients} / loadRecipes). Persisted to a
+   * sidecar JSON file so launches only re-read bodies whose mtime changed.
    */
-  private syncedIngredients = new Map<string, string>();
+  private ingredientIndex = new Map<string, IngredientIndexEntry>();
+
+  /** Pending-write flag and debounce handle for {@link persistIngredientIndex}. */
+  private ingredientIndexDirty = false;
+  private persistIndexTimer: number | null = null;
 
   private decodeHtmlEntities(value: string): string {
     const namedEntities: Record<string, string> = {
@@ -494,49 +507,144 @@ export default class RecipeVault extends Plugin {
     return nextMarkdown;
   }
 
-  /**
-   * Mirror a note's `### Ingredients` body section into its `recipeIngredient`
-   * frontmatter, which the gallery search reads (see recipeLoader.loadRecipes).
-   * Returns true when the frontmatter was changed.
-   *
-   * The body stays the single source of truth — this only keeps the searchable
-   * frontmatter copy in sync. No write happens when the list is unchanged, so
-   * it's safe to call from a vault `modify` handler: our own write re-triggers
-   * modify, but the JSON guard recognizes the list we just wrote and bails.
-   */
-  private async syncIngredientIndex(file: TFile): Promise<boolean> {
+  /** Ingredient lines for a note path, for the gallery search (loadRecipes). */
+  getIngredients(path: string): string[] {
+    return this.ingredientIndex.get(path)?.ingredients ?? [];
+  }
+
+  /** Parse a recipe's body `### Ingredients` section into searchable lines. */
+  private async parseIngredientsFromBody(file: TFile): Promise<string[]> {
     const content = await this.app.vault.cachedRead(file);
     const range = this.findMarkdownSection(content, "Ingredients");
-    const ingredients = range
-      ? this.parseSectionList(
-          content.slice(range.bodyStart, range.bodyEnd),
-          true,
-        )
-      : [];
-    const key = JSON.stringify(ingredients);
+    if (!range) return [];
+    return this.parseSectionList(
+      content.slice(range.bodyStart, range.bodyEnd),
+      true,
+    );
+  }
 
-    // We already wrote exactly this list — nothing to do (and don't loop).
-    if (this.syncedIngredients.get(file.path) === key) return false;
+  /** Path of the sidecar index file, or null if the plugin dir is unknown. */
+  private get ingredientIndexPath(): string | null {
+    return this.manifest.dir
+      ? `${this.manifest.dir}/ingredient-index.json`
+      : null;
+  }
 
-    const current =
-      this.app.metadataCache.getFileCache(file)?.frontmatter?.recipeIngredient;
-    const currentList = Array.isArray(current)
-      ? current.map((s) => String(s))
-      : [];
-    if (JSON.stringify(currentList) === key) {
-      this.syncedIngredients.set(file.path, key);
-      return false;
+  /** Load the persisted ingredient index into memory (best effort). */
+  private async loadIngredientIndex(): Promise<void> {
+    this.ingredientIndex.clear();
+    const path = this.ingredientIndexPath;
+    if (!path) return;
+    try {
+      if (!(await this.app.vault.adapter.exists(path))) return;
+      const parsed = JSON.parse(
+        await this.app.vault.adapter.read(path),
+      ) as Record<string, IngredientIndexEntry>;
+      for (const [notePath, entry] of Object.entries(parsed)) {
+        if (
+          entry &&
+          typeof entry.mtime === "number" &&
+          Array.isArray(entry.ingredients)
+        ) {
+          this.ingredientIndex.set(notePath, {
+            mtime: entry.mtime,
+            ingredients: entry.ingredients.map((s) => String(s)),
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Recipe Vault: failed to load ingredient index", err);
+    }
+  }
+
+  /** Mark the index dirty and schedule a debounced write to the sidecar file. */
+  private queuePersistIngredientIndex(): void {
+    this.ingredientIndexDirty = true;
+    if (this.persistIndexTimer !== null) return;
+    this.persistIndexTimer = window.setTimeout(() => {
+      this.persistIndexTimer = null;
+      void this.persistIngredientIndex();
+    }, 1000);
+  }
+
+  /** Write the in-memory index to the sidecar file if it has pending changes. */
+  private async persistIngredientIndex(): Promise<void> {
+    if (!this.ingredientIndexDirty) return;
+    const path = this.ingredientIndexPath;
+    if (!path) return;
+    this.ingredientIndexDirty = false;
+    const obj: Record<string, IngredientIndexEntry> = {};
+    for (const [notePath, entry] of this.ingredientIndex) obj[notePath] = entry;
+    try {
+      await this.app.vault.adapter.write(path, JSON.stringify(obj));
+    } catch (err) {
+      console.error("Recipe Vault: failed to persist ingredient index", err);
+      this.ingredientIndexDirty = true;
+    }
+  }
+
+  /** (Re)index a single recipe note from its body. Never writes to the note. */
+  private async indexRecipeFile(file: TFile): Promise<void> {
+    try {
+      const ingredients = await this.parseIngredientsFromBody(file);
+      this.ingredientIndex.set(file.path, {
+        mtime: file.stat.mtime,
+        ingredients,
+      });
+      this.queuePersistIngredientIndex();
+    } catch (err) {
+      console.error("Recipe Vault: failed to index", file.path, err);
+    }
+  }
+
+  /** Drop a note from the index (file deleted or renamed away). */
+  private removeRecipeFromIndex(path: string): void {
+    if (this.ingredientIndex.delete(path)) {
+      this.queuePersistIngredientIndex();
+    }
+  }
+
+  /**
+   * Reconcile the persisted index against the current gallery folder on launch:
+   * re-read only notes whose mtime changed, drop notes that no longer exist,
+   * and refresh the gallery once if anything changed.
+   */
+  private async refreshIngredientIndex(): Promise<void> {
+    if (!this.settings.recipeGalleryFolder.trim()) return;
+    const files = getRecipeFiles(
+      this.app.vault,
+      this.settings.recipeGalleryFolder,
+    );
+    const seen = new Set<string>();
+    let changed = false;
+
+    for (const file of files) {
+      seen.add(file.path);
+      const existing = this.ingredientIndex.get(file.path);
+      if (existing && existing.mtime === file.stat.mtime) continue;
+      try {
+        const ingredients = await this.parseIngredientsFromBody(file);
+        this.ingredientIndex.set(file.path, {
+          mtime: file.stat.mtime,
+          ingredients,
+        });
+        changed = true;
+      } catch (err) {
+        console.error("Recipe Vault: failed to index", file.path, err);
+      }
     }
 
-    await this.app.fileManager.processFrontMatter(file, (fm: JsonRecord) => {
-      if (ingredients.length > 0) {
-        fm.recipeIngredient = ingredients;
-      } else {
-        delete fm.recipeIngredient;
+    for (const path of [...this.ingredientIndex.keys()]) {
+      if (!seen.has(path)) {
+        this.ingredientIndex.delete(path);
+        changed = true;
       }
-    });
-    this.syncedIngredients.set(file.path, key);
-    return true;
+    }
+
+    if (changed) {
+      this.queuePersistIngredientIndex();
+      this.refreshRecipeGalleryView();
+    }
   }
 
   private async askAiToRefineRecipe(
@@ -681,6 +789,12 @@ export default class RecipeVault extends Plugin {
 
   async onload() {
     await this.loadSettings();
+    await this.loadIngredientIndex();
+    // Reconcile the index against the vault once files are ready — re-reads only
+    // notes whose mtime changed since last launch, then refreshes the gallery.
+    this.app.workspace.onLayoutReady(() => {
+      void this.refreshIngredientIndex();
+    });
 
     this.registerMarkdownPostProcessor((el, context) => {
       this.injectRecipeActions(el, context);
@@ -1058,11 +1172,13 @@ export default class RecipeVault extends Plugin {
       },
     });
 
-    // Command to (re)build the ingredient search index for existing recipes by
-    // copying each note's body Ingredients section into searchable frontmatter.
+    // Command to rebuild the in-memory ingredient search index from each note's
+    // body. Also strips the legacy `recipeIngredient` frontmatter that earlier
+    // versions wrote into notes (the source of the mobile Properties bloat) —
+    // the body's `### Ingredients` section is the single source of truth.
     this.addCommand({
       id: c.CMD_BACKFILL_INGREDIENTS,
-      name: "Backfill ingredient search index",
+      name: "Rebuild ingredient search index",
       callback: async () => {
         const files = getRecipeFiles(
           this.app.vault,
@@ -1073,36 +1189,75 @@ export default class RecipeVault extends Plugin {
           return;
         }
         new Notice(`Indexing ingredients for ${files.length} recipes…`);
-        let updated = 0;
+        this.ingredientIndex.clear();
+        let cleaned = 0;
         for (const file of files) {
           try {
-            if (await this.syncIngredientIndex(file)) updated++;
+            const ingredients = await this.parseIngredientsFromBody(file);
+            this.ingredientIndex.set(file.path, {
+              mtime: file.stat.mtime,
+              ingredients,
+            });
+            // One-time cleanup of the old searchable frontmatter copy.
+            const fmHasLegacy =
+              this.app.metadataCache.getFileCache(file)?.frontmatter
+                ?.recipeIngredient != null;
+            if (fmHasLegacy) {
+              await this.app.fileManager.processFrontMatter(
+                file,
+                (fm: JsonRecord) => {
+                  delete fm.recipeIngredient;
+                },
+              );
+              cleaned++;
+            }
           } catch (err) {
             console.error(
-              "Recipe Vault: ingredient backfill failed for",
+              "Recipe Vault: ingredient indexing failed for",
               file.path,
               err,
             );
           }
         }
+        this.queuePersistIngredientIndex();
+        this.refreshRecipeGalleryView();
         new Notice(
-          `Ingredient search ready — indexed ${updated} of ${files.length} recipes.`,
+          `Ingredient search ready — indexed ${files.length} recipes` +
+            (cleaned > 0 ? `, removed old frontmatter from ${cleaned}.` : "."),
         );
       },
     });
 
-    // Keep the searchable ingredient frontmatter in sync as recipe notes are
-    // created or edited (covers manual notes, web imports, and AI refinement).
-    const maybeSyncIngredients = (file: TAbstractFile) => {
+    // Keep the in-memory ingredient index current as recipe notes change. The
+    // index lives in the plugin's own data, so nothing is written to the notes
+    // (covers manual notes, web imports, AI refinement, renames, and deletes).
+    const reindexRecipe = (file: TAbstractFile) => {
       if (file instanceof TFile && this.isRecipeFile(file)) {
-        void this.syncIngredientIndex(file);
+        void this.indexRecipeFile(file);
       }
     };
-    this.registerEvent(this.app.vault.on("modify", maybeSyncIngredients));
-    this.registerEvent(this.app.vault.on("create", maybeSyncIngredients));
+    this.registerEvent(this.app.vault.on("modify", reindexRecipe));
+    this.registerEvent(this.app.vault.on("create", reindexRecipe));
+    this.registerEvent(
+      this.app.vault.on("delete", (file) => {
+        this.removeRecipeFromIndex(file.path);
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        this.removeRecipeFromIndex(oldPath);
+        reindexRecipe(file);
+      }),
+    );
   }
 
-  onunload() {}
+  onunload() {
+    if (this.persistIndexTimer !== null) {
+      window.clearTimeout(this.persistIndexTimer);
+      this.persistIndexTimer = null;
+    }
+    void this.persistIngredientIndex();
+  }
 
   refreshRecipeGalleryView() {
     for (const leaf of this.app.workspace.getLeavesOfType(

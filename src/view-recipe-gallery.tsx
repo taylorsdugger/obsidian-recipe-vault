@@ -139,6 +139,7 @@ export class RecipeGalleryView extends ItemView {
       this.app.vault,
       this.app.metadataCache,
       this.plugin.settings.recipeGalleryFolder,
+      (path) => this.plugin.getIngredients(path),
     );
 
     const container = this.contentEl;
