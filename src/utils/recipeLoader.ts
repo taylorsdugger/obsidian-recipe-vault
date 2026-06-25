@@ -25,11 +25,14 @@ export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
 /**
  * Load all recipe notes from the given folder path using the metadata cache.
  * No file reads are performed — only the in-memory metadata index is used.
+ * Ingredients come from the plugin's ingredient index (`getIngredients`), not
+ * from frontmatter, so the searchable list never has to live in the notes.
  */
 export function loadRecipes(
   vault: Vault,
   metadataCache: MetadataCache,
   folderPath: string,
+  getIngredients: (path: string) => string[],
 ): RecipeNote[] {
   return getRecipeFiles(vault, folderPath)
     .map((file) => {
@@ -40,7 +43,7 @@ export function loadRecipes(
       const cook_time = String((fm.cook_time as string) ?? "");
       const cook_time_mins = parseCookTimeMins(cook_time);
       const times_made = typeof fm.times_made === "number" ? fm.times_made : 0;
-      const ingredients = parseMealType(fm.recipeIngredient);
+      const ingredients = getIngredients(file.path);
 
       return {
         title: file.basename,
