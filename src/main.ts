@@ -118,6 +118,9 @@ type VaultWithAttachments = Vault & {
 export default class RecipeVault extends Plugin {
   settings!: settings.PluginSettings;
 
+  /** Base backoff between fetch retries (ms); scaled per attempt. Tests set 0. */
+  fetchRetryDelayMs = 500;
+
   /**
    * In-memory ingredient search index, keyed by note path. Built from each
    * recipe's body `### Ingredients` section — the body stays the single source
@@ -1318,6 +1321,136 @@ export default class RecipeVault extends Plugin {
     this.refreshRecipeGalleryView();
   }
 
+  /** Promise-based delay used to back off between fetch retries. */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Fetch a page's HTML, retrying and falling back through public read proxies
+   * when the direct request is blocked.
+   *
+   * Obsidian desktop fetches through Chromium's network stack and slips past
+   * Cloudflare, but on mobile `requestUrl` uses the native HTTP client whose
+   * TLS/HTTP fingerprint Cloudflare flags as a bot — so direct fetches there
+   * 403 no matter what `User-Agent` we send. When the proxy fallback is enabled
+   * we retry through server-side readers that fetch the page for us: jina.ai
+   * first (reliable, returns raw HTML), then allorigins (free but flaky, so it
+   * gets retried). Each non-direct source must echo back the target host, so a
+   * proxy's own error/landing page is never mistaken for the recipe.
+   */
+  private async fetchPageHtml(fetchUrl: URL): Promise<string> {
+    new Notice(`Fetching: ${fetchUrl.href}`);
+
+    const reqHeaders = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+    };
+
+    const target = fetchUrl.href;
+    const host = fetchUrl.hostname.replace(/^www\./, "");
+
+    type PageSource = {
+      label: string;
+      url: string;
+      headers: Record<string, string>;
+      /** How many times to try this source before moving to the next. */
+      tries: number;
+      /** Pull the page HTML out of the (possibly wrapped) response body. */
+      unwrap: (body: string) => string;
+      /** Direct origin hits are trusted; proxy output must mention the host. */
+      trusted: boolean;
+    };
+
+    const sources: PageSource[] = [
+      {
+        label: "direct",
+        url: target,
+        headers: reqHeaders,
+        tries: 1,
+        unwrap: (body) => body,
+        trusted: true,
+      },
+    ];
+
+    if (this.settings.proxyFallback) {
+      sources.push(
+        {
+          label: "jina.ai",
+          url: `https://r.jina.ai/${target}`,
+          headers: { ...reqHeaders, "X-Return-Format": "html" },
+          tries: 3,
+          unwrap: (body) => body,
+          trusted: false,
+        },
+        {
+          label: "allorigins",
+          url: `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`,
+          headers: reqHeaders,
+          tries: 2,
+          unwrap: (body) => {
+            const parsed = JSON.parse(body) as { contents?: unknown };
+            return typeof parsed.contents === "string" ? parsed.contents : "";
+          },
+          trusted: false,
+        },
+        {
+          label: "allorigins (raw)",
+          url: `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
+          headers: reqHeaders,
+          tries: 2,
+          unwrap: (body) => body,
+          trusted: false,
+        },
+      );
+    }
+
+    let lastError = "";
+
+    for (const source of sources) {
+      for (let attempt = 1; attempt <= source.tries; attempt++) {
+        if (source.label !== "direct") {
+          new Notice(
+            attempt === 1
+              ? `Direct fetch blocked — trying proxy (${source.label})…`
+              : `Retrying ${source.label} (${attempt}/${source.tries})…`,
+          );
+        }
+        try {
+          const res = await requestUrl({
+            url: source.url,
+            method: "GET",
+            headers: source.headers,
+          });
+          const html = source.unwrap(res.text);
+          if (!html) throw new Error("empty response");
+          if (!source.trusted && !html.includes(host)) {
+            throw new Error("proxy returned an unexpected page");
+          }
+          return html;
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err);
+          if (attempt < source.tries) {
+            await this.sleep(this.fetchRetryDelayMs * attempt);
+          }
+        }
+      }
+    }
+
+    const detail = lastError ? ` (${lastError})` : "";
+    if (!this.settings.proxyFallback) {
+      throw new Error(
+        `Could not fetch that page. The site may be blocking the import — turn on "Proxy fallback for blocked imports" in Recipe Vault settings and try again.${detail}`,
+      );
+    }
+    throw new Error(
+      `Could not fetch that page, even via the proxy fallbacks. The site or the proxies may be down right now — try again in a bit, or import on desktop and sync.${detail}`,
+    );
+  }
+
   /**
    * The main function to go get the recipe, and format it for the template
    */
@@ -1342,52 +1475,9 @@ export default class RecipeVault extends Plugin {
     const fetchUrl = new URL(url.href);
     fetchUrl.hash = "";
 
-    new Notice(`Fetching: ${fetchUrl.href}`);
+    const html = await this.fetchPageHtml(fetchUrl);
 
-    const reqHeaders = {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-    };
-
-    let response;
-    try {
-      response = await requestUrl({
-        url: fetchUrl.href,
-        method: "GET",
-        headers: reqHeaders,
-      });
-    } catch (err) {
-      // Some hosts' bot protection (e.g. Cloudflare) blocks the request
-      // outright with a 403 — most often on mobile, where the native HTTP
-      // client's fingerprint differs from a real browser. When enabled, retry
-      // once through a public read proxy that fetches the page server-side.
-      if (!this.settings.proxyFallback) {
-        const detail = err instanceof Error ? ` (${err.message})` : "";
-        throw new Error(
-          `Could not fetch that page. Check the URL and your connection, then try again.${detail}`,
-        );
-      }
-
-      try {
-        new Notice("Direct fetch failed — retrying via proxy…");
-        response = await requestUrl({
-          url: `https://api.allorigins.win/raw?url=${encodeURIComponent(fetchUrl.href)}`,
-          method: "GET",
-          headers: reqHeaders,
-        });
-      } catch (proxyErr) {
-        const detail =
-          proxyErr instanceof Error ? ` (${proxyErr.message})` : "";
-        throw new Error(
-          `Could not fetch that page, even via the proxy fallback. Check the URL and your connection, then try again.${detail}`,
-        );
-      }
-    }
-
-    const $ = cheerio.load(response.text, {});
+    const $ = cheerio.load(html, {});
 
     /**
      * the main recipes list, we'll use to render from
@@ -1793,7 +1883,9 @@ export default class RecipeVault extends Plugin {
     } catch (error) {
       console.error("Recipe Vault: import failed", error);
       const msg = error instanceof Error ? error.message : String(error);
-      new Notice(`Recipe import failed: ${msg}`);
+      // Longer dwell time (10s) so the actionable failure text is readable;
+      // the default ~5s toast is easy to miss for a multi-sentence message.
+      new Notice(`Recipe import failed: ${msg}`, 10000);
     }
   };
 

@@ -278,7 +278,7 @@ export class SettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Proxy fallback for blocked imports")
       .setDesc(
-        "If a recipe page blocks the import (e.g. a 403 from bot protection, most common on mobile), retry once through a public read proxy (allorigins.win). This sends the recipe URL to a third-party service. Off by default.",
+        "If a recipe page blocks the import (e.g. a 403 from bot protection, most common on mobile), retry through public read proxies (jina.ai, then allorigins.win), with a few attempts each. This sends the recipe URL to a third-party service. Off by default.",
       )
       .addToggle((toggle) => {
         toggle
