@@ -16,12 +16,21 @@ import {
 describe("fetchRecipes — fetch transport", () => {
   afterEach(() => resetObsidianStub());
 
-  const RECIPE_HTML = htmlWithJsonLd({
+  const RECIPE = {
     "@context": "https://schema.org",
     "@type": "Recipe",
     name: "Soup",
     recipeIngredient: ["water"],
-  });
+  };
+
+  const RECIPE_HTML = htmlWithJsonLd(RECIPE);
+
+  // Proxy responses are only trusted when the HTML echoes the target host, so
+  // proxy-path fixtures carry a canonical link with the requested host.
+  const RECIPE_HTML_WITH_HOST = htmlWithJsonLd(
+    RECIPE,
+    '<link rel="canonical" href="https://example.com/recipe" />',
+  );
 
   describe("URL validation", () => {
     it("rejects a malformed URL before any network call", async () => {
@@ -78,32 +87,28 @@ describe("fetchRecipes — fetch transport", () => {
   });
 
   describe("403 proxy fallback", () => {
-    it("retries through the proxy when the direct fetch throws", async () => {
+    it("falls back to the first proxy when the direct fetch is blocked", async () => {
       const requested: string[] = [];
       setRequestUrl((opts) => {
         requested.push(opts.url);
-        if (requested.length === 1) {
-          throw new Error("403 Forbidden");
+        if (opts.url.includes("r.jina.ai")) {
+          return htmlResponse(RECIPE_HTML_WITH_HOST);
         }
-        return htmlResponse(RECIPE_HTML);
+        throw new Error("403 Forbidden"); // direct
       });
 
       const recipes = await makePlugin({ proxyFallback: true }).fetchRecipes(
         "https://example.com/recipe#frag",
       );
 
-      // direct attempt first, then the proxy wrapping the clean (hashless) URL
-      expect(requested).toHaveLength(2);
+      // direct attempt first, then jina wrapping the clean (hashless) URL
       expect(requested[0]).toBe("https://example.com/recipe");
-      expect(requested[1]).toBe(
-        "https://api.allorigins.win/raw?url=" +
-          encodeURIComponent("https://example.com/recipe"),
-      );
+      expect(requested[1]).toBe("https://r.jina.ai/https://example.com/recipe");
       expect(recipes[0].name).toBe("Soup");
       expect(noticeLog.some((m) => /proxy/i.test(m))).toBe(true);
     });
 
-    it("does not retry when proxyFallback is disabled", async () => {
+    it("does not use a proxy when proxyFallback is disabled", async () => {
       const requested: string[] = [];
       setRequestUrl((opts) => {
         requested.push(opts.url);
@@ -118,7 +123,54 @@ describe("fetchRecipes — fetch transport", () => {
       expect(requested).toHaveLength(1);
     });
 
-    it("surfaces a proxy-specific error when the proxy also fails", async () => {
+    it("skips a proxy whose page does not echo the target host, unwrapping allorigins JSON", async () => {
+      const requested: string[] = [];
+      setRequestUrl((opts) => {
+        requested.push(opts.url);
+        // allorigins /get wraps the HTML in a JSON envelope
+        if (opts.url.includes("allorigins.win/get")) {
+          return htmlResponse(
+            JSON.stringify({ contents: RECIPE_HTML_WITH_HOST }),
+          );
+        }
+        // jina returns 200 but a page that never names the host → rejected
+        if (opts.url.includes("r.jina.ai")) {
+          return htmlResponse(RECIPE_HTML);
+        }
+        throw new Error("403 Forbidden"); // direct
+      });
+
+      const recipes = await makePlugin({ proxyFallback: true }).fetchRecipes(
+        "https://example.com/recipe",
+      );
+
+      expect(recipes[0].name).toBe("Soup");
+      expect(requested.some((u) => u.includes("r.jina.ai"))).toBe(true);
+      expect(requested.some((u) => u.includes("allorigins.win/get"))).toBe(
+        true,
+      );
+    });
+
+    it("retries a flaky proxy until it succeeds", async () => {
+      let jinaCalls = 0;
+      setRequestUrl((opts) => {
+        if (opts.url.includes("r.jina.ai")) {
+          jinaCalls += 1;
+          if (jinaCalls < 3) throw new Error("520 Web Server Error");
+          return htmlResponse(RECIPE_HTML_WITH_HOST);
+        }
+        throw new Error("403 Forbidden"); // direct
+      });
+
+      const recipes = await makePlugin({ proxyFallback: true }).fetchRecipes(
+        "https://example.com/recipe",
+      );
+
+      expect(jinaCalls).toBe(3);
+      expect(recipes[0].name).toBe("Soup");
+    });
+
+    it("surfaces a proxy-specific error after every source and retry fails", async () => {
       const requested: string[] = [];
       setRequestUrl((opts) => {
         requested.push(opts.url);
@@ -129,8 +181,11 @@ describe("fetchRecipes — fetch transport", () => {
         makePlugin({ proxyFallback: true }).fetchRecipes(
           "https://example.com/recipe",
         ),
-      ).rejects.toThrow(/even via the proxy fallback/);
-      expect(requested).toHaveLength(2);
+      ).rejects.toThrow(/even via the proxy fallbacks/);
+
+      // direct(1) + jina(3) + allorigins get(2) + allorigins raw(2)
+      expect(requested).toHaveLength(8);
+      expect(requested.filter((u) => u.includes("r.jina.ai"))).toHaveLength(3);
     });
   });
 });

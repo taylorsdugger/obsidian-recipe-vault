@@ -26,6 +26,9 @@ export function makePlugin(
     ...structuredClone(DEFAULT_SETTINGS),
     ...settingsOverrides,
   };
+  // Keep retry backoff out of the test clock; the retry/fallback logic is
+  // exercised by call counts, not real delays.
+  plugin.fetchRetryDelayMs = 0;
   return plugin;
 }
 
