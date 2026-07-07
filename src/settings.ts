@@ -345,7 +345,7 @@ export class SettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("OpenRouter API key")
       .setDesc(
-        "Used for Ask AI recipe edits. Stored in this vault config as plain text.",
+        "Used for Ask AI recipe edits and Add recipe from photo. Stored in this vault config as plain text.",
       )
       .addText((text) => {
         text

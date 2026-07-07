@@ -27,6 +27,7 @@ Import recipes from the web, browse them in a visual gallery, and build shopping
 ## ✨ Features
 
 - 🌐 **Import from any URL:** fetches structured recipe data (JSON-LD) from a recipe page and creates a formatted note instantly.
+- 📸 **Add recipe from photo:** photograph a cookbook page or recipe card (or pick image files) and let AI vision transcribe it into a recipe note, with a verify/edit step before saving. Works on desktop and mobile.
 - ✍️ **Add recipes manually:** create a recipe note from scratch using the same template.
 - 🖼️ **Recipe gallery:** browse your whole collection visually in a dedicated gallery view.
 - 🔍 **Search everything:** filter as you type across titles, meal types, _and_ ingredients, so you can find every recipe that uses what's already in the fridge.
@@ -82,6 +83,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Add checked ingredients to shopping list** | Sends checked ingredients from the active recipe to your shopping list file    |
 | **Clear checked items from shopping list**   | Removes completed items from your shopping list                                |
 | **Add recipe (manual)**                      | Creates a new recipe note from a title prompt                                  |
+| **Add recipe from photo**                    | Transcribes a photographed cookbook page or recipe card into a new note (requires an OpenRouter API key) |
 | **Batch import recipes from URL list**       | Imports multiple recipes from a list of URLs (one per line) in the active note |
 | **Rebuild ingredient search index**          | Rebuilds the in-memory index that powers ingredient search in the gallery      |
 
@@ -100,8 +102,8 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Proxy fallback for blocked imports**     | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default |
 | **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                           |
 | **Recipe gallery folder**                  | The folder the Recipe Gallery browses                                                                                                                                        |
-| **OpenRouter API key**                     | Required for Ask AI features                                                                                                                                                 |
-| **AI model ID**                            | Which model to use for Ask AI (default: `google/gemini-2.5-flash-lite`)                                                                                                      |
+| **OpenRouter API key**                     | Required for Ask AI and Add recipe from photo                                                                                                                                |
+| **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-2.5-flash-lite`)                                                                           |
 | **AI request timeout (ms)**                | Timeout for AI requests (minimum 5000 ms)                                                                                                                                    |
 | **Custom AI system prompt**                | Optional override for the built-in Ask AI instructions                                                                                                                       |
 | **Recipe title filler words**              | Controls how imported titles are cleaned up                                                                                                                                  |
@@ -173,7 +175,21 @@ last_made:
 
 Recipe Vault can use an AI model to suggest edits to a recipe directly in the note preview (for example, "make this dairy-free" or "scale to 2 servings"). This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add in plugin settings.
 
+> **No OpenRouter key yet?** Sign up free at [openrouter.ai](https://openrouter.ai/), then grab a key from [openrouter.ai/keys](https://openrouter.ai/keys). It's pay-as-you-go (no subscription) — the default model costs well under a cent per request. Paste the key into **Recipe Vault settings → OpenRouter API key**.
+
 The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
+
+---
+
+## 📸 Add Recipe from Photo
+
+No cookbook page? No problem. Run **Add recipe from photo** from the command palette to turn a photographed cookbook page or recipe card into a note:
+
+1. **Capture** — take a photo (camera opens automatically on mobile) or choose existing image files. Multiple photos are treated as pages of a single recipe, so multi-page cookbook spreads work in one go.
+2. **Verify** — the vision model transcribes the name, ingredients, instructions, time, and yield; edit the result before saving to fix any misreads.
+3. **Photo** — the captured photo is attached to the note by default, or choose a different image or none.
+
+This uses the same [OpenRouter](https://openrouter.ai/) API key and model as Ask AI, so no separate setup is required. There's no bundled OCR engine — the vision model does the transcription — so it works on mobile too.
 
 ---
 
@@ -185,6 +201,7 @@ Recipe Vault is primarily local, but it can make network requests for the follow
 - **Proxy fallback (optional, off by default):** if an import is blocked and you enable this setting, the recipe URL is retried once through a public read proxy (allorigins.win), which sends that URL to a third-party service.
 - **Recipe image download (optional):** when enabled, recipe images referenced by imported recipes are downloaded into your vault.
 - **Ask AI via OpenRouter (optional):** sends your prompt plus recipe ingredients/instructions to OpenRouter to generate suggestions. Requests include your configured OpenRouter API key.
+- **Add recipe from photo via OpenRouter (optional):** sends your captured/chosen photo(s) to OpenRouter for transcription. Requests include your configured OpenRouter API key.
 
 No ads are shown, and no telemetry is collected by Recipe Vault itself.
 
