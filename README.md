@@ -93,7 +93,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 | Setting                                    | Description                                                                                                                                                                  |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Recipe save folder**                     | Where new recipe notes are created                                                                                                                                           |
+| **Recipe save folder**                     | Where new recipe notes are created. The gallery browses this folder by default, so imports show up automatically                                                            |
 | **Save in currently opened file**          | Import into the active note instead of creating a new one                                                                                                                    |
 | **Save images**                            | Download recipe images into your vault                                                                                                                                       |
 | **Save images in subdirectories**          | Create a per-recipe subfolder under the image folder                                                                                                                         |
@@ -101,7 +101,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Decode entities**                        | Decodes HTML entities in imported data                                                                                                                                       |
 | **Proxy fallback for blocked imports**     | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default |
 | **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                           |
-| **Recipe gallery folder**                  | The folder the Recipe Gallery browses                                                                                                                                        |
+| **Recipe gallery folder**                  | The folder the Recipe Gallery browses, including its subfolders. **Leave blank to follow the Recipe save folder** (recommended). Set it only to browse a different folder    |
 | **OpenRouter API key**                     | Required for Ask AI and Add recipe from photo                                                                                                                                |
 | **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-2.5-flash-lite`)                                                                           |
 | **AI request timeout (ms)**                | Timeout for AI requests (minimum 5000 ms)                                                                                                                                    |
@@ -109,6 +109,8 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Recipe title filler words**              | Controls how imported titles are cleaned up                                                                                                                                  |
 | **Filter vegan words / gluten-free words** | Optionally strips dietary labels from imported recipe titles                                                                                                                 |
 | **Debug mode**                             | Enables extra developer logging                                                                                                                                              |
+
+> **Gallery is empty but you've imported recipes?** By default the gallery follows your **Recipe save folder**, so this shouldn't happen. If it does, you've set an explicit **Recipe gallery folder** that points somewhere other than where recipes are saved. Either clear that setting (blank = follow the save folder) or point it at your save folder, and your recipes will show up.
 
 ---
 

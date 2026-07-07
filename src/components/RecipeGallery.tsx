@@ -31,6 +31,14 @@ interface RecipeGalleryProps {
   initialSortMode?: SortMode;
   onSearchQueryChange?: (searchQuery: string) => void;
   onSortModeChange?: (sortMode: SortMode) => void;
+  /** The folder the gallery is currently reading from (for the empty state). */
+  galleryFolder?: string;
+  /**
+   * A folder that *does* contain recipes when the gallery folder is empty —
+   * set when imports are landing somewhere the gallery isn't looking. Drives
+   * the "your recipes are over here" hint in the empty state.
+   */
+  recipesElsewhereFolder?: string;
 }
 
 const SORT_LABELS: Record<SortMode, string> = {
@@ -139,6 +147,8 @@ export function RecipeGallery({
   initialSortMode = "name",
   onSearchQueryChange,
   onSortModeChange,
+  galleryFolder,
+  recipesElsewhereFolder,
 }: RecipeGalleryProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
@@ -318,11 +328,23 @@ export function RecipeGallery({
           {totalCount === 0 ? (
             <div className="recipe-gallery-empty">
               <span style={{ fontSize: 32 }}>🍽️</span>
-              <span>
-                {searchQuery
-                  ? "No recipes match your search."
-                  : "No recipes found."}
-              </span>
+              {searchQuery ? (
+                <span>No recipes match your search.</span>
+              ) : recipesElsewhereFolder ? (
+                <>
+                  <span>
+                    No recipes in{" "}
+                    <code>{galleryFolder || "the gallery folder"}</code>.
+                  </span>
+                  <span>
+                    Your recipes are in <code>{recipesElsewhereFolder}</code>.
+                    Set the “Recipe gallery folder” setting to that folder to
+                    see them here.
+                  </span>
+                </>
+              ) : (
+                <span>No recipes found.</span>
+              )}
             </div>
           ) : (
             <div className="recipe-gallery-masonry">

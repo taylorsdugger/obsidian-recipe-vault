@@ -55,7 +55,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   proxyFallback: false,
   debug: false,
   shoppingListFile: "Shopping List.md",
-  recipeGalleryFolder: "Recipes/All Recipes",
+  recipeGalleryFolder: "",
   openRouterApiKey: "",
   aiModelPreset: "google/gemini-2.5-flash-lite",
   aiCustomModelId: "",
@@ -124,6 +124,10 @@ export class SettingsTab extends PluginSettingTab {
   }
 
   display(): void {
+    this.renderSettings();
+  }
+
+  private renderSettings(): void {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("settingsTemplate");
@@ -148,7 +152,7 @@ export class SettingsTab extends PluginSettingTab {
             void (async () => {
               this.plugin.settings.folder = path;
               await this.plugin.saveSettings();
-              this.display();
+              this.renderSettings();
             })();
           }).open();
         }),
@@ -196,7 +200,7 @@ export class SettingsTab extends PluginSettingTab {
             void (async () => {
               this.plugin.settings.imgFolder = path;
               await this.plugin.saveSettings();
-              this.display();
+              this.renderSettings();
             })();
           }).open();
         }),
@@ -249,7 +253,7 @@ export class SettingsTab extends PluginSettingTab {
           .onClick(async () => {
             this.plugin.settings.recipeTemplate = c.DEFAULT_TEMPLATE;
             await this.plugin.saveSettings();
-            this.display();
+            this.renderSettings();
           }),
       )
       .addTextArea((text) => {
@@ -310,7 +314,7 @@ export class SettingsTab extends PluginSettingTab {
             void (async () => {
               this.plugin.settings.shoppingListFile = path;
               await this.plugin.saveSettings();
-              this.display();
+              this.renderSettings();
             })();
           }).open();
         }),
@@ -319,11 +323,11 @@ export class SettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Recipe gallery folder")
       .setDesc(
-        "Folder to display in the Recipe Gallery panel. All markdown files in this folder (and subfolders) will appear as cards.",
+        "Folder to display in the Recipe Gallery panel, including its subfolders. Leave blank to follow the Recipe save folder above (recommended). Set a folder only if you want the gallery to browse somewhere other than where recipes are saved.",
       )
       .addText((text) => {
         text
-          .setPlaceholder("eg: Recipes/All Recipes")
+          .setPlaceholder("Follows save folder")
           .setValue(this.plugin.settings.recipeGalleryFolder)
           .onChange(async (value) => {
             this.plugin.settings.recipeGalleryFolder = value.trim();
@@ -336,7 +340,7 @@ export class SettingsTab extends PluginSettingTab {
             void (async () => {
               this.plugin.settings.recipeGalleryFolder = path;
               await this.plugin.saveSettings();
-              this.display();
+              this.renderSettings();
             })();
           }).open();
         }),
@@ -381,7 +385,7 @@ export class SettingsTab extends PluginSettingTab {
             this.plugin.settings.aiModelId = value;
           }
           await this.plugin.saveSettings();
-          this.display();
+          this.renderSettings();
         });
       });
 
@@ -456,7 +460,7 @@ export class SettingsTab extends PluginSettingTab {
           this.plugin.settings.fillerWordsMode =
             value === "custom" ? "custom" : "auto";
           await this.plugin.saveSettings();
-          this.display();
+          this.renderSettings();
         });
       });
 

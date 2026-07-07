@@ -1,7 +1,7 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { createRoot } from "react-dom/client";
 import { RecipeGallery, type SortMode } from "./components/RecipeGallery";
-import { loadRecipes } from "./utils/recipeLoader";
+import { getRecipeFiles, loadRecipes } from "./utils/recipeLoader";
 import { CompareRecipesModal } from "./modal-compare-recipes";
 import * as c from "./constants";
 import type RecipeVault from "./main";
@@ -135,12 +135,30 @@ export class RecipeGalleryView extends ItemView {
   }
 
   private render(): void {
+    const galleryFolder = this.plugin.getGalleryFolder();
     const recipes = loadRecipes(
       this.app.vault,
       this.app.metadataCache,
-      this.plugin.settings.recipeGalleryFolder,
+      galleryFolder,
       (path) => this.plugin.getIngredients(path),
     );
+
+    // When the gallery is empty, check whether recipes are actually landing in
+    // the configured save folder (imports go there, but the gallery only scans
+    // the gallery folder). If so, point the user at the mismatch.
+    let recipesElsewhereFolder: string | undefined;
+    if (recipes.length === 0) {
+      const saveFolder = this.plugin.settings.folder.trim();
+      const normalize = (p: string) =>
+        p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+      if (
+        saveFolder &&
+        normalize(saveFolder) !== normalize(galleryFolder) &&
+        getRecipeFiles(this.app.vault, saveFolder).length > 0
+      ) {
+        recipesElsewhereFolder = saveFolder;
+      }
+    }
 
     const container = this.contentEl;
     container.addClass("recipe-gallery-view-container");
@@ -152,6 +170,8 @@ export class RecipeGalleryView extends ItemView {
     this.root.render(
       <RecipeGallery
         recipes={recipes}
+        galleryFolder={galleryFolder}
+        recipesElsewhereFolder={recipesElsewhereFolder}
         initialScrollTop={this.savedScrollTop}
         initialSearchQuery={this.savedSearchQuery}
         initialSortMode={this.savedSortMode}

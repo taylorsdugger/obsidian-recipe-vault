@@ -610,16 +610,25 @@ export default class RecipeVault extends Plugin {
   }
 
   /**
+   * The folder the gallery browses. A blank "Recipe gallery folder" setting
+   * follows the "Recipe save folder" so imports appear in the gallery with no
+   * extra configuration; setting an explicit value overrides that.
+   */
+  getGalleryFolder(): string {
+    return (
+      this.settings.recipeGalleryFolder.trim() || this.settings.folder.trim()
+    );
+  }
+
+  /**
    * Reconcile the persisted index against the current gallery folder on launch:
    * re-read only notes whose mtime changed, drop notes that no longer exist,
    * and refresh the gallery once if anything changed.
    */
   private async refreshIngredientIndex(): Promise<void> {
-    if (!this.settings.recipeGalleryFolder.trim()) return;
-    const files = getRecipeFiles(
-      this.app.vault,
-      this.settings.recipeGalleryFolder,
-    );
+    const galleryFolder = this.getGalleryFolder();
+    if (!galleryFolder) return;
+    const files = getRecipeFiles(this.app.vault, galleryFolder);
     const seen = new Set<string>();
     let changed = false;
 
@@ -1232,10 +1241,7 @@ export default class RecipeVault extends Plugin {
       id: c.CMD_BACKFILL_INGREDIENTS,
       name: "Rebuild ingredient search index",
       callback: async () => {
-        const files = getRecipeFiles(
-          this.app.vault,
-          this.settings.recipeGalleryFolder,
-        );
+        const files = getRecipeFiles(this.app.vault, this.getGalleryFolder());
         if (files.length === 0) {
           new Notice("No recipes found in the gallery folder.");
           return;
@@ -1372,7 +1378,7 @@ export default class RecipeVault extends Plugin {
 
   /** Promise-based delay used to back off between fetch retries. */
   private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
   /**
