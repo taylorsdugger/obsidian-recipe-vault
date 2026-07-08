@@ -900,3 +900,59 @@
 		padding: 16px;
 	}
 }
+
+
+/* ============================================================
+   "Add recipe from photo" modal
+   ============================================================ */
+
+.photo-recipe-thumbs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin: 10px 0 4px;
+}
+
+.photo-recipe-thumb {
+	position: relative;
+	width: 96px;
+	height: 96px;
+	border-radius: 6px;
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.photo-recipe-thumb-img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.photo-recipe-thumb-remove {
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	line-height: 18px;
+	border-radius: 999px;
+	border: none;
+	cursor: pointer;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	opacity: 0.85;
+}
+
+.photo-recipe-thumb-remove:hover {
+	opacity: 1;
+}
+
+.photo-recipe-preview {
+	max-width: 100%;
+	max-height: 240px;
+	margin: 8px 0;
+	border-radius: 6px;
+	display: block;
+}

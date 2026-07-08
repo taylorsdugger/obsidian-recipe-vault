@@ -25,9 +25,11 @@ import {
 } from "./modal-refine-recipe";
 import { RecipeGalleryView, resetGalleryUiState } from "./view-recipe-gallery";
 import { getRecipeFiles, thumbPathForImage } from "./utils/recipeLoader";
+import { PhotoRecipeModal } from "./modal-photo-recipe";
 import {
   requestRecipeEditSuggestion,
   requestRecipeChatResponse,
+  requestRecipeFromImage,
 } from "./utils/openrouter";
 import dateFormat from "dateformat";
 
@@ -608,16 +610,25 @@ export default class RecipeVault extends Plugin {
   }
 
   /**
+   * The folder the gallery browses. A blank "Recipe gallery folder" setting
+   * follows the "Recipe save folder" so imports appear in the gallery with no
+   * extra configuration; setting an explicit value overrides that.
+   */
+  getGalleryFolder(): string {
+    return (
+      this.settings.recipeGalleryFolder.trim() || this.settings.folder.trim()
+    );
+  }
+
+  /**
    * Reconcile the persisted index against the current gallery folder on launch:
    * re-read only notes whose mtime changed, drop notes that no longer exist,
    * and refresh the gallery once if anything changed.
    */
   private async refreshIngredientIndex(): Promise<void> {
-    if (!this.settings.recipeGalleryFolder.trim()) return;
-    const files = getRecipeFiles(
-      this.app.vault,
-      this.settings.recipeGalleryFolder,
-    );
+    const galleryFolder = this.getGalleryFolder();
+    if (!galleryFolder) return;
+    const files = getRecipeFiles(this.app.vault, galleryFolder);
     const seen = new Set<string>();
     let changed = false;
 
@@ -863,6 +874,53 @@ export default class RecipeVault extends Plugin {
         new LoadRecipeModal(this.app, (recipeUrl) => {
           void this.addRecipeToMarkdown(recipeUrl);
         }).open();
+      },
+    });
+
+    // Import a recipe by photographing a cookbook page / recipe card. Uses the
+    // same OpenRouter path as Ask AI: the vision model does OCR + structured
+    // extraction in one call, then the user verifies before saving.
+    this.addCommand({
+      id: c.CMD_RECIPE_FROM_PHOTO,
+      name: "Add recipe from photo",
+      callback: () => {
+        const apiKey = this.settings.openRouterApiKey?.trim();
+        if (!apiKey) {
+          new Notice(
+            "Set your OpenRouter API key in Recipe Vault settings first.",
+          );
+          return;
+        }
+        const model = this.resolveAiModelId();
+        const timeoutMs = Math.max(this.settings.aiTimeoutMs ?? 45000, 5000);
+        new PhotoRecipeModal(
+          this.app,
+          (images) =>
+            requestRecipeFromImage({
+              apiKey,
+              model,
+              images,
+              timeoutMs,
+              systemPrompt: this.settings.aiSystemPrompt,
+            }),
+          (submission) => {
+            const { result, imageBlob } = submission;
+            const recipe: ParsedRecipe = {
+              name: result.name,
+              author: result.author || undefined,
+              description: result.description || undefined,
+              totalTime: result.totalTime || undefined,
+              recipeIngredient: result.recipeIngredient,
+              // The template renders string steps via its `this.text` branch, so
+              // wrap each transcribed line as an InstructionStep.
+              recipeInstructions: result.recipeInstructions.map((text) => ({
+                text,
+              })),
+            };
+            if (result.recipeYield) recipe.recipeYield = result.recipeYield;
+            void this.saveParsedRecipe(recipe, { localImage: imageBlob });
+          },
+        ).open();
       },
     });
 
@@ -1183,10 +1241,7 @@ export default class RecipeVault extends Plugin {
       id: c.CMD_BACKFILL_INGREDIENTS,
       name: "Rebuild ingredient search index",
       callback: async () => {
-        const files = getRecipeFiles(
-          this.app.vault,
-          this.settings.recipeGalleryFolder,
-        );
+        const files = getRecipeFiles(this.app.vault, this.getGalleryFolder());
         if (files.length === 0) {
           new Notice("No recipes found in the gallery folder.");
           return;
@@ -1323,7 +1378,7 @@ export default class RecipeVault extends Plugin {
 
   /** Promise-based delay used to back off between fetch retries. */
   private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
   /**
@@ -1934,6 +1989,144 @@ export default class RecipeVault extends Plugin {
     new Notice(`Recipe "${name}" created.`);
     await this.app.workspace.openLinkText(file.path, "", true);
   };
+
+  /**
+   * Renders a single already-parsed recipe to a brand-new note using the same
+   * template + frontmatter/notes helpers as the URL importer, and optionally
+   * attaches a local image Blob (e.g. the captured photo). Returns the created
+   * file, or null on failure.
+   *
+   * Used by the "Add recipe from photo" flow. Uses the Vault API throughout so
+   * it works on mobile; `recipe.url` is left empty (the template guards it).
+   */
+  private async saveParsedRecipe(
+    recipe: ParsedRecipe,
+    opts: { localImage?: Blob } = {},
+  ): Promise<TFile | null> {
+    try {
+      const rawName = typeof recipe.name === "string" ? recipe.name.trim() : "";
+      // Mirror the URL importer's disallowed-char strip; fall back to a unique
+      // timestamp when the transcription has no usable title.
+      const safeName =
+        rawName.replace(/"|\*|\\|\/|<|>|:|\?/g, "").trim() ||
+        String(new Date().getTime());
+
+      const folder =
+        this.settings.folder !== ""
+          ? this.settings.folder
+          : c.MANUAL_RECIPE_DEFAULT_FOLDER;
+      await this.folderCheck(folder);
+
+      let notePath = `${normalizePath(folder)}/${safeName}.md`;
+      let counter = 2;
+      while (this.app.vault.getAbstractFileByPath(notePath)) {
+        notePath = `${normalizePath(folder)}/${safeName} (${counter}).md`;
+        counter++;
+      }
+
+      // Create the note up front so the attachment-path helper can anchor the
+      // image next to it when no dedicated image folder is configured.
+      const file = await this.app.vault.create(notePath, "");
+
+      if (opts.localImage) {
+        // Name the image from the note's final (de-duplicated) basename, not the
+        // raw title: two recipes both titled "Pancakes" get notes "Pancakes.md"
+        // and "Pancakes (2).md", so their images must diverge too. Using the raw
+        // title would resolve both to "Pancakes.jpg" and the second recipe would
+        // silently reuse the first one's photo.
+        const imagePath = await this.saveLocalRecipeImage(
+          file.basename,
+          opts.localImage,
+          file,
+        );
+        if (imagePath) {
+          recipe.image = imagePath;
+        }
+      }
+
+      const markdown = handlebars.compile(this.settings.recipeTemplate);
+      let md = markdown({
+        ...recipe,
+        json: JSON.stringify(recipe, null, 2),
+      });
+
+      if (this.settings.decodeEntities) {
+        md = this.decodeHtmlEntities(md);
+      }
+      md = this.ensureRequiredRecipeFrontmatter(md, {
+        cookTime:
+          typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
+        image: typeof recipe.image === "string" ? recipe.image : undefined,
+      });
+      md = this.ensureRecipeNotesSection(
+        md,
+        this.normalizeRecipeNotes(recipe.recipeNotes),
+      );
+
+      await this.app.vault.modify(file, md);
+      await this.app.fileManager.processFrontMatter(file, (fm: JsonRecord) => {
+        fm.source = "photo";
+      });
+
+      new Notice(`Recipe "${rawName || safeName}" created.`);
+      await this.app.workspace.openLinkText(file.path, "", true);
+      return file;
+    } catch (error) {
+      console.error("Recipe Vault: photo save failed", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      new Notice(`Recipe save failed: ${msg}`, 10000);
+      return null;
+    }
+  }
+
+  /**
+   * Writes a user-supplied image Blob into the vault — respecting the image
+   * folder settings, falling back to Obsidian's attachment location — and
+   * generates a gallery thumbnail alongside it. Returns the saved vault path,
+   * or null when the blob isn't a recognized image or the write fails.
+   */
+  private async saveLocalRecipeImage(
+    baseName: string,
+    blob: Blob,
+    note: TFile,
+  ): Promise<string | null> {
+    try {
+      const buffer = await blob.arrayBuffer();
+      const type = this.detectImageType(buffer);
+      if (!type) return null;
+
+      const name = baseName.replace(/\s+/g, "-");
+      let path: string;
+      if (this.settings.imgFolder === "") {
+        path = await (
+          this.app.vault as VaultWithAttachments
+        ).getAvailablePathForAttachments(name, type.ext, note);
+      } else {
+        await this.folderCheck(this.settings.imgFolder);
+        if (this.settings.saveImgSubdir) {
+          await this.folderCheck(`${this.settings.imgFolder}/${name}`);
+          path = `${normalizePath(this.settings.imgFolder)}/${name}/${name}.${type.ext}`;
+        } else {
+          path = `${normalizePath(this.settings.imgFolder)}/${name}.${type.ext}`;
+        }
+      }
+
+      const existing = this.app.vault.getAbstractFileByPath(path);
+      const imageFile =
+        existing instanceof TFile
+          ? existing
+          : await this.app.vault.createBinary(path, buffer);
+
+      // Best-effort gallery thumbnail — failure just falls back to the full
+      // image, so never let it abort the save.
+      await this.createThumbnail(buffer, type, imageFile.path);
+
+      return imageFile.path;
+    } catch (err) {
+      console.error("Recipe Vault: failed to save recipe photo", err);
+      return null;
+    }
+  }
 
   /**
    * Registers all Handlebars helpers used by recipe templates.

@@ -1,5 +1,5 @@
 import React, { memo } from "react";
-import type { JSX } from "preact";
+import type { TargetedKeyboardEvent } from "preact";
 import { RecipeNote } from "../types/recipe";
 
 interface RecipeCardProps {
@@ -73,7 +73,7 @@ function RecipeCardComponent({
     onOpen(recipe.path);
   };
 
-  const handleKeyDown = (event: JSX.TargetedKeyboardEvent<HTMLElement>) => {
+  const handleKeyDown = (event: TargetedKeyboardEvent<HTMLElement>) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       handleClick();
