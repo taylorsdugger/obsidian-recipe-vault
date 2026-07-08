@@ -20,7 +20,6 @@ import { LoadRecipeModal } from "./modal-load-recipe";
 import { NewRecipeModal } from "./modal-new-recipe";
 import {
   RefineRecipeModal,
-  RecipeRefineModalData,
   RecipeRefineApplyResult,
 } from "./modal-refine-recipe";
 import { RecipeGalleryView, resetGalleryUiState } from "./view-recipe-gallery";
@@ -31,6 +30,7 @@ import {
   requestRecipeChatResponse,
   requestRecipeFromImage,
 } from "./utils/openrouter";
+import type { ChatMessage } from "./utils/openrouter";
 import dateFormat from "dateformat";
 
 interface ShoppingItem {
@@ -674,97 +674,100 @@ export default class RecipeVault extends Plugin {
     const model = this.resolveAiModelId();
     const timeoutMs = Math.max(this.settings.aiTimeoutMs ?? 45000, 5000);
 
-    const requestRefineData = async (
-      refinePrompt: string,
-      loadingMessage = "Asking AI for recipe summary...",
-    ): Promise<RecipeRefineModalData> => {
+    // Read + parse the note fresh on every call so chat context and generated
+    // edits stay in sync with any edits already applied this session.
+    const readRecipe = async () => {
       const content = await this.app.vault.read(file);
       const parsed = this.parseRecipeSections(content);
       if (!parsed) {
         throw new Error(
-          "Could not find Ingredients and Instructions sections to refine in this note.",
+          "Could not find Ingredients and Instructions sections in this note.",
         );
       }
-
       if (
         parsed.recipeIngredient.length === 0 ||
         parsed.recipeInstructions.length === 0
       ) {
         throw new Error("Recipe is missing ingredient or instruction content.");
       }
+      return parsed;
+    };
 
-      const loadingNotice = new Notice(loadingMessage, 0);
+    // Turn the conversation into a single instruction for the edit model.
+    const buildEditPrompt = (messages: ChatMessage[]): string => {
+      const transcript = messages
+        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+        .join("\n");
+      return [
+        "Based on this conversation, update the recipe accordingly:",
+        "",
+        transcript,
+      ].join("\n");
+    };
 
-      try {
-        const suggestion = await requestRecipeEditSuggestion({
+    new RefineRecipeModal(
+      this.app,
+      // onChat — plain conversational reply, recipe passed as context.
+      async (messages) => {
+        const parsed = await readRecipe();
+        return requestRecipeChatResponse({
           apiKey,
           model,
-          prompt: refinePrompt,
+          messages,
           recipeIngredient: parsed.recipeIngredient,
           recipeInstructions: parsed.recipeInstructions,
           timeoutMs,
           systemPrompt: this.settings.aiSystemPrompt,
         });
-
-        return {
-          prompt: refinePrompt,
-          summary: suggestion.summary,
-          originalIngredients: parsed.recipeIngredient,
-          originalInstructions: parsed.recipeInstructions,
-          suggestedIngredients: suggestion.recipeIngredient,
-          suggestedInstructions: suggestion.recipeInstructions,
-          suggestEdits: suggestion.suggestEdits,
-        };
-      } finally {
-        loadingNotice.hide();
-      }
-    };
-
-    try {
-      const initialData = await requestRefineData(prompt);
-
-      new RefineRecipeModal(
-        this.app,
-        initialData,
-        prompt,
-        async (followUpPrompt) =>
-          requestRefineData(followUpPrompt, "Asking AI follow-up..."),
-        async (messages) =>
-          requestRecipeChatResponse({
+      },
+      // onSuggestEdit — generate a reviewable diff from the conversation.
+      async (messages) => {
+        const parsed = await readRecipe();
+        const loadingNotice = new Notice("Generating recipe edits...", 0);
+        try {
+          const suggestion = await requestRecipeEditSuggestion({
             apiKey,
             model,
-            messages,
+            prompt: buildEditPrompt(messages),
+            recipeIngredient: parsed.recipeIngredient,
+            recipeInstructions: parsed.recipeInstructions,
             timeoutMs,
             systemPrompt: this.settings.aiSystemPrompt,
-          }),
-        async (result: RecipeRefineApplyResult) => {
-          if (result.recipeIngredient.length === 0) {
-            new Notice("Ingredients cannot be empty.");
-            return;
-          }
-          if (result.recipeInstructions.length === 0) {
-            new Notice("Instructions cannot be empty.");
-            return;
-          }
+          });
+          return {
+            summary: suggestion.summary,
+            originalIngredients: parsed.recipeIngredient,
+            originalInstructions: parsed.recipeInstructions,
+            suggestedIngredients: suggestion.recipeIngredient,
+            suggestedInstructions: suggestion.recipeInstructions,
+          };
+        } finally {
+          loadingNotice.hide();
+        }
+      },
+      // onApply — write the accepted edit back to the note.
+      async (result: RecipeRefineApplyResult) => {
+        if (result.recipeIngredient.length === 0) {
+          new Notice("Ingredients cannot be empty.");
+          return;
+        }
+        if (result.recipeInstructions.length === 0) {
+          new Notice("Instructions cannot be empty.");
+          return;
+        }
 
-          const latestContent = await this.app.vault.read(file);
-          const updated = this.replaceRecipeSections(
-            latestContent,
-            result.recipeIngredient,
-            result.recipeInstructions,
-          );
+        const latestContent = await this.app.vault.read(file);
+        const updated = this.replaceRecipeSections(
+          latestContent,
+          result.recipeIngredient,
+          result.recipeInstructions,
+        );
 
-          await this.app.vault.process(file, () => updated);
-          new Notice("Applied AI recipe edits.");
-        },
-      ).open();
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "AI request failed. Please try again.";
-      new Notice(message, 8000);
-    }
+        await this.app.vault.process(file, () => updated);
+        new Notice("Applied AI recipe edits.");
+      },
+      prompt,
+    ).open();
   }
 
   private resolveAiModelId(): string {
