@@ -75,17 +75,17 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 ## ⌨️ Commands
 
-| Command                                      | What it does                                                                   |
-| -------------------------------------------- | ------------------------------------------------------------------------------ |
-| **Import recipe**                            | Opens a URL prompt and imports a recipe into a new note                        |
-| **Open recipe gallery**                      | Opens the visual gallery of your recipe notes                                  |
-| **Mark recipe as made**                      | Increments `times_made` and sets `last_made` to today on the active note       |
-| **Add checked ingredients to shopping list** | Sends checked ingredients from the active recipe to your shopping list file    |
-| **Clear checked items from shopping list**   | Removes completed items from your shopping list                                |
-| **Add recipe (manual)**                      | Creates a new recipe note from a title prompt                                  |
+| Command                                      | What it does                                                                                             |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Import recipe**                            | Opens a URL prompt and imports a recipe into a new note                                                  |
+| **Open recipe gallery**                      | Opens the visual gallery of your recipe notes                                                            |
+| **Mark recipe as made**                      | Increments `times_made` and sets `last_made` to today on the active note                                 |
+| **Add checked ingredients to shopping list** | Sends checked ingredients from the active recipe to your shopping list file                              |
+| **Clear checked items from shopping list**   | Removes completed items from your shopping list                                                          |
+| **Add recipe (manual)**                      | Creates a new recipe note from a title prompt                                                            |
 | **Add recipe from photo**                    | Transcribes a photographed cookbook page or recipe card into a new note (requires an OpenRouter API key) |
-| **Batch import recipes from URL list**       | Imports multiple recipes from a list of URLs (one per line) in the active note |
-| **Rebuild ingredient search index**          | Rebuilds the in-memory index that powers ingredient search in the gallery      |
+| **Batch import recipes from URL list**       | Imports multiple recipes from a list of URLs (one per line) in the active note                           |
+| **Rebuild ingredient search index**          | Rebuilds the in-memory index that powers ingredient search in the gallery                                |
 
 ---
 
@@ -93,7 +93,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 | Setting                                    | Description                                                                                                                                                                  |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Recipe save folder**                     | Where new recipe notes are created. The gallery browses this folder by default, so imports show up automatically                                                            |
+| **Recipe save folder**                     | Where new recipe notes are created. The gallery browses this folder by default, so imports show up automatically                                                             |
 | **Save in currently opened file**          | Import into the active note instead of creating a new one                                                                                                                    |
 | **Save images**                            | Download recipe images into your vault                                                                                                                                       |
 | **Save images in subdirectories**          | Create a per-recipe subfolder under the image folder                                                                                                                         |
@@ -103,7 +103,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                           |
 | **Recipe gallery folder**                  | The folder the Recipe Gallery browses, including its subfolders. **Leave blank to follow the Recipe save folder** (recommended). Set it only to browse a different folder    |
 | **OpenRouter API key**                     | Required for Ask AI and Add recipe from photo                                                                                                                                |
-| **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-2.5-flash-lite`)                                                                           |
+| **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-2.5-flash-lite`)                                                                            |
 | **AI request timeout (ms)**                | Timeout for AI requests (minimum 5000 ms)                                                                                                                                    |
 | **Custom AI system prompt**                | Optional override for the built-in Ask AI instructions                                                                                                                       |
 | **Recipe title filler words**              | Controls how imported titles are cleaned up                                                                                                                                  |
@@ -192,6 +192,8 @@ No cookbook page? No problem. Run **Add recipe from photo** from the command pal
 3. **Photo** — the captured photo is attached to the note by default, or choose a different image or none.
 
 This uses the same [OpenRouter](https://openrouter.ai/) API key and model as Ask AI, so no separate setup is required. There's no bundled OCR engine — the vision model does the transcription — so it works on mobile too.
+
+From my testing each receipe import from a cookbook costs under $0.001 on average (using Gemini 2.5 Flash Lite).
 
 ---
 
