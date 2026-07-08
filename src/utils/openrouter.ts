@@ -210,28 +210,91 @@ export async function requestRecipeEditSuggestion(
 // Chat-only (non-edit) request
 // ---------------------------------------------------------------------------
 
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  /**
+   * For assistant turns: whether this reply offered a recipe edit. Used to
+   * re-attach the sentinel token to history so the model keeps emitting it on
+   * later turns instead of imitating its own token-stripped prior replies.
+   */
+  offeredEdit?: boolean;
+};
 
 export interface RecipeChatRequest {
   apiKey: string;
   model: string;
   /** Full conversation history including the latest user message. */
   messages: ChatMessage[];
+  /** Current recipe, passed as context so replies can be recipe-aware. */
+  recipeIngredient: string[];
+  recipeInstructions: string[];
   /** Optional custom system prompt. Falls back to a default if omitted. */
   systemPrompt?: string;
   timeoutMs: number;
 }
 
+export interface RecipeChatResult {
+  /** Natural-language answer to show in the chat log. */
+  reply: string;
+  /**
+   * True when actually editing the recipe would help the user. The UI turns
+   * this into a "Update the recipe" button; false keeps it a plain chat.
+   */
+  offerEdit: boolean;
+}
+
+/**
+ * Sentinel the chat model appends when a recipe edit would help. Plain prose
+ * plus a marker is far more reliable across OpenRouter models than forcing
+ * JSON mode on a conversational reply (Gemini via Vertex can truncate JSON
+ * responses to a couple of characters).
+ */
+const OFFER_EDIT_TOKEN = "[OFFER_EDIT]";
+
+function parseChatPayload(content: string): RecipeChatResult {
+  const offerEdit = content.includes(OFFER_EDIT_TOKEN);
+  const reply = content.split(OFFER_EDIT_TOKEN).join("").trim();
+  return { reply, offerEdit };
+}
+
 export async function requestRecipeChatResponse(
   req: RecipeChatRequest,
-): Promise<string> {
-  const systemContent =
-    req.systemPrompt?.trim() ||
-    "You are a helpful cooking assistant. Answer questions about recipes concisely and helpfully.";
+): Promise<RecipeChatResult> {
+  const baseChatSystem =
+    "You are a friendly cooking assistant chatting with the user about one specific recipe. " +
+    "Reply in plain conversational text, concise and warm — like a knowledgeable friend texting back. " +
+    "No markdown headings or bullet lists unless genuinely helpful. " +
+    "Whenever your reply contains a concrete change that could be written straight into the recipe — " +
+    "a substitution, scaling, a dietary change, or expanding/inlining an ingredient into its components " +
+    "(e.g. spelling out a spice blend into individual spices) — " +
+    `briefly ask whether they'd like you to update the recipe, and end your reply with the exact token ${OFFER_EDIT_TOKEN} on its own. ` +
+    "For general questions, tips, explanations, or when no concrete recipe change is on the table, do not include the token.";
+
+  const systemContent = req.systemPrompt?.trim()
+    ? `${req.systemPrompt.trim()}\n\n${baseChatSystem}`
+    : baseChatSystem;
+
+  const recipeContext = [
+    "Recipe for reference:",
+    "",
+    "Ingredients:",
+    ...req.recipeIngredient.map((item) => `- ${item}`),
+    "",
+    "Instructions:",
+    ...req.recipeInstructions.map((item) => `- ${item}`),
+  ].join("\n");
 
   const messages: OpenRouterMessage[] = [
     { role: "system", content: systemContent },
-    ...req.messages,
+    { role: "system", content: recipeContext },
+    ...req.messages.map((msg) => ({
+      role: msg.role,
+      content:
+        msg.role === "assistant" && msg.offeredEdit
+          ? `${msg.content} ${OFFER_EDIT_TOKEN}`
+          : msg.content,
+    })),
   ];
 
   const response = await Promise.race([
@@ -269,7 +332,7 @@ export async function requestRecipeChatResponse(
     throw new Error("OpenRouter returned an empty response.");
   }
 
-  return content.trim();
+  return parseChatPayload(content);
 }
 
 // ---------------------------------------------------------------------------

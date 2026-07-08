@@ -1,14 +1,12 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, Modal, Notice } from "obsidian";
 import type { ChatMessage } from "./utils/openrouter";
 
 export interface RecipeRefineModalData {
-  prompt: string;
   summary: string;
   originalIngredients: string[];
   originalInstructions: string[];
   suggestedIngredients: string[];
   suggestedInstructions: string[];
-  suggestEdits: boolean;
 }
 
 export interface RecipeRefineApplyResult {
@@ -16,43 +14,96 @@ export interface RecipeRefineApplyResult {
   recipeInstructions: string[];
 }
 
+type EditStatus = "idle" | "loading" | "ready" | "applying" | "applied";
+
+interface EditState {
+  status: EditStatus;
+  data: RecipeRefineModalData | null;
+}
+
+interface UserEntry {
+  role: "user";
+  content: string;
+}
+
+interface AssistantEntry {
+  role: "assistant";
+  content: string;
+  /** Whether the model invited the user to turn this into a recipe edit. */
+  offerEdit: boolean;
+  edit: EditState;
+}
+
+type ChatEntry = UserEntry | AssistantEntry;
+
+/**
+ * Conversational "Ask AI" modal. Every message is a plain chat reply shown
+ * immediately. When a reply invites a recipe change, an inline "Update the
+ * recipe" button appears under it; confirming generates a diff to review and
+ * apply. Pure questions never touch the recipe.
+ */
 export class RefineRecipeModal extends Modal {
-  private data: RecipeRefineModalData;
-  private chatMessages: ChatMessage[] = [];
+  private entries: ChatEntry[] = [];
   private readonly initialPrompt: string;
-  private readonly onAsk: (prompt: string) => Promise<RecipeRefineModalData>;
-  private readonly onChat: (messages: ChatMessage[]) => Promise<string>;
+  private readonly onChat: (
+    messages: ChatMessage[],
+  ) => Promise<{ reply: string; offerEdit: boolean }>;
+  private readonly onSuggestEdit: (
+    messages: ChatMessage[],
+  ) => Promise<RecipeRefineModalData>;
   private readonly onApply: (
     result: RecipeRefineApplyResult,
   ) => Promise<void> | void;
 
   private chatLogEl: HTMLDivElement | null = null;
-  private diffWrapperEl: HTMLDivElement | null = null;
-  private emptyDiffEl: HTMLParagraphElement | null = null;
-  private reviewButtonEl: HTMLButtonElement | null = null;
-  private applyButtonEl: HTMLButtonElement | null = null;
-  private askButtonEl: HTMLButtonElement | null = null;
-  private suggestEditsButtonEl: HTMLButtonElement | null = null;
   private promptInputEl: HTMLTextAreaElement | null = null;
-  private isReviewVisible = false;
-  private isRequestInFlight = false;
-  private isApplyInFlight = false;
+  private sendButtonEl: HTMLButtonElement | null = null;
+  private isChatInFlight = false;
 
   constructor(
     app: App,
-    data: RecipeRefineModalData,
-    initialPrompt: string,
-    onAsk: (prompt: string) => Promise<RecipeRefineModalData>,
-    onChat: (messages: ChatMessage[]) => Promise<string>,
+    onChat: (
+      messages: ChatMessage[],
+    ) => Promise<{ reply: string; offerEdit: boolean }>,
+    onSuggestEdit: (messages: ChatMessage[]) => Promise<RecipeRefineModalData>,
     onApply: (result: RecipeRefineApplyResult) => Promise<void> | void,
+    initialPrompt = "",
   ) {
     super(app);
-    this.data = data;
-    this.initialPrompt = initialPrompt;
-    this.onAsk = onAsk;
     this.onChat = onChat;
+    this.onSuggestEdit = onSuggestEdit;
     this.onApply = onApply;
+    this.initialPrompt = initialPrompt;
   }
+
+  private get isBusy(): boolean {
+    if (this.isChatInFlight) return true;
+    return this.entries.some(
+      (entry) =>
+        entry.role === "assistant" &&
+        (entry.edit.status === "loading" || entry.edit.status === "applying"),
+    );
+  }
+
+  private toChatMessages(): ChatMessage[] {
+    return this.entries.map((entry) => ({
+      role: entry.role,
+      content: entry.content,
+      offeredEdit: entry.role === "assistant" ? entry.offerEdit : undefined,
+    }));
+  }
+
+  private isLatestAssistant(entry: AssistantEntry): boolean {
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      const current = this.entries[i];
+      if (current.role === "assistant") {
+        return current === entry;
+      }
+    }
+    return false;
+  }
+
+  // --- diff helpers ---------------------------------------------------------
 
   private hasDiff(data: RecipeRefineModalData): boolean {
     if (data.originalIngredients.length !== data.suggestedIngredients.length) {
@@ -139,91 +190,150 @@ export class RefineRecipeModal extends Modal {
     pre.textContent = this.buildDiffLines(before, after).join("\n");
   }
 
+  // --- rendering ------------------------------------------------------------
+
   private renderChatLog(): void {
     if (!this.chatLogEl) return;
     this.chatLogEl.empty();
 
-    for (const msg of this.chatMessages) {
-      const entry = this.chatLogEl.createDiv({ cls: "recipe-ai-chat-entry" });
-      entry.createDiv({
+    for (const entry of this.entries) {
+      const wrap = this.chatLogEl.createDiv({ cls: "recipe-ai-chat-entry" });
+      wrap.createDiv({
         cls:
-          msg.role === "user"
+          entry.role === "user"
             ? "recipe-ai-chat-user"
             : "recipe-ai-chat-assistant",
-        text: `${msg.role === "user" ? "You" : "AI"}: ${msg.content}`,
+        text: entry.content,
       });
+
+      if (entry.role === "assistant") {
+        this.renderEditAffordance(wrap, entry);
+      }
     }
 
-    // Auto-scroll to latest message
+    // Typing indicator bubble while waiting on a reply.
+    if (this.isChatInFlight) {
+      const wrap = this.chatLogEl.createDiv({ cls: "recipe-ai-chat-entry" });
+      const typing = wrap.createDiv({
+        cls: "recipe-ai-chat-assistant recipe-ai-chat-typing",
+      });
+      for (let i = 0; i < 3; i++) {
+        typing.createSpan({ cls: "recipe-ai-typing-dot" });
+      }
+    }
+
     this.chatLogEl.scrollTop = this.chatLogEl.scrollHeight;
   }
 
-  private refreshReviewState(): void {
-    const hasDiff = this.hasDiff(this.data);
-    const busy = this.isRequestInFlight || this.isApplyInFlight;
+  private renderEditAffordance(
+    containerEl: HTMLElement,
+    entry: AssistantEntry,
+  ): void {
+    const { status } = entry.edit;
 
-    if (this.reviewButtonEl) {
-      this.reviewButtonEl.hidden = !hasDiff;
-      this.reviewButtonEl.textContent = this.isReviewVisible
-        ? "Hide suggested edits"
-        : "Review suggested edits";
-      this.reviewButtonEl.disabled = busy;
+    // An applied edit always shows its marker, on any message.
+    if (status === "applied") {
+      containerEl.createDiv({
+        cls: "recipe-ai-edit-applied",
+        text: "✓ Recipe updated.",
+      });
+      return;
     }
 
-    if (this.emptyDiffEl) {
-      this.emptyDiffEl.hidden = hasDiff;
-      this.emptyDiffEl.textContent = this.data.suggestEdits
-        ? "AI did not produce diffable edits for this response."
-        : "No recipe edits suggested for this response.";
+    // Only the most recent reply stays interactive. Once the conversation
+    // moves on, earlier offers and un-applied diffs are retired.
+    if (!this.isLatestAssistant(entry)) {
+      return;
     }
 
-    if (this.diffWrapperEl) {
-      this.diffWrapperEl.empty();
-      this.diffWrapperEl.hidden = !(hasDiff && this.isReviewVisible);
-
-      if (hasDiff && this.isReviewVisible) {
-        this.renderDiffSection(
-          this.diffWrapperEl,
-          "Ingredient diff",
-          this.data.originalIngredients,
-          this.data.suggestedIngredients,
-        );
-        this.renderDiffSection(
-          this.diffWrapperEl,
-          "Instruction diff",
-          this.data.originalInstructions,
-          this.data.suggestedInstructions,
-        );
-      }
+    // No offer and nothing in progress → nothing to render.
+    if (!entry.offerEdit && status === "idle") {
+      return;
     }
 
-    if (this.applyButtonEl) {
-      this.applyButtonEl.hidden = !(hasDiff && this.isReviewVisible);
-      this.applyButtonEl.disabled = busy || !hasDiff;
-      this.applyButtonEl.textContent = this.isApplyInFlight
-        ? "Applying..."
-        : "Apply edits";
+    if (status === "idle") {
+      const actions = containerEl.createDiv({ cls: "recipe-ai-edit-actions" });
+      const updateBtn = actions.createEl("button", {
+        cls: "mod-cta",
+        text: "✎ Update the recipe",
+      });
+      updateBtn.disabled = this.isBusy;
+      updateBtn.addEventListener("click", () => void this.confirmEdit(entry));
+
+      const dismissBtn = actions.createEl("button", { text: "Not now" });
+      dismissBtn.disabled = this.isBusy;
+      dismissBtn.addEventListener("click", () => {
+        entry.offerEdit = false;
+        this.renderChatLog();
+      });
+      return;
     }
 
-    if (this.askButtonEl) {
-      this.askButtonEl.disabled = busy;
-      this.askButtonEl.textContent = this.isRequestInFlight
-        ? "Asking..."
-        : "Ask";
+    if (status === "loading") {
+      const actions = containerEl.createDiv({ cls: "recipe-ai-edit-actions" });
+      actions.createSpan({
+        cls: "setting-item-description",
+        text: "Generating recipe edits…",
+      });
+      return;
     }
 
-    if (this.suggestEditsButtonEl) {
-      this.suggestEditsButtonEl.disabled = busy;
+    // status is "ready" or "applying" → show the diff, then apply/discard
+    // buttons below it so the actions sit where the eye lands after review.
+    const data = entry.edit.data;
+    if (data) {
+      const diffWrapper = containerEl.createDiv({
+        cls: "recipe-ai-diff-wrapper",
+      });
+      this.renderDiffSection(
+        diffWrapper,
+        "Ingredient diff",
+        data.originalIngredients,
+        data.suggestedIngredients,
+      );
+      this.renderDiffSection(
+        diffWrapper,
+        "Instruction diff",
+        data.originalInstructions,
+        data.suggestedInstructions,
+      );
     }
 
+    const actions = containerEl.createDiv({ cls: "recipe-ai-edit-actions" });
+    const applyBtn = actions.createEl("button", {
+      cls: "mod-cta",
+      text: status === "applying" ? "Applying…" : "Apply edits",
+    });
+    applyBtn.disabled = this.isBusy;
+    applyBtn.addEventListener("click", () => void this.applyEdit(entry));
+
+    const discardBtn = actions.createEl("button", { text: "Discard" });
+    discardBtn.disabled = this.isBusy;
+    discardBtn.addEventListener("click", () => {
+      entry.edit = { status: "idle", data: null };
+      entry.offerEdit = false;
+      this.renderChatLog();
+    });
+  }
+
+  private refreshInputState(): void {
+    if (this.sendButtonEl) {
+      this.sendButtonEl.disabled = this.isBusy;
+    }
     if (this.promptInputEl) {
-      this.promptInputEl.disabled = busy;
+      this.promptInputEl.disabled = this.isBusy;
     }
   }
 
-  /** "Ask" — plain chat, no diff generated */
+  private refresh(): void {
+    this.renderChatLog();
+    this.refreshInputState();
+  }
+
+  // --- actions --------------------------------------------------------------
+
   private async runChat(): Promise<void> {
-    if (!this.promptInputEl) return;
+    if (!this.promptInputEl || this.isBusy) return;
 
     const prompt = this.promptInputEl.value.trim();
     if (!prompt) {
@@ -232,105 +342,80 @@ export class RefineRecipeModal extends Modal {
     }
 
     this.promptInputEl.value = "";
-    this.chatMessages = [
-      ...this.chatMessages,
-      { role: "user", content: prompt },
-    ];
-    this.renderChatLog();
-
-    this.isRequestInFlight = true;
-    this.refreshReviewState();
+    this.promptInputEl.style.height = "auto";
+    this.entries.push({ role: "user", content: prompt });
+    this.isChatInFlight = true;
+    this.refresh();
 
     try {
-      const response = await this.onChat([...this.chatMessages]);
-      this.chatMessages = [
-        ...this.chatMessages,
-        { role: "assistant", content: response },
-      ];
-      this.renderChatLog();
+      const result = await this.onChat(this.toChatMessages());
+      this.entries.push({
+        role: "assistant",
+        content: result.reply,
+        offerEdit: result.offerEdit,
+        edit: { status: "idle", data: null },
+      });
     } catch (error) {
-      this.chatMessages = this.chatMessages.slice(0, -1);
-      this.renderChatLog();
-      const message =
-        error instanceof Error
-          ? error.message
-          : "AI request failed. Please try again.";
-      new Notice(message, 8000);
+      this.entries.pop();
+      new Notice(this.errorMessage(error), 8000);
     } finally {
-      this.isRequestInFlight = false;
-      this.refreshReviewState();
+      this.isChatInFlight = false;
+      this.refresh();
       this.promptInputEl?.focus();
     }
   }
 
-  /** "Suggest Edits" — generates a diff of ingredient/instruction changes */
-  private async runAsk(): Promise<void> {
-    if (!this.promptInputEl) return;
+  private async confirmEdit(entry: AssistantEntry): Promise<void> {
+    if (this.isBusy) return;
 
-    const prompt = this.promptInputEl.value.trim();
-    if (!prompt) {
-      new Notice("Enter a question for AI first.");
-      return;
-    }
-
-    this.promptInputEl.value = "";
-    this.chatMessages = [
-      ...this.chatMessages,
-      { role: "user", content: prompt },
-    ];
-    this.renderChatLog();
-
-    this.isRequestInFlight = true;
-    this.isReviewVisible = false;
-    this.refreshReviewState();
+    entry.edit = { status: "loading", data: null };
+    this.refresh();
 
     try {
-      const nextData = await this.onAsk(prompt);
-      this.data = nextData;
-
-      if (nextData.summary) {
-        this.chatMessages = [
-          ...this.chatMessages,
-          { role: "assistant", content: nextData.summary },
-        ];
+      const data = await this.onSuggestEdit(this.toChatMessages());
+      if (this.hasDiff(data)) {
+        entry.edit = { status: "ready", data };
+      } else {
+        entry.edit = { status: "idle", data: null };
+        entry.offerEdit = false;
+        new Notice("AI didn't find any recipe changes to make.");
       }
-
-      this.renderChatLog();
-      this.refreshReviewState();
     } catch (error) {
-      this.chatMessages = this.chatMessages.slice(0, -1);
-      this.renderChatLog();
-      const message =
-        error instanceof Error
-          ? error.message
-          : "AI request failed. Please try again.";
-      new Notice(message, 8000);
+      entry.edit = { status: "idle", data: null };
+      new Notice(this.errorMessage(error), 8000);
     } finally {
-      this.isRequestInFlight = false;
-      this.refreshReviewState();
-      this.promptInputEl?.focus();
+      this.refresh();
     }
   }
 
-  private async runApply(): Promise<void> {
-    if (!this.hasDiff(this.data) || this.isApplyInFlight) {
-      return;
-    }
+  private async applyEdit(entry: AssistantEntry): Promise<void> {
+    const data = entry.edit.data;
+    if (!data || this.isBusy) return;
 
-    this.isApplyInFlight = true;
-    this.refreshReviewState();
+    entry.edit = { status: "applying", data };
+    this.refresh();
 
     try {
       await this.onApply({
-        recipeIngredient: this.data.suggestedIngredients,
-        recipeInstructions: this.data.suggestedInstructions,
+        recipeIngredient: data.suggestedIngredients,
+        recipeInstructions: data.suggestedInstructions,
       });
-      this.close();
+      entry.edit = { status: "applied", data };
+    } catch (error) {
+      entry.edit = { status: "ready", data };
+      new Notice(this.errorMessage(error), 8000);
     } finally {
-      this.isApplyInFlight = false;
-      this.refreshReviewState();
+      this.refresh();
     }
   }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error
+      ? error.message
+      : "AI request failed. Please try again.";
+  }
+
+  // --- lifecycle ------------------------------------------------------------
 
   onOpen(): void {
     const { contentEl } = this;
@@ -338,81 +423,51 @@ export class RefineRecipeModal extends Modal {
 
     contentEl.createEl("h3", { text: "Ask AI about this recipe" });
     contentEl.createEl("p", {
-      text: 'Use "Ask" to get an answer. Use "Suggest Edits" when you want recipe changes you can review and apply.',
+      text: "Ask anything about this recipe. If a change would help, the AI will offer to update it.",
       cls: "setting-item-description",
     });
 
     this.chatLogEl = contentEl.createDiv({ cls: "recipe-ai-chat-log" });
-    this.renderChatLog();
 
-    new Setting(contentEl).setName("Your question").addTextArea((text) => {
-      this.promptInputEl = text.inputEl;
-      text.setPlaceholder("Try: I do not eat vinegar. What should I change?");
-      text.inputEl.rows = 3;
-      text.inputEl.addClass("recipe-vault-input-full");
-      if (this.initialPrompt) {
-        text.setValue(this.initialPrompt);
+    // Messaging-app style composer: rounded textarea + send button in one row.
+    const composer = contentEl.createDiv({ cls: "recipe-ai-composer" });
+
+    this.promptInputEl = composer.createEl("textarea", {
+      cls: "recipe-ai-composer-input",
+      attr: {
+        rows: "1",
+        placeholder: "Ask about this recipe…",
+      },
+    });
+    this.promptInputEl.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        void this.runChat();
       }
-      text.inputEl.addEventListener("keydown", (event: KeyboardEvent) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          void this.runChat();
-        }
-      });
+    });
+    // Auto-grow up to a few lines as the user types.
+    this.promptInputEl.addEventListener("input", () => {
+      const el = this.promptInputEl;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
     });
 
-    // Send action row
-    new Setting(contentEl)
-      .addButton((btn) => {
-        this.askButtonEl = btn.buttonEl;
-        btn
-          .setButtonText("Ask")
-          .setCta()
-          .onClick(() => {
-            void this.runChat();
-          });
-      })
-      .addButton((btn) => {
-        this.suggestEditsButtonEl = btn.buttonEl;
-        btn.setButtonText("Suggest Edits").onClick(() => {
-          void this.runAsk();
-        });
-      });
-
-    this.emptyDiffEl = contentEl.createEl("p", {
-      cls: "setting-item-description",
+    this.sendButtonEl = composer.createEl("button", {
+      cls: "recipe-ai-composer-send mod-cta",
+      text: "➤",
+      attr: { type: "button", "aria-label": "Send" },
     });
+    this.sendButtonEl.addEventListener("click", () => void this.runChat());
 
-    this.diffWrapperEl = contentEl.createDiv({ cls: "recipe-ai-diff-wrapper" });
+    this.refresh();
 
-    // Review / Apply / Cancel row
-    new Setting(contentEl)
-      .addButton((btn) => {
-        this.reviewButtonEl = btn.buttonEl;
-        btn.setButtonText("Review suggested edits").onClick(() => {
-          this.isReviewVisible = !this.isReviewVisible;
-          this.refreshReviewState();
-        });
-      })
-      .addButton((btn) => {
-        this.applyButtonEl = btn.buttonEl;
-        btn
-          .setButtonText("Apply edits")
-          .setCta()
-          .onClick(() => {
-            void this.runApply();
-          });
-      })
-      .addButton((btn) =>
-        btn.setButtonText("Cancel").onClick(() => {
-          this.close();
-        }),
-      );
-
-    this.refreshReviewState();
-    this.promptInputEl?.focus();
-    if (this.initialPrompt) {
-      this.promptInputEl?.select();
+    // Auto-send the prompt the user typed on the note that opened this modal.
+    if (this.initialPrompt && this.promptInputEl) {
+      this.promptInputEl.value = this.initialPrompt;
+      void this.runChat();
+    } else {
+      this.promptInputEl?.focus();
     }
   }
 
