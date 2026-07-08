@@ -342,7 +342,7 @@ export class RefineRecipeModal extends Modal {
     }
 
     this.promptInputEl.value = "";
-    this.promptInputEl.style.height = "auto";
+    this.promptInputEl.setCssStyles({ height: "auto" });
     this.entries.push({ role: "user", content: prompt });
     this.isChatInFlight = true;
     this.refresh();
@@ -449,8 +449,8 @@ export class RefineRecipeModal extends Modal {
     this.promptInputEl.addEventListener("input", () => {
       const el = this.promptInputEl;
       if (!el) return;
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+      el.setCssStyles({ height: "auto" });
+      el.setCssStyles({ height: `${Math.min(el.scrollHeight, 120)}px` });
     });
 
     this.sendButtonEl = composer.createEl("button", {
