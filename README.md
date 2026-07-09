@@ -8,6 +8,12 @@
 <img alt="Downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&query=%24%5B%22recipe-vault%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&label=downloads">
 <a href="https://github.com/taylorsdugger/obsidian-recipe-vault/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/taylorsdugger/obsidian-recipe-vault?color=blue"></a>
 
+<a href="https://www.buymeacoffee.com/taylorsdugger">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="35" width="150" />
+</a>
+
+<br/>
+<br/>
 <br/>
 
 <img src="docs/screenshots/gallery.png" width="270" alt="Recipe Gallery">
