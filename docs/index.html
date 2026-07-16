@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Recipe Vault — Your recipes, in plain markdown, inside Obsidian</title>
+<title>Recipe Vault: Your recipes, in plain markdown, inside Obsidian</title>
 <meta name="description" content="Import recipes from any URL, browse them in a visual gallery, and build shopping lists automatically. A free, open-source Obsidian plugin. No subscriptions, no accounts, no ads.">
 <link rel="canonical" href="https://recipes.taylordugger.com/">
 
@@ -16,36 +16,39 @@
 
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥘</text></svg>">
 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <style>
   :root {
-    --bg: #fbf8f3;
-    --bg-alt: #f4efe7;
+    --background: #fcfbf9;
+    --foreground: #1a1813;
     --surface: #ffffff;
-    --ink: #1f1b16;
-    --ink-soft: #5c554b;
-    --line: #e7dfd3;
-    --accent: #6d28d9;
-    --accent-ink: #ffffff;
-    --shadow: 0 1px 2px rgb(31 27 22 / .04), 0 8px 24px -8px rgb(31 27 22 / .12);
-    --shadow-lg: 0 2px 4px rgb(31 27 22 / .04), 0 24px 48px -12px rgb(31 27 22 / .22);
-    --radius: 14px;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
-    --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  }
+    --surface-2: #f5f2ec;
+    --canvas-soft: #f7f5f0;
+    --card: #ffffff;
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #16130f;
-      --bg-alt: #1d1914;
-      --surface: #241f19;
-      --ink: #f5f0e8;
-      --ink-soft: #a89f92;
-      --line: #352f27;
-      --accent: #b699ff;
-      --accent-ink: #1a1024;
-      --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px -8px rgb(0 0 0 / .5);
-      --shadow-lg: 0 2px 4px rgb(0 0 0 / .3), 0 24px 48px -12px rgb(0 0 0 / .7);
-    }
+    --ink-2: #4a463d;
+    --ink-3: #6b6558;
+    --ink-4: #9a9384;
+
+    --rule: #e8e3da;
+    --rule-2: #d9d3c7;
+
+    --moss: #3a6b41;
+    --moss-deep: #2c5232;
+    --moss-soft: #a9c0ad;
+    --moss-tint: #eef2ec;
+    --moss-tint-2: #d9e5da;
+
+    --primary: #1a1813;
+    --primary-foreground: #fcfbf9;
+
+    --font-geist-sans: 'Geist', system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-newsreader: 'Newsreader', Georgia, serif;
+    --font-geist-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
   }
 
   * { box-sizing: border-box; }
@@ -58,262 +61,339 @@
 
   body {
     margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: var(--sans);
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-geist-sans);
     font-size: 17px;
-    line-height: 1.65;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    overflow-x: hidden;
   }
 
-  h1, h2, h3 { font-family: var(--serif); font-weight: 600; letter-spacing: -.02em; line-height: 1.15; margin: 0; }
+  h1, h2, h3 { margin: 0; }
   p { margin: 0; }
-  a { color: var(--accent); }
+  img { display: block; width: 100%; height: auto; }
+  a { color: var(--moss); text-decoration: none; }
+  a:hover { color: var(--moss-deep); }
+  ::selection { background: var(--moss-tint-2); }
 
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--moss);
     outline-offset: 3px;
     border-radius: 4px;
   }
 
-  .wrap { width: min(1120px, 100% - 3rem); margin-inline: auto; }
-  @media (max-width: 600px) { .wrap { width: min(1120px, 100% - 2rem); } }
+  .wrap { width: min(1160px, 100% - 48px); margin-inline: auto; }
+  @media (max-width: 600px) { .wrap { width: min(1160px, 100% - 32px); } }
 
   .skip {
     position: absolute; left: -9999px; top: 0;
-    background: var(--surface); color: var(--ink);
+    background: var(--surface); color: var(--foreground);
     padding: .75rem 1.25rem; z-index: 100; border-radius: 0 0 8px 0;
   }
   .skip:focus { left: 0; }
 
+  .serif {
+    font-family: var(--font-newsreader);
+    font-weight: 500;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+  }
+
   /* ---------- nav ---------- */
   nav {
     position: sticky; top: 0; z-index: 50;
-    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    background: rgba(252,251,249,.82);
     backdrop-filter: saturate(180%) blur(12px);
     border-bottom: 1px solid transparent;
     transition: border-color .2s;
   }
-  nav.stuck { border-bottom-color: var(--line); }
-  .nav-in { display: flex; align-items: center; justify-content: space-between; gap: 1rem; height: 62px; }
-  .brand {
-    display: flex; align-items: center; gap: .55rem;
-    font-family: var(--serif); font-size: 1.1rem; font-weight: 600;
-    color: var(--ink); text-decoration: none;
+  nav.stuck { border-bottom-color: var(--rule); }
+  .nav-in {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; height: 64px;
   }
-  .nav-links { display: flex; align-items: center; gap: 1.75rem; }
+  .brand {
+    display: flex; align-items: center; gap: 9px;
+    font-family: var(--font-newsreader); font-size: 20px; font-weight: 600;
+    color: var(--foreground);
+  }
+  .brand:hover { color: var(--foreground); }
+  .brand span { font-size: 22px; }
+  .nav-links { display: flex; align-items: center; gap: 28px; }
   .nav-links a {
-    color: var(--ink-soft); text-decoration: none; font-size: .94rem; font-weight: 500;
+    color: var(--ink-2); font-size: 15px; font-weight: 500;
     transition: color .15s;
   }
-  .nav-links a:hover { color: var(--ink); }
-  @media (max-width: 680px) { .nav-links a:not(.nav-cta) { display: none; } }
+  .nav-links a:hover { color: var(--foreground); }
   .nav-cta {
-    background: var(--ink); color: var(--bg) !important;
-    padding: .45rem 1rem; border-radius: 999px;
+    display: inline-flex; align-items: center;
+    padding: 9px 18px; border-radius: 999px;
+    background: var(--primary); color: var(--primary-foreground) !important;
+    font-size: 14px; font-weight: 600;
+    transition: opacity .15s;
   }
-  .nav-cta:hover { opacity: .85; }
+  .nav-cta:hover { opacity: .88; }
+  @media (max-width: 760px) {
+    .nav-links { gap: 18px; }
+    .nav-links a:not(.nav-cta) { display: none; }
+  }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 15px 26px; border-radius: 11px;
+    font-size: 16px; font-weight: 600;
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+  }
+  .btn svg { flex: none; }
+  .btn-primary {
+    background: var(--primary); color: var(--primary-foreground);
+    box-shadow: 0 2px 6px rgba(26,24,19,.12);
+  }
+  .btn-primary:hover {
+    color: var(--primary-foreground);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px -8px rgba(26,24,19,.32);
+  }
+  .btn-secondary {
+    background: var(--surface); color: var(--foreground);
+    border: 1px solid var(--rule-2);
+  }
+  .btn-secondary:hover { color: var(--foreground); border-color: var(--ink-4); }
+  .btn-row {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    justify-content: center; align-items: center;
+  }
 
   /* ---------- hero ---------- */
-  header.hero { padding: 5.5rem 0 3rem; text-align: center; }
-  @media (max-width: 700px) { header.hero { padding: 3.5rem 0 2rem; } }
+  header.hero { padding: 76px 0 8px; text-align: center; }
+  @media (max-width: 700px) { header.hero { padding: 48px 0 8px; } }
 
-  .eyebrow {
-    display: inline-flex; align-items: center; gap: .5rem;
-    background: var(--surface); border: 1px solid var(--line);
-    color: var(--ink-soft);
-    padding: .4rem .9rem; border-radius: 999px;
-    font-size: .82rem; font-weight: 500;
-    text-decoration: none;
-    box-shadow: var(--shadow);
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--rule);
+    color: var(--ink-2); font-weight: 500; font-size: 14px;
+    padding: 6px 14px; border-radius: 999px;
+    box-shadow: 0 1px 2px rgba(26,24,19,.04);
     transition: transform .15s, color .15s;
   }
-  .eyebrow:hover { transform: translateY(-1px); color: var(--ink); }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; flex: none; }
+  .badge:hover { transform: translateY(-1px); color: var(--foreground); }
+  .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--moss); flex: none; }
 
   h1 {
-    font-size: clamp(2.4rem, 6.2vw, 4.1rem);
-    margin: 1.6rem auto 0;
-    max-width: 15ch;
-    text-wrap: balance;
+    font-size: clamp(42px, 6vw, 68px);
+    line-height: 1.08;
+    letter-spacing: -.02em;
+    margin: 26px auto 0;
+    max-width: 16ch;
   }
-  h1 .accent { color: var(--accent); font-style: italic; }
+  h1 em { font-style: italic; color: var(--moss); }
 
-  .lede {
-    font-size: clamp(1.05rem, 2.2vw, 1.2rem);
-    color: var(--ink-soft);
-    max-width: 56ch;
-    margin: 1.4rem auto 0;
+  .hero-sub {
+    font-size: 19px; color: var(--ink-3);
+    max-width: 58ch; margin: 22px auto 0;
     text-wrap: pretty;
   }
+  .hero .btn-row { margin-top: 32px; }
+  .fine { margin-top: 14px; font-size: 14px; color: var(--ink-3); }
 
-  .cta-row {
-    display: flex; flex-wrap: wrap; gap: .75rem;
-    justify-content: center; align-items: center;
-    margin-top: 2.2rem;
+  /* ---------- posters ---------- */
+  .poster {
+    position: relative;
+    border-radius: 26px;
+    padding: 64px 64px 88px;
+    overflow: hidden;
+    background: var(--moss-tint);
   }
-  .btn {
-    display: inline-flex; align-items: center; gap: .5rem;
-    padding: .8rem 1.5rem; border-radius: 999px;
-    font-size: .97rem; font-weight: 600; text-decoration: none;
-    border: 1px solid transparent;
-    transition: transform .15s, box-shadow .15s, background .15s;
+  .poster.tint { background: var(--moss-tint); }
+  .poster.soft { background: var(--surface-2); }
+  .blob { position: absolute; border-radius: 50%; pointer-events: none; }
+  .blob-moss {
+    width: 560px; height: 560px; top: -200px; right: -140px;
+    background: radial-gradient(circle, rgba(58,107,65,.20), rgba(58,107,65,0) 68%);
   }
-  .btn:hover { transform: translateY(-2px); }
-  .btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow); }
-  .btn-primary:hover { box-shadow: var(--shadow-lg); }
-  .btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--line); }
-  .btn-ghost:hover { border-color: var(--ink-soft); }
-  .btn svg { width: 17px; height: 17px; flex: none; }
+  .blob-amber {
+    width: 480px; height: 480px; bottom: -220px; left: -160px;
+    background: radial-gradient(circle, rgba(176,125,43,.16), rgba(176,125,43,0) 68%);
+  }
 
-  .cta-note { margin-top: 1rem; font-size: .87rem; color: var(--ink-soft); }
+  /* Window chrome and phone bezel are baked into the PNGs. Their corners are
+     transparent, so shadows use drop-shadow, which follows the alpha channel;
+     box-shadow would draw a rectangle around the bounding box. */
+  .window { filter: drop-shadow(0 24px 34px rgba(26,24,19,.26)) drop-shadow(0 6px 12px rgba(26,24,19,.14)); }
+  .window.lg { filter: drop-shadow(0 34px 44px rgba(26,24,19,.30)) drop-shadow(0 10px 18px rgba(26,24,19,.16)); }
+  .phone { filter: drop-shadow(0 20px 28px rgba(26,24,19,.34)) drop-shadow(0 5px 10px rgba(26,24,19,.20)); }
 
-  .badges {
-    display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center;
-    margin-top: 2.5rem;
-  }
-  .badges img { height: 20px; display: block; }
-
-  /* ---------- showcase ---------- */
-  .showcase { padding: 3rem 0 1rem; }
-  .shots {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1.5rem;
-    align-items: start;
-  }
-  .shot { text-align: center; }
-  .shot:nth-child(odd) { transform: translateY(1.75rem); }
-
-  .phone {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 22px;
-    padding: 6px;
-    box-shadow: var(--shadow-lg);
-    transition: transform .3s ease;
-  }
-  .shot:hover .phone { transform: translateY(-6px); }
-  .phone img {
-    display: block; width: 100%; height: auto;
-    border-radius: 16px;
-    background: var(--bg-alt);
+  /* hero poster */
+  .hero-poster { margin: 44px auto 0; }
+  .hero-poster .poster-in { position: relative; max-width: 880px; margin-inline: auto; }
+  .hero-poster .phone-wrap {
+    position: absolute; bottom: -40px; right: -8px;
+    width: 172px; z-index: 2;
   }
   .caption {
-    margin-top: 1rem; font-size: .88rem; color: var(--ink-soft);
-    text-wrap: pretty; padding-inline: .25rem;
+    text-align: center; margin: 22px auto 0;
+    font-size: 15px; color: var(--ink-3); max-width: 52ch;
   }
 
-  /* Below 900px the shots become an edge-to-edge snap carousel. The wrap goes
-     full-width here rather than using a vw-based full-bleed trick: vw includes
-     the scrollbar width, which overflows the page by exactly that much. */
-  @media (max-width: 900px) {
-    .showcase .wrap { width: 100%; }
-    .shots {
-      display: flex;
-      overflow-x: auto;
-      overscroll-behavior-x: contain;
-      scroll-snap-type: x mandatory;
-      gap: 1.25rem;
-      padding: .5rem 1rem 1.5rem;
-      scrollbar-width: none;
-    }
-    .shots::-webkit-scrollbar { display: none; }
-    .shot { flex: 0 0 min(62%, 260px); scroll-snap-align: center; }
-    .shot:nth-child(odd) { transform: none; }
+  /* ---------- section headings ---------- */
+  .eyebrow {
+    font-size: 13px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase;
+    color: var(--moss); margin: 0 0 12px;
   }
+  h2 { font-size: clamp(30px, 4vw, 42px); line-height: 1.12; }
+  .section-head { text-align: center; max-width: 60ch; margin: 0 auto 48px; }
+  .section-head p.lede { margin: 16px auto 0; color: var(--ink-3); font-size: 17px; text-wrap: pretty; }
 
-  /* ---------- sections ---------- */
-  section { padding: 5.5rem 0; }
-  @media (max-width: 700px) { section { padding: 3.5rem 0; } }
-  .band { background: var(--bg-alt); border-block: 1px solid var(--line); }
-
-  .sec-head { max-width: 60ch; margin-bottom: 3rem; }
-  .sec-head.center { margin-inline: auto; text-align: center; }
-  .kicker {
-    font-family: var(--sans); font-size: .78rem; font-weight: 700;
-    letter-spacing: .1em; text-transform: uppercase;
-    color: var(--accent); margin-bottom: .85rem;
+  /* ---------- showcase ---------- */
+  .showcase { padding: 96px 0 24px; }
+  .showcase .section-head { margin-bottom: 56px; }
+  .shot { margin-bottom: 36px; }
+  .shot .poster { padding: 56px; border-radius: 24px; }
+  .shot .blob-moss { width: 440px; height: 440px; top: -160px; right: -120px; background: radial-gradient(circle, rgba(58,107,65,.16), rgba(58,107,65,0) 68%); }
+  .shot-grid {
+    position: relative;
+    display: grid; grid-template-columns: .92fr 1.28fr;
+    gap: 52px; align-items: center;
   }
-  h2 { font-size: clamp(1.8rem, 4vw, 2.5rem); text-wrap: balance; }
-  .sec-head p { margin-top: .9rem; color: var(--ink-soft); font-size: 1.05rem; text-wrap: pretty; }
+  .shot-copy .tag {
+    display: inline-block;
+    font-size: 12px; font-weight: 600; letter-spacing: .04em;
+    color: var(--moss-deep);
+    background: var(--surface); border: 1px solid var(--rule);
+    padding: 5px 12px; border-radius: 999px;
+    margin-bottom: 18px;
+  }
+  .shot-copy h3 { font-size: 34px; line-height: 1.14; margin: 0 0 14px; }
+  .shot-copy p { font-size: 17px; line-height: 1.62; color: var(--ink-3); text-wrap: pretty; }
+  .shot-media { position: relative; padding-bottom: 30px; }
+  .shot-media .phone-wrap { position: absolute; bottom: -16px; width: 150px; z-index: 2; }
+
+  /* alternating layout */
+  .shot.flip .shot-copy { order: 2; }
+  .shot.flip .shot-media { order: 1; }
+  .shot .phone-wrap { right: -24px; }
+  .shot.flip .phone-wrap { left: -24px; right: auto; }
 
   /* ---------- features ---------- */
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr); /* exactly fills the 9 cards */
-    gap: 1rem;
+  .features {
+    background: var(--canvas-soft);
+    border-block: 1px solid var(--rule);
+    margin-top: 72px;
   }
-  @media (max-width: 920px) { .grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+  .features .wrap { padding: 88px 0; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 1.6rem;
-    transition: transform .18s, box-shadow .18s, border-color .18s;
+    background: var(--card); border: 1px solid var(--rule);
+    border-radius: 14px; padding: 26px;
+    transition: transform .15s, border-color .15s;
   }
-  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
-  .card .ico { font-size: 1.5rem; line-height: 1; display: block; margin-bottom: .9rem; }
-  .card h3 { font-family: var(--sans); font-size: 1rem; font-weight: 650; letter-spacing: 0; }
-  .card p { margin-top: .4rem; font-size: .93rem; color: var(--ink-soft); line-height: 1.6; }
+  .card:hover { border-color: var(--moss-soft); transform: translateY(-3px); }
+  .card .ico { font-size: 24px; display: block; margin-bottom: 12px; }
+  .card h3 { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+  .card p { font-size: 14px; line-height: 1.6; color: var(--ink-3); }
 
-  /* ---------- steps ---------- */
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5rem; counter-reset: s; }
-  @media (max-width: 760px) { .steps { grid-template-columns: 1fr; gap: 2rem; } }
-  .step { counter-increment: s; }
-  .step::before {
-    content: counter(s);
+  /* ---------- quick start ---------- */
+  .start { padding: 88px 0; }
+  .start .section-head { margin-bottom: 52px; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
+  .step-n {
     display: grid; place-items: center;
-    width: 34px; height: 34px; border-radius: 50%;
-    background: var(--accent); color: var(--accent-ink);
-    font-family: var(--serif); font-size: 1rem; font-weight: 600;
-    margin-bottom: 1rem;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--moss); color: #fff;
+    font-family: var(--font-newsreader); font-size: 17px; font-weight: 600;
+    margin-bottom: 16px;
   }
-  .step h3 { font-family: var(--sans); font-size: 1.05rem; font-weight: 650; letter-spacing: 0; }
-  .step p { margin-top: .45rem; color: var(--ink-soft); font-size: .95rem; }
+  .steps h3 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  .steps p { color: var(--ink-3); font-size: 15px; line-height: 1.6; }
   kbd {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-    font-size: .82em; background: var(--bg-alt); border: 1px solid var(--line);
-    border-radius: 5px; padding: .1em .4em; color: var(--ink); white-space: nowrap;
+    font-family: var(--font-geist-mono); font-size: .85em;
+    background: var(--surface-2); border: 1px solid var(--rule);
+    border-radius: 5px; padding: 1px 6px;
   }
+  strong { font-weight: 600; color: var(--foreground); }
 
-  /* ---------- privacy split ---------- */
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center; }
-  @media (max-width: 860px) { .split { grid-template-columns: 1fr; gap: 2.5rem; } }
-  .checks { list-style: none; padding: 0; margin: 0; display: grid; gap: .9rem; }
-  .checks li { display: flex; gap: .75rem; align-items: flex-start; font-size: .97rem; }
-  .checks svg { width: 20px; height: 20px; flex: none; color: var(--accent); margin-top: .2rem; }
-  .checks strong { font-weight: 620; }
-  .checks span { color: var(--ink-soft); }
+  /* ---------- privacy ---------- */
+  .privacy { background: var(--canvas-soft); border-block: 1px solid var(--rule); }
+  .privacy .wrap {
+    padding: 88px 0;
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 64px; align-items: center;
+  }
+  .privacy h2 { font-size: clamp(28px, 3.6vw, 38px); line-height: 1.14; }
+  .privacy .lede { margin: 16px 0 0; color: var(--ink-3); font-size: 16px; line-height: 1.62; text-wrap: pretty; }
+  .privacy .more { margin: 20px 0 0; }
+  .privacy .more a { font-weight: 600; }
+  .checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; }
+  .checks li { display: flex; gap: 12px; align-items: flex-start; font-size: 16px; color: var(--ink-3); }
+  .checks svg { flex: none; margin-top: 2px; }
 
   /* ---------- final cta ---------- */
-  .final { text-align: center; }
-  .final h2 { max-width: 18ch; margin-inline: auto; }
-  .final p { max-width: 50ch; margin: 1rem auto 0; color: var(--ink-soft); }
+  .cta { padding: 96px 0; text-align: center; }
+  .cta h2 { font-size: clamp(32px, 4.5vw, 48px); line-height: 1.1; letter-spacing: -.02em; margin: 0 auto; max-width: 18ch; }
+  .cta .lede { margin: 16px auto 0; color: var(--ink-3); font-size: 18px; max-width: 50ch; }
+  .cta .btn-row { margin-top: 30px; }
 
   /* ---------- footer ---------- */
-  footer {
-    border-top: 1px solid var(--line);
-    padding: 3rem 0;
-    font-size: .9rem;
-    color: var(--ink-soft);
+  footer { border-top: 1px solid var(--rule); background: var(--canvas-soft); }
+  footer .wrap {
+    padding: 40px 0;
+    display: flex; flex-wrap: wrap; gap: 20px;
+    justify-content: space-between; align-items: center;
+    font-size: 14px; color: var(--ink-3);
   }
-  .foot-in { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: space-between; align-items: center; }
-  .foot-links { display: flex; flex-wrap: wrap; gap: 1.5rem; }
-  footer a { color: var(--ink-soft); text-decoration: none; }
-  footer a:hover { color: var(--ink); text-decoration: underline; }
-  .foot-note { font-size: .84rem; }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 22px; }
+  .foot-links a { color: var(--ink-3); }
+  .foot-links a:hover { color: var(--foreground); }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1000px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .shot-grid { gap: 36px; }
+  }
+  @media (max-width: 900px) {
+    .shot-grid { grid-template-columns: 1fr; gap: 32px; }
+    .shot.flip .shot-copy, .shot.flip .shot-media { order: 0; }
+    .shot .poster { padding: 40px; }
+    .shot-media { padding-bottom: 0; padding-right: 64px; }
+    .shot .phone-wrap, .shot.flip .phone-wrap { right: 0; left: auto; bottom: -12px; width: 118px; }
+    .privacy .wrap { grid-template-columns: 1fr; gap: 40px; }
+    .steps { grid-template-columns: 1fr; gap: 32px; }
+    .poster { padding: 40px 40px 64px; }
+    .hero-poster .phone-wrap { width: 132px; right: 0; bottom: -28px; }
+  }
+  @media (max-width: 700px) {
+    body { font-size: 16px; }
+    .showcase { padding: 64px 0 16px; }
+    .features .wrap, .start, .privacy .wrap { padding: 64px 0; }
+    .cta { padding: 72px 0; }
+    .features { margin-top: 48px; }
+    .cards { grid-template-columns: 1fr; }
+    .poster { padding: 24px 24px 44px; border-radius: 20px; }
+    .shot .poster { padding: 28px 24px; border-radius: 20px; }
+    .shot-media { padding-right: 48px; }
+    .shot-copy h3 { font-size: 26px; }
+    .hero-sub { font-size: 17px; }
+    .btn { padding: 13px 22px; font-size: 15px; }
+    .btn-row .btn { flex: 1 1 auto; justify-content: center; }
+    .hero-poster .phone-wrap { width: 96px; bottom: -18px; }
+    .shot .phone-wrap, .shot.flip .phone-wrap { width: 92px; }
+    footer .wrap { justify-content: center; text-align: center; }
+    .foot-links { justify-content: center; gap: 16px; }
+  }
 </style>
 </head>
 <body>
 
 <a class="skip" href="#main">Skip to content</a>
 
+<!-- NAV -->
 <nav id="nav">
   <div class="wrap nav-in">
-    <a class="brand" href="#top">🥘 Recipe&nbsp;Vault</a>
+    <a class="brand" href="#top"><span>🥘</span> Recipe&nbsp;Vault</a>
     <div class="nav-links">
       <a href="#features">Features</a>
       <a href="#start">Quick start</a>
@@ -324,201 +404,297 @@
   </div>
 </nav>
 
-<main id="main">
 <div id="top"></div>
 
-<header class="hero">
-  <div class="wrap">
-    <a class="eyebrow" href="https://community.obsidian.md/plugins/recipe-vault">
-      <span class="dot"></span> Available in the Obsidian community plugin directory
+<main id="main">
+
+  <!-- HERO -->
+  <header class="hero wrap">
+    <a class="badge" href="https://community.obsidian.md/plugins/recipe-vault">
+      <span class="dot"></span>
+      Available in the Obsidian community plugin directory
     </a>
 
-    <h1>Your recipes, in <span class="accent">plain markdown</span>.</h1>
+    <h1 class="serif">Your recipes, in <em>plain markdown</em>.</h1>
 
-    <p class="lede">
-      Paste a URL, get a clean recipe note. Browse your collection in a visual gallery,
-      search by what's already in the fridge, and build a shopping list in one tap —
-      all inside Obsidian. No subscriptions, no accounts, no ads.
+    <p class="hero-sub">
+      Paste a URL, get a clean recipe note. Browse your whole collection in a visual gallery,
+      search by what's already in the fridge, and build a shopping list in one tap, all inside Obsidian.
+      No subscriptions, no accounts, no ads.
     </p>
 
-    <div class="cta-row">
+    <div class="btn-row">
       <a class="btn btn-primary" href="obsidian://show-plugin?id=recipe-vault">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 12 5 5 5-5"/><path d="M4 21h16"/></svg>
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 12 5 5 5-5"/><path d="M4 21h16"/></svg>
         Install in Obsidian
       </a>
-      <a class="btn btn-ghost" href="https://github.com/taylorsdugger/obsidian-recipe-vault">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.3-.5-1.5.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3Z"/></svg>
+      <a class="btn btn-secondary" href="https://github.com/taylorsdugger/obsidian-recipe-vault">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.3-.5-1.5.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3Z"/></svg>
         View source
       </a>
     </div>
-    <p class="cta-note">
-      Free and open source (MIT). Works on desktop and mobile.
-    </p>
+    <p class="fine">Free and open source (MIT) · Works on desktop and mobile.</p>
+  </header>
 
-    <div class="badges">
-      <a href="https://github.com/taylorsdugger/obsidian-recipe-vault/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/taylorsdugger/obsidian-recipe-vault?logo=obsidian&color=6d28d9" loading="lazy" width="88" height="20"></a>
-      <img alt="Downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=6d28d9&query=%24%5B%22recipe-vault%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&label=downloads" loading="lazy" width="110" height="20">
-      <a href="https://github.com/taylorsdugger/obsidian-recipe-vault/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/taylorsdugger/obsidian-recipe-vault?color=6d28d9" loading="lazy" width="76" height="20"></a>
+  <!-- HERO POSTER -->
+  <div class="wrap hero-poster">
+    <div class="poster tint">
+      <div class="blob blob-moss"></div>
+      <div class="blob blob-amber"></div>
+
+      <div class="poster-in">
+        <div class="window lg">
+          <img src="screenshots/desktop/gallery.png" width="1146" height="844" alt="Recipe gallery in Obsidian showing a grid of recipe cards with photos, meal types, and cook times">
+        </div>
+
+        <div class="phone-wrap">
+          <div class="phone">
+            <img src="screenshots/mobile/gallery.png" width="474" height="1008" loading="lazy" alt="Recipe gallery on mobile">
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">Every recipe becomes a visual card. Filter by tag, sort, and find tonight's dinner in seconds, on desktop or in your pocket.</p>
+  </div>
+
+  <!-- SHOWCASE -->
+  <div class="wrap showcase">
+    <div class="section-head">
+      <p class="eyebrow">A tour of the vault</p>
+      <h2 class="serif">Five screens you'll actually use</h2>
+    </div>
+
+    <!-- 1 · Recipe note -->
+    <div class="shot flip">
+      <div class="poster soft">
+        <div class="blob blob-moss"></div>
+        <div class="shot-grid">
+          <div class="shot-copy">
+            <span class="tag">Recipe note</span>
+            <h3 class="serif">A clean recipe, in plain markdown</h3>
+            <p>Each recipe is an ordinary note with a hero photo, ingredients, and one-tap actions. No lock-in, no subscriptions, yours forever.</p>
+          </div>
+          <div class="shot-media">
+            <div class="window">
+              <img src="screenshots/desktop/recipe-note.png" width="848" height="646" loading="lazy" alt="A recipe note open in Obsidian with a hero photo, ingredients, and action buttons">
+            </div>
+            <div class="phone-wrap">
+              <div class="phone">
+                <img src="screenshots/mobile/recipe-note.png" width="474" height="1008" loading="lazy" alt="The same recipe note on mobile">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 · Ask AI -->
+    <div class="shot">
+      <div class="poster tint">
+        <div class="blob blob-moss"></div>
+        <div class="shot-grid">
+          <div class="shot-copy">
+            <span class="tag">Ask AI</span>
+            <h3 class="serif">Ask AI about any recipe</h3>
+            <p>Swap an ingredient, scale the batch, or simplify the prep, then apply the change straight to your note with a single click.</p>
+          </div>
+          <div class="shot-media">
+            <div class="window">
+              <img src="screenshots/desktop/ask-ai.png" width="1146" height="844" loading="lazy" alt="The Ask AI panel suggesting an edit to a recipe in Obsidian">
+            </div>
+            <div class="phone-wrap">
+              <div class="phone">
+                <img src="screenshots/mobile/ask-ai.png" width="474" height="1008" loading="lazy" alt="Ask AI on mobile">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 · Shopping list -->
+    <div class="shot flip">
+      <div class="poster soft">
+        <div class="blob blob-moss"></div>
+        <div class="shot-grid">
+          <div class="shot-copy">
+            <span class="tag">Shopping list</span>
+            <h3 class="serif">One tap to your shopping list</h3>
+            <p>Add a recipe's ingredients to a running list that remembers exactly which dish each item came from. Check off as you shop.</p>
+          </div>
+          <div class="shot-media">
+            <div class="window">
+              <img src="screenshots/desktop/shopping-list.png" width="848" height="646" loading="lazy" alt="A shopping list note in Obsidian grouped by the recipe each ingredient came from">
+            </div>
+            <div class="phone-wrap">
+              <div class="phone">
+                <img src="screenshots/mobile/shopping-list.png" width="474" height="1008" loading="lazy" alt="The shopping list on mobile">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4 · Import -->
+    <div class="shot">
+      <div class="poster tint">
+        <div class="blob blob-moss"></div>
+        <div class="shot-grid">
+          <div class="shot-copy">
+            <span class="tag">Import</span>
+            <h3 class="serif">Paste a link, get a recipe</h3>
+            <p>Drop in any recipe URL and Recipe Vault saves a clean, ad-free note to your vault. No scrolling past life stories again.</p>
+          </div>
+          <div class="shot-media">
+            <div class="window">
+              <img src="screenshots/desktop/import.png" width="1146" height="844" loading="lazy" alt="The import dialog in Obsidian with a recipe URL pasted in">
+            </div>
+            <div class="phone-wrap">
+              <div class="phone">
+                <img src="screenshots/mobile/import.png" width="474" height="1008" loading="lazy" alt="Importing a recipe on mobile">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-</header>
 
-<div class="showcase">
-  <div class="wrap">
-    <div class="shots">
-      <figure class="shot" style="margin:0">
-        <div class="phone"><img src="site-img/import.png" alt="The import dialog, with a recipe URL pasted into the prompt" width="640" height="1422" loading="lazy" decoding="async"></div>
-        <figcaption class="caption">Paste a URL. Get a formatted note.</figcaption>
-      </figure>
-      <figure class="shot" style="margin:0">
-        <div class="phone"><img src="site-img/recipe-note.png" alt="A banana bread recipe note with Mark as made, shopping list, and Ask AI buttons" width="640" height="1422" loading="lazy" decoding="async"></div>
-        <figcaption class="caption">Action buttons built into every note.</figcaption>
-      </figure>
-      <figure class="shot" style="margin:0">
-        <div class="phone"><img src="site-img/gallery.png" alt="The recipe gallery showing a grid of recipe cards with photos, meal types, and cook times" width="640" height="1422" loading="lazy" decoding="async"></div>
-        <figcaption class="caption">Browse the whole collection visually.</figcaption>
-      </figure>
-      <figure class="shot" style="margin:0">
-        <div class="phone"><img src="site-img/search.png" alt="Search results filtering recipes as you type" width="640" height="1422" loading="lazy" decoding="async"></div>
-        <figcaption class="caption">Search titles, meal types, and ingredients.</figcaption>
-      </figure>
-    </div>
-  </div>
-</div>
+  <!-- FEATURES -->
+  <section class="features" id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Features</p>
+        <h2 class="serif">Everything you'd want, none of the subscription</h2>
+        <p class="lede">Recipe Vault keeps your collection as ordinary markdown notes in your own vault, so it stays yours, works offline, and syncs however you already sync.</p>
+      </div>
 
-<section id="features" class="band">
-  <div class="wrap">
-    <div class="sec-head center">
-      <p class="kicker">Features</p>
-      <h2>Everything you'd want, none of the subscription</h2>
-      <p>Recipe Vault keeps your collection as ordinary markdown notes in your own vault — so it stays yours, works offline, and syncs however you already sync.</p>
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <span class="ico" aria-hidden="true">🌐</span>
-        <h3>Import from any URL</h3>
-        <p>Reads structured recipe data (JSON-LD) straight off the page and builds a clean note instantly — no ads, no life story about the author's trip to Tuscany.</p>
-      </div>
-      <div class="card">
-        <span class="ico" aria-hidden="true">📸</span>
-        <h3>Add a recipe from a photo</h3>
-        <p>Photograph a cookbook page or recipe card and let AI vision transcribe it, with a verify-and-edit step before saving. Multi-page spreads work in one go.</p>
-      </div>
-      <div class="card">
-        <span class="ico" aria-hidden="true">🖼️</span>
-        <h3>Recipe gallery</h3>
-        <p>Browse your whole collection visually in a dedicated gallery view, with photos, meal types, and cook times at a glance.</p>
-      </div>
-      <div class="card">
-        <span class="ico" aria-hidden="true">🔍</span>
-        <h3>Search everything</h3>
-        <p>Filter as you type across titles, meal types, <em>and</em> ingredients — so you can find every recipe that uses what's already in the fridge.</p>
-      </div>
-      <div class="card">
-        <span class="ico" aria-hidden="true">⚖️</span>
-        <h3>Shopping list</h3>
-        <p>Check off ingredients in a note and send them to a single shopping list file, with units merged automatically.</p>
-      </div>
-      <div class="card">
-        <span class="ico" aria-hidden="true">🔁</span>
-        <h3>Compare recipes</h3>
-        <p>Select multiple recipes and view them side by side, with shared and unique ingredients highlighted.</p>
-      </div>
-      <div class="card">
-        <span class="ico" aria-hidden="true">📅</span>
-        <h3>Mark as made</h3>
-        <p>Track when you last made something and how many times, right in the note's frontmatter.</p>
-      </div>
-      <div class="card">
-        <span class="ico" aria-hidden="true">🤖</span>
-        <h3>Ask AI for edits</h3>
-        <p>Request changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter. Optional, and it needs your own API key.</p>
-      </div>
-      <div class="card">
-        <span class="ico" aria-hidden="true">🎨</span>
-        <h3>Customizable templates</h3>
-        <p>Full Handlebars support, so imported notes come out looking exactly how you want them.</p>
+      <div class="cards">
+        <div class="card">
+          <span class="ico">🌐</span>
+          <h3>Import from any URL</h3>
+          <p>Reads structured recipe data (JSON-LD) straight off the page and builds a clean note instantly. No ads, no life story about a trip to Tuscany.</p>
+        </div>
+        <div class="card">
+          <span class="ico">📸</span>
+          <h3>Add a recipe from a photo</h3>
+          <p>Photograph a cookbook page and let AI vision transcribe it, with a verify-and-edit step before saving. Multi-page spreads work in one go.</p>
+        </div>
+        <div class="card">
+          <span class="ico">🖼️</span>
+          <h3>Recipe gallery</h3>
+          <p>Browse your whole collection visually in a dedicated gallery view, with photos, meal types, and cook times at a glance.</p>
+        </div>
+        <div class="card">
+          <span class="ico">🔍</span>
+          <h3>Search everything</h3>
+          <p>Filter as you type across titles, meal types, <em>and</em> ingredients, so you can find every recipe that uses what's already in the fridge.</p>
+        </div>
+        <div class="card">
+          <span class="ico">⚖️</span>
+          <h3>Shopping list</h3>
+          <p>Check off ingredients in a note and send them to a single shopping list file, with units merged automatically.</p>
+        </div>
+        <div class="card">
+          <span class="ico">🔁</span>
+          <h3>Compare recipes</h3>
+          <p>Select multiple recipes and view them side by side, with shared and unique ingredients highlighted.</p>
+        </div>
+        <div class="card">
+          <span class="ico">📅</span>
+          <h3>Mark as made</h3>
+          <p>Track when you last made something and how many times, right in the note's frontmatter.</p>
+        </div>
+        <div class="card">
+          <span class="ico">🤖</span>
+          <h3>Ask AI for edits</h3>
+          <p>Request changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter. Optional, and it needs your own API key.</p>
+        </div>
+        <div class="card">
+          <span class="ico">🎨</span>
+          <h3>Customizable templates</h3>
+          <p>Full Handlebars support, so imported notes come out looking exactly how you want them.</p>
+        </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<section id="start">
-  <div class="wrap">
-    <div class="sec-head center">
-      <p class="kicker">Quick start</p>
-      <h2>From URL to recipe note in about ten seconds</h2>
+  <!-- QUICK START -->
+  <section class="wrap start" id="start">
+    <div class="section-head">
+      <p class="eyebrow">Quick start</p>
+      <h2 class="serif">From URL to recipe note in about ten seconds</h2>
     </div>
     <div class="steps">
-      <div class="step">
+      <div>
+        <div class="step-n">1</div>
         <h3>Install the plugin</h3>
         <p>In Obsidian, open <kbd>Settings → Community plugins</kbd>, search for <strong>Recipe Vault</strong>, then install and enable it.</p>
       </div>
-      <div class="step">
+      <div>
+        <div class="step-n">2</div>
         <h3>Paste a recipe URL</h3>
         <p>Click the chef hat icon in the ribbon (or run <strong>Import recipe</strong> from the command palette), paste a link, and press Enter.</p>
       </div>
-      <div class="step">
+      <div>
+        <div class="step-n">3</div>
         <h3>Cook from your vault</h3>
         <p>The note lands in your save folder. Click the utensils icon to open the gallery and browse everything you've saved.</p>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<section id="privacy" class="band">
-  <div class="wrap split">
-    <div class="sec-head" style="margin-bottom:0">
-      <p class="kicker">Local first</p>
-      <h2>Your recipes don't live on someone else's server</h2>
-      <p>Every recipe is a markdown file in your vault. Nothing is locked in a proprietary format, nothing needs an account, and nothing disappears when a startup gets acquired.</p>
-      <p style="margin-top:1.25rem">
-        <a href="https://github.com/taylorsdugger/obsidian-recipe-vault#-network-use-and-privacy">Read the full network &amp; privacy notes →</a>
-      </p>
+  <!-- PRIVACY -->
+  <section class="privacy" id="privacy">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">Local first</p>
+        <h2 class="serif">Your recipes don't live on someone else's server</h2>
+        <p class="lede">Every recipe is a markdown file in your vault. Nothing is locked in a proprietary format, nothing needs an account, and nothing disappears when a startup gets acquired.</p>
+        <p class="more"><a href="https://github.com/taylorsdugger/obsidian-recipe-vault#-network-use-and-privacy">Read the full network &amp; privacy notes →</a></p>
+      </div>
+      <ul class="checks">
+        <li>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--moss)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span><strong>No telemetry.</strong> Recipe Vault collects nothing about you or your vault.</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--moss)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span><strong>No accounts, no ads, no subscription.</strong> Install it and it works.</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--moss)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span><strong>Network use is opt-in and specific.</strong> It fetches the recipe pages you ask for; AI features only run with your own OpenRouter key.</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--moss)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span><strong>Open source, MIT licensed.</strong> Read every line, fork it, or send a pull request.</span>
+        </li>
+      </ul>
     </div>
-    <ul class="checks">
-      <li>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        <span><strong>No telemetry.</strong> Recipe Vault collects nothing about you or your vault.</span>
-      </li>
-      <li>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        <span><strong>No accounts, no ads, no subscription.</strong> Install it and it works.</span>
-      </li>
-      <li>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        <span><strong>Network use is opt-in and specific.</strong> It fetches the recipe pages you ask for; AI features only run with your own OpenRouter key.</span>
-      </li>
-      <li>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        <span><strong>Open source, MIT licensed.</strong> Read every line, fork it, or send a pull request.</span>
-      </li>
-    </ul>
-  </div>
-</section>
+  </section>
 
-<section class="final">
-  <div class="wrap">
-    <h2>Start building your cookbook</h2>
-    <p>Free, open source, and already waiting in Obsidian's community plugin directory.</p>
-    <div class="cta-row">
+  <!-- FINAL CTA -->
+  <section class="wrap cta">
+    <h2 class="serif">Start building your cookbook</h2>
+    <p class="lede">Free, open source, and already waiting in Obsidian's community plugin directory.</p>
+    <div class="btn-row">
       <a class="btn btn-primary" href="obsidian://show-plugin?id=recipe-vault">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 12 5 5 5-5"/><path d="M4 21h16"/></svg>
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 12 5 5 5-5"/><path d="M4 21h16"/></svg>
         Install in Obsidian
       </a>
-      <a class="btn btn-ghost" href="https://community.obsidian.md/plugins/recipe-vault">Browse the directory</a>
+      <a class="btn btn-secondary" href="https://community.obsidian.md/plugins/recipe-vault">Browse the directory</a>
     </div>
-    <p class="cta-note">Button not working? You'll need <a href="https://obsidian.md/download">Obsidian</a> installed first.</p>
-  </div>
-</section>
+    <p class="fine">Button not working? You'll need <a href="https://obsidian.md/download">Obsidian</a> installed first.</p>
+  </section>
+
 </main>
 
+<!-- FOOTER -->
 <footer>
-  <div class="wrap foot-in">
-    <p class="foot-note">
-      Built by <a href="https://taylordugger.com">Taylor Dugger</a> · <a href="https://github.com/taylorsdugger/obsidian-recipe-vault/blob/main/LICENSE">MIT licensed</a>
-    </p>
+  <div class="wrap">
+    <p>Built by <a href="https://taylordugger.com">Taylor Dugger</a> · <a href="https://github.com/taylorsdugger/obsidian-recipe-vault/blob/main/LICENSE">MIT licensed</a></p>
     <div class="foot-links">
       <a href="https://github.com/taylorsdugger/obsidian-recipe-vault">GitHub</a>
       <a href="https://github.com/taylorsdugger/obsidian-recipe-vault/issues">Report an issue</a>
