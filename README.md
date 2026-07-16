@@ -4,21 +4,18 @@
 
 **Your recipes, in plain markdown, right inside Obsidian.**
 
+<a href="https://recipes.taylordugger.com"><img alt="Website" src="https://img.shields.io/badge/website-recipes.taylordugger.com-7c3aed?logo=safari&logoColor=white"></a>
 <a href="https://github.com/taylorsdugger/obsidian-recipe-vault/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/taylorsdugger/obsidian-recipe-vault?logo=obsidian&color=7c3aed"></a>
 <img alt="Downloads" src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&query=%24%5B%22recipe-vault%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&label=downloads">
 <a href="https://github.com/taylorsdugger/obsidian-recipe-vault/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/taylorsdugger/obsidian-recipe-vault?color=blue"></a>
 
-<a href="https://www.buymeacoffee.com/taylorsdugger">
-  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="35" width="150" />
-</a>
-
-<br/>
-<br/>
 <br/>
 
-<img src="docs/screenshots/gallery.png" width="270" alt="Recipe Gallery">
-&nbsp;&nbsp;
-<img src="docs/screenshots/recipe-note.png" width="270" alt="A recipe note with built-in action buttons">
+**[🌐 Visit the site](https://recipes.taylordugger.com)** &nbsp;·&nbsp; **[📦 Install from the community directory](https://community.obsidian.md/plugins/recipe-vault)**
+
+<br/>
+
+<img src="docs/panels/1-gallery.png" alt="Your whole cookbook, at a glance: every recipe becomes a visual card you can filter by tag and sort, on desktop and mobile">
 
 </div>
 
@@ -26,7 +23,7 @@
 
 Import recipes from the web, browse them in a visual gallery, and build shopping lists automatically. Paste a URL, get a clean recipe note. No subscriptions, no accounts, no ads, just your recipes in your vault.
 
-📦 **[Available in the Obsidian Community Plugins directory →](https://community.obsidian.md/plugins/recipe-vault)**
+Screenshots and a walkthrough of every feature: **[recipes.taylordugger.com](https://recipes.taylordugger.com)**.
 
 ---
 
@@ -42,6 +39,16 @@ Import recipes from the web, browse them in a visual gallery, and build shopping
 - 📅 **Mark as made:** track when you last made a recipe and how many times.
 - 🤖 **Ask AI for edits:** request changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter (API key required).
 - 🎨 **Customizable templates:** full Handlebars support so your notes look exactly how you want.
+
+<div align="center">
+
+<img src="docs/panels/2-recipe-note.png" alt="A clean recipe, in plain markdown: each recipe is an ordinary note with a hero photo, ingredients, and one-tap actions">
+
+<br/>
+
+<img src="docs/panels/4-shopping-list.png" alt="One tap to your shopping list: ingredients go to a running list that remembers which dish each item came from">
+
+</div>
 
 ---
 
@@ -71,9 +78,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 <div align="center">
 
-<img src="docs/screenshots/import.png" width="250" alt="Import a recipe by pasting a URL">
-&nbsp;&nbsp;
-<img src="docs/screenshots/search.png" width="250" alt="Search across recipes and ingredients">
+<img src="docs/panels/5-import.png" alt="Paste a link, get a recipe: drop in any recipe URL and Recipe Vault saves a clean, ad-free note to your vault">
 
 </div>
 
@@ -183,7 +188,13 @@ last_made:
 
 Recipe Vault can use an AI model to suggest edits to a recipe directly in the note preview (for example, "make this dairy-free" or "scale to 2 servings"). This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add in plugin settings.
 
-> **No OpenRouter key yet?** Sign up free at [openrouter.ai](https://openrouter.ai/), then grab a key from [openrouter.ai/keys](https://openrouter.ai/keys). It's pay-as-you-go (no subscription) — the default model costs well under a cent per request. Paste the key into **Recipe Vault settings → OpenRouter API key**.
+<div align="center">
+
+<img src="docs/panels/3-ask-ai.png" alt="Ask AI about any recipe: swap an ingredient, scale the batch, or simplify the prep, then apply the change to your note">
+
+</div>
+
+> **No OpenRouter key yet?** Sign up free at [openrouter.ai](https://openrouter.ai/), then grab a key from [openrouter.ai/keys](https://openrouter.ai/keys). It's pay-as-you-go (no subscription), and the default model costs well under a cent per request. Paste the key into **Recipe Vault settings → OpenRouter API key**.
 
 The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
 
@@ -193,13 +204,13 @@ The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible m
 
 No cookbook page? No problem. Run **Add recipe from photo** from the command palette to turn a photographed cookbook page or recipe card into a note:
 
-1. **Capture** — take a photo (camera opens automatically on mobile) or choose existing image files. Multiple photos are treated as pages of a single recipe, so multi-page cookbook spreads work in one go.
-2. **Verify** — the vision model transcribes the name, ingredients, instructions, time, and yield; edit the result before saving to fix any misreads.
-3. **Photo** — the captured photo is attached to the note by default, or choose a different image or none.
+1. **Capture:** take a photo (camera opens automatically on mobile) or choose existing image files. Multiple photos are treated as pages of a single recipe, so multi-page cookbook spreads work in one go.
+2. **Verify:** the vision model transcribes the name, ingredients, instructions, time, and yield; edit the result before saving to fix any misreads.
+3. **Photo:** the captured photo is attached to the note by default, or choose a different image or none.
 
-This uses the same [OpenRouter](https://openrouter.ai/) API key and model as Ask AI, so no separate setup is required. There's no bundled OCR engine — the vision model does the transcription — so it works on mobile too.
+This uses the same [OpenRouter](https://openrouter.ai/) API key and model as Ask AI, so no separate setup is required. There's no bundled OCR engine; the vision model does the transcription, so it works on mobile too.
 
-From my testing each receipe import from a cookbook costs under $0.001 on average (using Gemini 2.5 Flash Lite).
+From my testing each recipe import from a cookbook costs under $0.001 on average (using Gemini 2.5 Flash Lite).
 
 ---
 
