@@ -1285,9 +1285,13 @@ export default class RecipeVault extends Plugin {
     this.refreshRecipeGalleryView();
   }
 
-  /** Promise-based delay used to back off between fetch retries. */
+  /**
+   * Promise-based delay used to back off between fetch retries. Uses the
+   * global timer, not `window`, so the fetch path also runs under Node
+   * (tests) and later outside the renderer.
+   */
   private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
