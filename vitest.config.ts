@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["test/**/*.test.ts"],
+    include: ["test/**/*.test.ts", "packages/core/test/**/*.test.ts"],
   },
   resolve: {
     alias: {

@@ -32,15 +32,14 @@ import {
 } from "./utils/openrouter";
 import type { ChatMessage } from "./utils/openrouter";
 import dateFormat from "dateformat";
-
-interface ShoppingItem {
-  checked: boolean;
-  amount: number;
-  unit: string;
-  name: string;
-  sources: string[];
-  original: string;
-}
+import {
+  itemFromLine,
+  mergeShoppingItems,
+  parseShoppingListMarkdown,
+  removeCheckedItems,
+  renderShoppingListMarkdown,
+} from "@recipe-vault/core";
+import type { ShoppingItem } from "@recipe-vault/core";
 
 interface MarkdownSectionRange {
   headingEnd: number;
@@ -992,119 +991,30 @@ export default class RecipeVault extends Plugin {
         view.editor.setValue(newLines.join("\n"));
 
         // Parse new items
-        const newItems: ShoppingItem[] = checked.map((text) => {
-          const parsed = this.parseShoppingLine(text);
-          return parsed
-            ? {
-                checked: false,
-                ...parsed,
-                sources: [recipeName],
-                original: text,
-              }
-            : {
-                checked: false,
-                amount: 0,
-                unit: "",
-                name: text.toLowerCase(),
-                sources: [recipeName],
-                original: text,
-              };
-        });
+        const newItems: ShoppingItem[] = checked.map((text) =>
+          itemFromLine(text, recipeName),
+        );
 
         // Read and parse existing shopping list
         const listPath = normalizePath(this.settings.shoppingListFile);
         const existingFile = this.app.vault.getAbstractFileByPath(listPath);
-        const headerLines: string[] = [];
-        const existingItems: ShoppingItem[] = [];
+        let headerLines: string[] = [];
+        let existingItems: ShoppingItem[] = [];
 
         if (existingFile && existingFile instanceof TFile) {
           const existingContent = await this.app.vault.read(existingFile);
-          let foundFirstItem = false;
-          for (const line of existingContent.split("\n")) {
-            const isItem = /^- \[[ xX]\]/.test(line);
-            if (!isItem && !foundFirstItem) {
-              headerLines.push(line);
-            } else if (isItem) {
-              foundFirstItem = true;
-              const isChecked = /^- \[[xX]\]/.test(line);
-              const text = line.replace(/^- \[[ xX]\]\s*/, "");
-              const parsed = this.parseShoppingLine(text);
-              existingItems.push(
-                parsed
-                  ? { checked: isChecked, ...parsed, original: text }
-                  : {
-                      checked: isChecked,
-                      amount: 0,
-                      unit: "",
-                      name: text.toLowerCase(),
-                      sources: [],
-                      original: text,
-                    },
-              );
-            }
-          }
-          // Trim trailing blank header lines
-          while (
-            headerLines.length &&
-            !headerLines[headerLines.length - 1].trim()
-          ) {
-            headerLines.pop();
-          }
+          ({ headerLines, items: existingItems } =
+            parseShoppingListMarkdown(existingContent));
         }
 
         // Merge new items into existing list
-        let mergedCount = 0;
-        for (const newItem of newItems) {
-          const match = existingItems.find((e) => e.name === newItem.name);
-          if (match) {
-            mergedCount++;
-            if (match.unit === newItem.unit && newItem.unit !== "") {
-              match.amount += newItem.amount;
-            } else if (
-              match.unit !== newItem.unit &&
-              newItem.unit !== "" &&
-              match.unit !== ""
-            ) {
-              const matchBase = this.toBaseAmount(match.amount, match.unit);
-              const newBase = this.toBaseAmount(newItem.amount, newItem.unit);
-              if (matchBase && newBase && matchBase.family === newBase.family) {
-                const converted = this.fromBaseAmount(
-                  matchBase.base + newBase.base,
-                  matchBase.family,
-                );
-                match.amount = converted.amount;
-                match.unit = converted.unit;
-              } else {
-                // Incompatible units — add as separate item
-                existingItems.push(newItem);
-              }
-            } else {
-              match.amount += newItem.amount;
-            }
-            if (!match.sources.includes(recipeName)) {
-              match.sources.push(recipeName);
-            }
-          } else {
-            existingItems.push(newItem);
-          }
-        }
+        const { items, mergedCount } = mergeShoppingItems(
+          existingItems,
+          newItems,
+        );
 
         // Rebuild and write the file
-        const header = headerLines.length
-          ? headerLines.join("\n") + "\n\n"
-          : "";
-        const itemLines = existingItems.map((item) => {
-          const check = item.checked ? "[x]" : "[ ]";
-          const display =
-            item.amount > 0 || item.unit
-              ? `${this.formatIngredientAmount(item.amount, item.unit)} ${item.name}`
-              : item.original;
-          const src = item.sources.length
-            ? ` *(${item.sources.join(", ")})*`
-            : "";
-          return `- ${check} ${display.trim()}${src}`;
-        });
-        const newContent = header + itemLines.join("\n") + "\n";
+        const newContent = renderShoppingListMarkdown(headerLines, items);
 
         if (existingFile && existingFile instanceof TFile) {
           await this.app.vault.process(existingFile, () => newContent);
@@ -1206,16 +1116,12 @@ export default class RecipeVault extends Plugin {
           return;
         }
         const content = await this.app.vault.read(listFile);
-        const lines = content.split("\n");
-        const kept = lines.filter((line) => !/^- \[[xX]\]/.test(line));
-        // Remove any trailing blank lines left behind
-        while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
-        const removed = lines.filter((line) => /^- \[[xX]\]/.test(line)).length;
+        const { content: cleared, removed } = removeCheckedItems(content);
         if (removed === 0) {
           new Notice("No checked items to clear.");
           return;
         }
-        await this.app.vault.process(listFile, () => kept.join("\n") + "\n");
+        await this.app.vault.process(listFile, () => cleared);
         new Notice(
           `Cleared ${removed} checked item${removed > 1 ? "s" : ""} from shopping list.`,
         );
@@ -2866,234 +2772,5 @@ export default class RecipeVault extends Plugin {
     } finally {
       bitmap?.close();
     }
-  }
-
-  /**
-   * Parse a shopping list line into its components.
-   * e.g. "2 cups flour *(Dumplings)*" → { amount: 2, unit: "cup", name: "flour", sources: ["Dumplings"] }
-   */
-  private parseShoppingLine(
-    text: string,
-  ): Omit<ShoppingItem, "checked" | "original"> | null {
-    if (!text.trim()) return null;
-
-    // Replace unicode fractions with ASCII `n/d` so the numeric regex below
-    // can parse them. A leading space keeps mixed numbers separate
-    // ("1½" → "1 1/2"); decimals (" 0.5") must NOT be used here — the regex
-    // only understands integers and `n/d`, so a decimal silently parses as 0.
-    const ucFracs: [RegExp, string][] = [
-      [/½/g, "1/2"],
-      [/¼/g, "1/4"],
-      [/¾/g, "3/4"],
-      [/⅓/g, "1/3"],
-      [/⅔/g, "2/3"],
-      [/⅛/g, "1/8"],
-      [/⅜/g, "3/8"],
-      [/⅝/g, "5/8"],
-      [/⅞/g, "7/8"],
-    ];
-    let s = text.trim();
-    for (const [re, val] of ucFracs) s = s.replace(re, ` ${val}`);
-    s = s.trim();
-
-    // Normalise spaces around slashes in fractions so "1 /4" parses as "1/4"
-    s = s.replace(/(\d+)\s+\/\s*(\d+)/g, "$1/$2");
-
-    // Match a leading quantity as one token: a mixed number ("1 1/2"), a bare
-    // fraction ("1/2"), or a whole number ("2"). Ordered alternation matters —
-    // listing the fraction forms before the bare integer stops a fraction's
-    // numerator (the "1" in "1/2") from being consumed as a standalone whole.
-    const numRe = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+)\s*/;
-    const numMatch = s.match(numRe);
-    let amount = 0;
-    let rest = s;
-    if (numMatch) {
-      const token = numMatch[1];
-      const mixed = token.match(/^(\d+)\s+(\d+)\/(\d+)$/);
-      const frac = token.match(/^(\d+)\/(\d+)$/);
-      if (mixed) {
-        amount = Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
-      } else if (frac) {
-        amount = Number(frac[1]) / Number(frac[2]);
-      } else {
-        amount = parseFloat(token);
-      }
-      rest = s.slice(numMatch[0].length).trim();
-    }
-
-    // Try to extract a unit
-    const unitMatch = rest.match(/^([a-zA-Z]+\.?)\s*/);
-    let unit = "";
-    let name = rest;
-    if (unitMatch) {
-      const normalized = this.normalizeIngredientUnit(unitMatch[1]);
-      if (normalized) {
-        unit = normalized;
-        name = rest.slice(unitMatch[0].length).trim();
-      }
-    }
-
-    // Extract sources annotation from end: *(Source1, Source2)*
-    const srcMatch = name.match(/\s*\*\(([^)]+)\)\*\s*$/);
-    let sources: string[] = [];
-    if (srcMatch) {
-      sources = srcMatch[1]
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      name = name.slice(0, name.length - srcMatch[0].length).trim();
-    }
-
-    // Strip parenthetical prep notes like "(, minced)" or "(packed)" or "(, finely diced)"
-    name = name.replace(/\s*\([^)]*\)/g, "").trim();
-    // Strip trailing comma-separated descriptors like ", minced" or ", or 2 pureed tomatoes"
-    name = name.replace(/,.*$/, "").trim();
-
-    return { amount, unit, name: name.toLowerCase().trim(), sources };
-  }
-
-  /** Normalize raw unit strings to a canonical form. Returns "" if not recognised. */
-  private normalizeIngredientUnit(raw: string): string {
-    const u = raw.toLowerCase().replace(/\.+$/, "");
-    const map: Record<string, string> = {
-      tsp: "tsp",
-      t: "tsp",
-      teaspoon: "tsp",
-      teaspoons: "tsp",
-      tbsp: "tbsp",
-      tbl: "tbsp",
-      tablespoon: "tbsp",
-      tablespoons: "tbsp",
-      cup: "cup",
-      cups: "cup",
-      c: "cup",
-      oz: "oz",
-      ounce: "oz",
-      ounces: "oz",
-      lb: "lb",
-      lbs: "lb",
-      pound: "lb",
-      pounds: "lb",
-      g: "g",
-      gram: "g",
-      grams: "g",
-      kg: "kg",
-      kilogram: "kg",
-      kilograms: "kg",
-      ml: "ml",
-      milliliter: "ml",
-      milliliters: "ml",
-      millilitre: "ml",
-      millilitres: "ml",
-      l: "l",
-      liter: "l",
-      liters: "l",
-      litre: "l",
-      litres: "l",
-      clove: "clove",
-      cloves: "clove",
-      slice: "slice",
-      slices: "slice",
-      piece: "piece",
-      pieces: "piece",
-      can: "can",
-      cans: "can",
-      package: "package",
-      pkg: "package",
-      packages: "package",
-      bunch: "bunch",
-      bunches: "bunch",
-      pinch: "pinch",
-      pinches: "pinch",
-      sprig: "sprig",
-      sprigs: "sprig",
-      head: "head",
-      heads: "head",
-      handful: "handful",
-      stalk: "stalk",
-      stalks: "stalk",
-    };
-    return map[u] ?? "";
-  }
-
-  /** Convert an amount+unit to a base value for a unit family, enabling cross-unit addition. */
-  private toBaseAmount(
-    amount: number,
-    unit: string,
-  ): { base: number; family: string } | null {
-    const volToTsp: Record<string, number> = {
-      tsp: 1,
-      tbsp: 3,
-      cup: 48,
-      ml: 0.2029,
-      l: 202.9,
-    };
-    if (unit in volToTsp)
-      return { base: amount * volToTsp[unit], family: "volume" };
-
-    const weightToG: Record<string, number> = {
-      g: 1,
-      kg: 1000,
-      oz: 28.35,
-      lb: 453.6,
-    };
-    if (unit in weightToG)
-      return { base: amount * weightToG[unit], family: "weight" };
-
-    return null;
-  }
-
-  /** Convert a base amount back to the most readable unit in its family. */
-  private fromBaseAmount(
-    base: number,
-    family: string,
-  ): { amount: number; unit: string } {
-    if (family === "volume") {
-      if (base >= 48) return { amount: base / 48, unit: "cup" };
-      if (base >= 3) return { amount: base / 3, unit: "tbsp" };
-      return { amount: base, unit: "tsp" };
-    }
-    if (family === "weight") {
-      if (base >= 1000) return { amount: base / 1000, unit: "kg" };
-      if (base >= 453.6) return { amount: base / 453.6, unit: "lb" };
-      if (base >= 28.35) return { amount: base / 28.35, unit: "oz" };
-      return { amount: base, unit: "g" };
-    }
-    return { amount: base, unit: "" };
-  }
-
-  /** Format a numeric amount as a readable string with unicode fractions. */
-  private formatIngredientAmount(amount: number, unit: string): string {
-    if (amount === 0) return unit || "";
-    const whole = Math.floor(amount);
-    const frac = amount - whole;
-    const knownFracs: [number, string][] = [
-      [1 / 8, "⅛"],
-      [1 / 4, "¼"],
-      [1 / 3, "⅓"],
-      [3 / 8, "⅜"],
-      [1 / 2, "½"],
-      [5 / 8, "⅝"],
-      [2 / 3, "⅔"],
-      [3 / 4, "¾"],
-      [7 / 8, "⅞"],
-    ];
-    let fracStr = "";
-    let closestDiff = Infinity;
-    for (const [val, sym] of knownFracs) {
-      const diff = Math.abs(frac - val);
-      if (diff < closestDiff) {
-        closestDiff = diff;
-        fracStr = sym;
-      }
-    }
-    if (closestDiff > 0.09) fracStr = ""; // not close enough to a known fraction
-    const numStr =
-      whole > 0 && fracStr
-        ? `${whole}${fracStr}`
-        : whole > 0
-          ? `${whole}`
-          : fracStr || `${Math.round(amount * 100) / 100}`;
-    return unit ? `${numStr} ${unit}` : numStr;
   }
 }
