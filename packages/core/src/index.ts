@@ -40,3 +40,26 @@ export {
   TEMPLATE_VERSION,
   createRecipeRenderer,
 } from "./note/template";
+
+export type {
+  JsonRecord,
+  InstructionItem,
+  InstructionStep,
+  ParsedRecipe,
+} from "./types";
+export { isJsonRecord } from "./types";
+export type { HttpPort, HttpResponse } from "./fetch/http";
+export type { FetchPageOptions } from "./fetch/page";
+export { fetchPageHtml } from "./fetch/page";
+export type { CleanNameOptions } from "./parse/clean-name";
+export {
+  cleanRecipeName,
+  getCustomFillerWordPatterns,
+  toLooseWordPattern,
+} from "./parse/clean-name";
+export { stripHtml, decodeHtmlEntities } from "./parse/html";
+export { normalizeImages } from "./parse/images";
+export { extractMicrodataRecipes } from "./parse/microdata";
+export { extractWprmRecipeNotes, normalizeRecipeNotes } from "./parse/notes";
+export type { ParseOptions, FetchOptions } from "./parse/recipes";
+export { parseRecipesFromHtml, fetchRecipes } from "./parse/recipes";

@@ -1,8 +1,8 @@
 # Implementation Plan: shared core + household web app
 
-> **Status:** STEP 1 IN PROGRESS, updated 2026-09-03. Moves 1 to 3 of 1d are
-> done (workspace, shopping, note sections + template). Move 4 (parser) is
-> next. Step 2 not started.
+> **Status:** STEP 1 CODE COMPLETE, updated 2026-09-03. All five moves of 1d
+> are done. What is left is the 1e manual pass in a dev vault, then a boring
+> patch release. Step 2 not started.
 > **Branch when written:** `docs/landing-page` (clean, at `8bbdfe1`).
 > Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green.
 > **Author of plan:** design session 2026-09-02.
@@ -16,6 +16,10 @@
 > - `core/note-template` (commit `da55aaf`): note sections, frontmatter
 >   helpers, and the template moved. `main.ts` is at 2,457 lines, down from
 >   3,099.
+> - `core/note-template` (parser move): the whole parser moved. `main.ts` is
+>   at 1,675 lines, down from 3,099 at the start. Plugin parser tests pass
+>   unchanged, which is the behaviour guard the plan asked for. `npm run
+>   build` still emits `main.js` with cheerio and the proxy fallbacks in it.
 >
 > **Deviations from the plan so far:**
 > - Core also has `removeCheckedItems` (the clear command's logic) so the web
@@ -30,6 +34,16 @@
 >   with a comment. Left as is on purpose; changing it changes note output.
 > - Line numbers in the integration map are as of `8bbdfe1` and no longer
 >   match `main.ts` after the moves. Grep for the method names instead.
+> - `decodeHtmlEntities` moved to core too. It was not in the original list,
+>   but it is pure and the web app needs the same final decode pass.
+> - `cleanRecipeName` takes its four filler-word settings as a `CleanNameOptions`
+>   object rather than the whole settings object, so core never sees a
+>   plugin type.
+> - `parseRecipesFromHtml` strips the fragment itself when it builds the
+>   microdata base URL, so it can be called with the original URL and still
+>   match what the fetch path sent.
+> - `fetchPageHtml` is gone from the plugin entirely. Nothing else called it,
+>   so there is no wrapper.
 
 ## Goal
 
@@ -395,19 +409,22 @@ away if nothing else calls it. Check `:1400` callers first. `requestUrl` at
    `test/shopping-line.test.ts` to `packages/core/test/`, change the imports,
    drop the `as any`.
 3. **DONE (`da55aaf`).** Note sections and template helpers.
-4. Parser: move `fetchPageHtml`, then `fetchRecipes` and its helpers, splitting
-   `parseRecipesFromHtml` out as you go. Plugin tests must pass unchanged.
-   Helpers still on the plugin that go with it: `stripHtml`,
-   `decodeHtmlEntities`, `normalizeRecipeNotes`, `normalizeImages`,
-   `cleanRecipeName` and its filler word helpers, `extractMicrodataRecipes`,
-   `extractWprmRecipeNotes`, `isJsonRecord`, `ParsedRecipe`, `InstructionStep`.
-   `sleep` and `fetchRetryDelayMs` become the `retryDelayMs` option.
-5. Delete the now-unused private methods from `main.ts` and confirm
-   `npm run lint` is clean. `main.ts` should land somewhere near 2,000 lines.
+4. **DONE.** Parser: `fetchPageHtml`, `fetchRecipes`, and every helper listed
+   in the integration map moved, with `parseRecipesFromHtml` split out as the
+   pure seam. `sleep` and `fetchRetryDelayMs` became the `retryDelayMs`
+   option; `Notice` became `onProgress`. The plugin keeps `fetchRecipes` as a
+   public method with the same signature, so `test/fetch-recipes.*` and
+   `makePlugin` are untouched. `packages/core/test/parse-recipes.test.ts`
+   covers the two things those tests can't reach: parsing HTML with no
+   network, and driving the fetch path through a fake `HttpPort`.
+5. **DONE.** The moved private methods are gone from `main.ts`, lint is clean,
+   and `main.ts` is at 1,675 lines.
 
 ### 1e. Verification for step 1
 
-- `npm test` green at root and in core.
+- `npm test` green at root and in core. **Done:** 143 tests, 13 files.
+- `npm run lint`, `tsc -noEmit` at root, and `npm run typecheck -w
+  packages/core` all clean. **Done.**
 - `npm run build` produces `main.js`. Load it in a dev vault and import the
   three fixture URLs from `test/fixtures` plus one live WPRM site with proxy
   fallback off, then on. Add checked ingredients to the list twice from two
