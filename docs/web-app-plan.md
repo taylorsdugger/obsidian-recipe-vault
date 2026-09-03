@@ -1,8 +1,9 @@
 # Implementation Plan: shared core + household web app
 
-> **Status:** STEP 1 CODE COMPLETE, updated 2026-09-03. All five moves of 1d
-> are done. What is left is the 1e manual pass in a dev vault, then a boring
-> patch release. Step 2 not started.
+> **Status:** STEP 1 CODE COMPLETE, STEP 2 SCAFFOLDED, updated 2026-09-03.
+> All five moves of 1d are done; the 1e manual pass in a dev vault is the only
+> thing left before a boring patch release. `apps/web` exists and runs, with
+> 2e.1 done. 2e.2 (import route plus the recipes screen) is next.
 > **Branch when written:** `docs/landing-page` (clean, at `8bbdfe1`).
 > Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green.
 > **Author of plan:** design session 2026-09-02.
@@ -16,6 +17,11 @@
 > - `core/note-template` (commit `da55aaf`): note sections, frontmatter
 >   helpers, and the template moved. `main.ts` is at 2,457 lines, down from
 >   3,099.
+> - `apps/web` scaffold: Vite + Preact + Tailwind 4 client, Hono worker, D1
+>   schema and migration, passcode auth. `wrangler dev` serves both.
+>   **cheerio runs on workerd under `nodejs_compat`** — `/api/health` parses a
+>   fixture through core and returns `parser: true`. That was the one real
+>   unknown in 2a and it is closed.
 > - `core/note-template` (parser move): the whole parser moved. `main.ts` is
 >   at 1,675 lines, down from 3,099 at the start. Plugin parser tests pass
 >   unchanged, which is the behaviour guard the plan asked for. `npm run
@@ -44,6 +50,17 @@
 >   match what the fetch path sent.
 > - `fetchPageHtml` is gone from the plugin entirely. Nothing else called it,
 >   so there is no wrapper.
+> - `apps/web` pins `vite` to `^6.4.3` to match what root vitest resolves.
+>   On `^7` npm keeps a second nested copy and `tsc` fails on two Plugin types
+>   that don't unify. Bump both together or not at all.
+> - The client router is thirty lines of `history.pushState` rather than a
+>   routing library. Five screens, no nested routes.
+> - The SPA fallback is a Hono `notFound` handler that returns
+>   `env.ASSETS.fetch("/index.html")`, not `not_found_handling` in
+>   `wrangler.toml`. With a Worker in front, unmatched paths reach the Worker
+>   and the asset config never gets a say — `/plan` 404'd until this changed.
+> - Root `npm ci` now also installs the web app's dev deps (wrangler, vite,
+>   drizzle-kit). CI got slower. Nothing about the plugin build changed.
 
 ## Goal
 
@@ -561,8 +578,13 @@ same layout wider.
 
 ### 2e. Order of work
 
-1. Scaffold: Vite + Preact + Tailwind, Hono worker, D1 schema, passcode auth,
-   `wrangler dev` runs both. Confirm `cheerio` works on the Worker (2a).
+1. **DONE.** Scaffold: Vite + Preact + Tailwind, Hono worker, D1 schema,
+   passcode auth, `wrangler dev` runs both. `cheerio` confirmed working on
+   the Worker via `/api/health`. Verified by hand: a wrong passcode is
+   rejected, a right one sets the cookie, `/api/*` is 401 without it, the
+   migration applies and creates all three tables, and a deep link to `/plan`
+   serves `index.html`. Every route but login, health, and import preview
+   answers 501 with a TODO naming the step that fills it in.
 2. Import route plus the recipes screen. This proves core works server-side
    and gets real data in.
 3. Recipe screen with ingredients to list. List screen with polling. At this
@@ -593,8 +615,9 @@ same layout wider.
 
 ## Open questions
 
-- Does `cheerio` 1.0.0-rc.12 run under Workers `nodejs_compat`? Test before
-  anything else in step 2.
+- ~~Does `cheerio` run under Workers `nodejs_compat`?~~ Yes. `/api/health`
+  parses a JSON-LD fixture through core on workerd and returns `parser: true`.
+  The fallback to `htmlparser2` is not needed.
 - Vitest workspace at root, or a second `npm test -w`? Whichever CI likes.
 - Does the plugin's `photoFrontmatter` behavior for vault-local images need a
   web equivalent, or does the web app always store a URL? Assume URL for v1.

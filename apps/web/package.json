@@ -1,0 +1,36 @@
+{
+  "name": "@recipe-vault/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Household PWA for recipes, the week plan, and a shared shopping list.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "vite build",
+    "deploy": "npm run build && wrangler deploy",
+    "typecheck": "tsc -noEmit",
+    "test": "vitest run",
+    "db:migrate:local": "wrangler d1 migrations apply recipe-vault --local",
+    "db:migrate": "wrangler d1 migrations apply recipe-vault --remote",
+    "cf-typegen": "wrangler types"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@recipe-vault/core": "*",
+    "drizzle-orm": "^0.44.6",
+    "hono": "^4.9.10",
+    "nanoid": "^5.1.6",
+    "preact": "^10.27.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250927.0",
+    "@preact/preset-vite": "^2.10.2",
+    "@tailwindcss/vite": "^4.2.1",
+    "drizzle-kit": "^0.31.5",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.3.3",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.6",
+    "wrangler": "^4.45.0"
+  }
+}

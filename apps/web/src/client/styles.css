@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+/* Mobile first: the app is a full-height column with a fixed bottom tab bar,
+   so the scrollable area has to know about the phone's safe area. */
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-neutral-50 text-neutral-900 antialiased;
+  }
+}

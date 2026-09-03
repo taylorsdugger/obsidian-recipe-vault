@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local `wrangler dev`. In production these are secrets:
+#   wrangler secret put HOUSEHOLD_PASSCODE
+#   wrangler secret put HOUSEHOLD_SECRET
+
+# What you type on the login screen.
+HOUSEHOLD_PASSCODE=letmein
+
+# Signs the session cookie. Any long random string; changing it logs everyone out.
+HOUSEHOLD_SECRET=dev-only-not-a-real-secret

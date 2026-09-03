@@ -1,0 +1,26 @@
+# One Worker serves everything: Hono handles /api/*, Workers static assets
+# serve the Vite build from dist/. `wrangler deploy` is the whole deploy.
+name = "recipe-vault-web"
+main = "src/worker/index.ts"
+compatibility_date = "2026-09-01"
+
+# cheerio pulls in Node built-ins, so the parser in @recipe-vault/core only
+# runs here with this on. See docs/web-app-plan.md 2a.
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+# The client is a single-page app: unknown paths fall through to index.html
+# instead of 404ing, so a deep link like /plan works on a cold load.
+not_found_handling = "single-page-application"
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "recipe-vault"
+# Filled in by `wrangler d1 create recipe-vault`. Local dev works without it.
+database_id = "REPLACE_ME"
+migrations_dir = "migrations"
