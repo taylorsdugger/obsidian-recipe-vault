@@ -41,6 +41,26 @@ export interface ParsedRecipePreview {
   [key: string]: unknown;
 }
 
+/** The full row, markdown included. */
+export interface RecipeDetail extends RecipeSummary {
+  markdown: string;
+  author: string | null;
+  sourceUrl: string | null;
+  ingredients: string;
+  createdAt: string;
+}
+
+/** One shopping list row as the API renders it. */
+export interface ListItem {
+  id: string;
+  checked: boolean;
+  /** "2 1/2 cups flour" — amount, unit, and name already formatted. */
+  text: string;
+  name: string;
+  sources: string[];
+  updatedAt: string;
+}
+
 export type RecipeSort = "recent" | "made" | "quick";
 
 export const api = {
@@ -73,4 +93,41 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ recipe }),
     }),
+
+  recipe: (id: string) => request<{ recipe: RecipeDetail }>(`/recipes/${id}`),
+
+  saveRecipe: (id: string, markdown: string) =>
+    request<{ recipe: RecipeDetail }>(`/recipes/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ markdown }),
+    }),
+
+  deleteRecipe: (id: string) =>
+    request<{ deleted: string }>(`/recipes/${id}`, { method: "DELETE" }),
+
+  markMade: (id: string) =>
+    request<{ id: string; timesMade: number; lastMade: string }>(
+      `/recipes/${id}/made`,
+      { method: "POST" },
+    ),
+
+  list: () => request<{ items: ListItem[] }>("/list"),
+
+  addToList: (lines: string[], source?: string) =>
+    request<{ merged: number; added: number; items: ListItem[] }>("/list", {
+      method: "POST",
+      body: JSON.stringify({ lines, source }),
+    }),
+
+  setChecked: (id: string, checked: boolean) =>
+    request<{ item: ListItem }>(`/list/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ checked }),
+    }),
+
+  clearChecked: () =>
+    request<{ removed: number }>("/list/checked", { method: "DELETE" }),
+
+  removeListItem: (id: string) =>
+    request<{ deleted: string }>(`/list/${id}`, { method: "DELETE" }),
 };

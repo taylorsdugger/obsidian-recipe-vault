@@ -1,10 +1,10 @@
 # Implementation Plan: shared core + household web app
 
-> **Status:** STEP 1 CODE COMPLETE, STEP 2 THROUGH 2e.2, updated 2026-09-03.
-> All five moves of 1d are done; the 1e manual pass in a dev vault is the only
-> thing left before a boring patch release. In the web app, import and the
-> recipes screen work end to end against a real site. 2e.3 (recipe screen and
-> the shared list) is next, and it's the first one that's useful day to day.
+> **Status:** STEP 1 DONE, STEP 2 THROUGH 2e.3, updated 2026-09-03.
+> Step 1 passed the 1e dev vault check, so a patch release is all that's left
+> there. In the web app, import, the gallery, the recipe screen, and the
+> shared shopping list all work end to end. Two clients can shop off the same
+> list, which was the first real win. 2e.4 (the plan screen) is next.
 > **Branch when written:** `docs/landing-page` (clean, at `8bbdfe1`).
 > Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green.
 > **Author of plan:** design session 2026-09-02.
@@ -18,6 +18,14 @@
 > - `core/note-template` (commit `da55aaf`): note sections, frontmatter
 >   helpers, and the template moved. `main.ts` is at 2,457 lines, down from
 >   3,099.
+> - `apps/web` 2e.3: recipe screen and the shared list. Checked ingredients go
+>   to the list with the recipe as the source, the merge math matches the
+>   plugin (2 tbsp + 2 tbsp = 4 tbsp, ½ cup + 1½ cups = 2 cups, sources
+>   unioned), and two clients see each other's checks within a poll. Editing
+>   a note in the raw textarea re-derives the search index. Verified with two
+>   cookie jars standing in for two phones.
+> - Step 1 verified in a dev vault (1e). Imports and the shopping list behave
+>   the same as 1.2.5.
 > - `apps/web` 2e.2: import and the gallery. Pasting a URL parses it, the
 >   preview card saves, and the note that lands is the same shape the plugin
 >   writes. Verified against noracooks (JSON-LD) and loveandlemons (the
@@ -86,6 +94,20 @@
 > - `POST /api/import` takes the `ParsedRecipe` the client was shown rather
 >   than re-fetching the URL. What gets saved is what was on screen, and the
 >   site can't change underneath the preview.
+> - **Core needs subpath exports for the client.** Importing the barrel from
+>   the browser pulled cheerio and handlebars into the phone bundle: 386 kB.
+>   Core's `exports` now has `"./*": "./src/*.ts"`, the recipe screen deep
+>   imports `@recipe-vault/core/note/sections`, and the bundle is 30 kB. Worth
+>   remembering before the plan screen imports anything from core.
+> - The recipe screen parses the stored note with `parseRecipeSections` rather
+>   than rendering markdown to HTML. No markdown library, and the ingredient
+>   checkboxes come from the same function the plugin's note actions use.
+> - Sending ingredients to the list is `POST /api/list` with `{ lines, source }`,
+>   not a route under `/api/recipes`. The list screen's free-text add is the
+>   same call with no source, so there's one merge path instead of two.
+> - `wrangler dev` falls over every so often with an empty ProxyController
+>   error while a browser is polling it. Wrangler's own dev proxy, not our
+>   code — restart it and the D1 state is still there.
 
 ## Goal
 
@@ -618,8 +640,13 @@ same layout wider.
    site both import through the UI, ingredient search finds a recipe by an
    ingredient, editing a note moves it in the search index, and delete is
    404-safe on a second call.
-3. Recipe screen with ingredients to list. List screen with polling. At this
-   point both phones can use it for groceries, which is the first real win.
+3. **DONE.** Recipe screen with ingredients to list. List screen with polling.
+   Both phones can shop off it now. Checked by hand: checked ingredients reach
+   the list with the recipe as their source, the same ingredient from a second
+   recipe merges and gains a source, compatible units convert, a check on one
+   client shows up on the other within a poll, clear-checked works from either,
+   and the raw markdown editor round-trips through the derived columns.
+   Optimistic toggles hold their state against a poll landing mid-flight.
 4. Plan screen and plan-to-list.
 5. Home screen last, once there's data to show on it.
 6. PWA manifest, icons, share target. Deploy. Install on both phones.

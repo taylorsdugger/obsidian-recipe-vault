@@ -4,8 +4,10 @@ import { api } from "./api";
 import { TabBar } from "./components/tab-bar";
 import { usePath } from "./router";
 import { Import } from "./routes/import";
+import { List } from "./routes/list";
 import { Login } from "./routes/login";
 import { Placeholder } from "./routes/placeholder";
+import { Recipe } from "./routes/recipe";
 import { Recipes } from "./routes/recipes";
 
 /** Which screen a pathname maps to. Everything but Login is scaffolding. */
@@ -19,20 +21,10 @@ function Screen({ path }: { path: string }) {
     );
   }
   if (path.startsWith("/list")) {
-    return (
-      <Placeholder
-        title="Shopping list"
-        note="Shared, checkable, polls every five seconds. Step 2e.3."
-      />
-    );
+    return <List />;
   }
   if (path.startsWith("/recipes/")) {
-    return (
-      <Placeholder
-        title="Recipe"
-        note="The note, its ingredients, and send-to-list. Step 2e.3."
-      />
-    );
+    return <Recipe id={path.slice("/recipes/".length)} />;
   }
   if (path.startsWith("/recipes")) {
     return <Recipes />;
