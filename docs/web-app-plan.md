@@ -1,0 +1,550 @@
+# Implementation Plan: shared core + household web app
+
+> **Status:** DRAFT 2026-09-02. Nothing implemented.
+> **Branch when written:** `docs/landing-page` (clean, at `8bbdfe1`).
+> Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green.
+> **Author of plan:** design session 2026-09-02.
+
+## Goal
+
+Two steps.
+
+1. Pull the pure logic out of `src/main.ts` into a shared package,
+   `@recipe-vault/core`, so the plugin and a web app run the same parser, the
+   same shopping list math, and the same note template. No behavior change to
+   the plugin.
+2. Build a small PWA for the household: recipes, a week plan, and a shopping
+   list that two phones can check off. Import from a URL works there too.
+
+The plugin stays in the marketplace and keeps working for its users. New
+features go in the web app. A later step (not in this doc) adds a sync command
+so the vault stays a readable backup.
+
+## Why this approach (context for a cold pickup)
+
+The plugin does the job for one person inside Obsidian. It falls down on three
+things that a plugin can't fix:
+
+- No dashboard. Obsidian is a set of commands, not a home screen.
+- No way to share with a spouse who doesn't run Obsidian. Shared vaults need
+  both people on the same sync account or the same iCloud folder.
+- Obsidian mobile is a big Capacitor bundle and it stutters on an older phone.
+
+A standalone app would fix those, but a rewrite throws away tested code. The
+parser (`fetchRecipes`, JSON-LD plus microdata plus WPRM notes) has seven test
+files. The shopping list math has its own test file. Both are already pure
+functions in disguise: they use `cheerio`, not the DOM, and the only Obsidian
+calls are `requestUrl` and `Notice`. So the cheap move is to lift them into a
+package and put a second client next to the plugin.
+
+Market note: Paprika, Mealime, Plan to Eat, AnyList all do plan plus list. This
+app is for one household, not for sale. The reason to build it is owning the
+data as markdown and wanting the plugin's import path on a phone that isn't
+running Obsidian.
+
+## Locked decisions
+
+1. **Plugin stays at the repo root.** Obsidian's community plugin index reads
+   `manifest.json` from the repo root, and `tag-and-release.yml` uploads
+   `main.js`, `manifest.json`, `styles.css` from there. Moving the plugin into
+   `apps/plugin` would break both. Root becomes the workspace root and the
+   plugin package at the same time.
+2. **Markdown is the source of truth in the web app too.** A recipe row stores
+   the rendered note (same `DEFAULT_TEMPLATE`), and the structured columns the
+   UI needs are derived from it. This is what makes the later vault sync a
+   file copy instead of a migration.
+3. **One household, one passcode.** No accounts, no multi-tenant. A
+   `HOUSEHOLD_SECRET` env var and a signed cookie. Two people.
+4. **Shopping list sharing is polling, not websockets.** Poll every few seconds
+   while the list screen is visible. Durable Objects or realtime can come later
+   if polling annoys.
+5. **Cloudflare, one Worker.** Hono handles `/api/*`, Workers static assets
+   serve the Vite build, D1 is the database. One `wrangler deploy`. Free tier
+   covers two users many times over.
+6. **Preact + Tailwind 4 in the web app.** Same stack the gallery already uses,
+   so `RecipeCard` and `RecipeGallery` can move into a shared UI package later
+   without a rewrite.
+7. **Remote image URLs only in v1.** The plugin defaults `saveImg: false` and
+   hot-links, so match that. R2 storage is a follow-up.
+
+## Hard constraints (verified 2026-09-02, do not regress)
+
+Two things ship from this repo today and must keep shipping the same way.
+
+**GitHub Pages marketing site.** Legacy Pages build, source `main` branch,
+path `/docs`, custom domain from `docs/CNAME` (`recipes.taylordugger.com`),
+HTTPS enforced. There is no Pages workflow. Rules:
+
+- Nothing but the site goes in `docs/`. The web app lives in `apps/web` and
+  deploys to Cloudflare. No `docs/` output from any build.
+- No workflow that calls `actions/deploy-pages` or changes the Pages source.
+- Every `.md` under `docs/` is publicly rendered by Jekyll, including this
+  file and `photo-import-plan.md`. If plans should not be public, move them to
+  a `plans/` folder at the root. Pages does not care either way.
+
+**Obsidian community plugin.** `tag-and-release.yml` runs on
+`workflow_dispatch`: the `bump` job runs `npm version <type>`, which runs
+`version-bump.mjs` (reads root `manifest.json`, writes `manifest.json` and
+`versions.json`), commits, and tags. The `build` job checks out the tag, runs
+`npm ci` and `npm run build` at the repo root, attests `main.js` and
+`styles.css`, and uploads `main.js`, `manifest.json`, `styles.css` from the
+root as release assets named after the version. The community index entry
+points at `taylorsdugger/obsidian-recipe-vault` with id `recipe-vault`. Rules:
+
+- Root `package.json` stays the plugin package (`name: recipe-vault`, the same
+  `version`, the same `scripts`). Workspaces are added to it, not around it.
+  `npm version` at a workspace root bumps only the root, which is what we want.
+- `manifest.json`, `versions.json`, `version-bump.mjs`, `esbuild.config.mjs`,
+  `styles.css` (built), `main.js` (built, gitignored) stay at root.
+- Root `npm ci` must install everything the plugin build needs, and root
+  `npm run build` must still emit `main.js` and `styles.css` at root. Core is
+  bundled into `main.js` by esbuild through the workspace symlink. The release
+  asset is one file, same as today.
+- Root `npm run build` runs `tsc -noEmit` with `include: ["**/*.ts",
+  "**/*.tsx"]`. Add `exclude: ["apps", "packages", "node_modules"]` or the
+  plugin typecheck will pick up Worker code. Core gets its own `tsconfig`.
+- Core must not import Node built-ins. The plugin is `isDesktopOnly: false`
+  and runs on Capacitor. `cheerio`, `handlebars`, `dateformat` are already in
+  the bundle today, so nothing new lands in `main.js` from step 1.
+- Workflows stay on Node 20. If `apps/web` needs a newer Node, bump both
+  workflows in the same PR and rerun CI, not silently.
+- The repo, the plugin id, and the release asset names do not change.
+
+**Checklist before merging the workspace PR (step 1a):**
+
+1. Fresh clone, `npm ci`, `npm run build`. `main.js`, `styles.css`,
+   `manifest.json` present at root. `git status` shows only `styles.css` if it
+   changed, nothing under `docs/`.
+2. In a scratch copy, `npm version patch --no-git-tag-version`. Confirm
+   `manifest.json` and `versions.json` updated and nothing in `packages/` or
+   `apps/` changed. Revert.
+3. Copy the built `main.js` and `styles.css` into a dev vault over the
+   installed 1.2.5 and import one URL. Same note as before.
+4. `ci.yml` green. Add one step to it after Build that fails if any of the
+   three release files is missing at root. That's the cheapest guard against
+   a future workspace change quietly moving the output.
+
+The first real release from the monorepo should be a patch with no user-facing
+change, so if anything about the release assets differs it's caught on a
+boring version.
+
+## Design principle
+
+Move code, don't rewrite it. Every function that leaves `main.ts` keeps its
+name and its tests. The plugin ends step 1 as a thin adapter: it wraps
+`requestUrl` in a port, forwards its settings as options, and turns progress
+callbacks into `Notice`s.
+
+---
+
+## Integration map (actual code locations, verify before editing)
+
+All in `src/main.ts` unless noted. Line numbers as of `8bbdfe1`.
+
+**Parser (moves to core)**
+
+- `fetchPageHtml(fetchUrl)` at `src/main.ts:1400`. Direct fetch, then jina.ai
+  and allorigins fallbacks when `settings.proxyFallback` is on. Calls
+  `requestUrl` at `:1481` and `new Notice(...)` four times. Uses
+  `this.sleep` and `this.fetchRetryDelayMs` (public, tests set it to 0).
+- `fetchRecipes(_url)` at `:1515` through `~:2004`. Loads HTML with `cheerio`,
+  indexes JSON-LD `@graph` nodes by `@id`, extracts recipes, falls back to
+  `extractMicrodataRecipes` (`:2343`) and pulls WPRM notes with
+  `extractWprmRecipeNotes` (`:2291`). Settings it reads: `folder`, `imgFolder`,
+  `recipeTemplate`, `decodeEntities`, `debug`, `saveImg`, `saveImgSubdir`,
+  `saveInActiveFile`. Only `decodeEntities` and `debug` matter to parsing.
+  The rest belong to the save tail and should not go into core.
+- Helpers the parser calls: `stripHtml` (`:2655`), `decodeHtmlEntities`
+  (`:139`), `normalizeRecipeNotes` (`:2267`), `normalizeImages` (`:2663`),
+  `cleanRecipeName` (`:2501`) with `getCustomFillerWordPatterns` (`:2618`) and
+  `toLooseWordPattern` (`:2627`), `formatIsoDuration` (`:2636`),
+  `ensureRequiredRecipeFrontmatter` (`:2209`), `normalizeCookTimeValue`
+  (`:2257`), `normalizePhotoValue` (`:2262`), `ensureRecipeNotesSection`
+  (`:2453`), `isRecipeNotesSectionEmpty` (`:2438`).
+- Types: `ParsedRecipe` (`:99`), `InstructionStep`, `JsonRecord`,
+  `isJsonRecord` (`:76`). These move to core as-is.
+
+**Parser (stays in plugin)**
+
+- `fetchImage` (`:2751`), `detectImageType` (`:2695`), `createThumbnail`
+  (`:2814`, uses `createImageBitmap` and `activeDocument`), `saveParsedRecipe`
+  (`:2005`), `saveLocalRecipeImage` (`:2091`), `folderCheck` (`:2486`),
+  `addRecipeToMarkdown`. All touch the Vault or the renderer.
+
+**Shopping list (moves to core)**
+
+- `ShoppingItem` interface at `:36`.
+- `parseShoppingLine` (`:2875`), `normalizeIngredientUnit` (`:2956`),
+  `toBaseAmount` (`:3020`), `fromBaseAmount` (`:3047`),
+  `formatIngredientAmount` (`:3066`). All private, all pure.
+- The merge loop and the list file parse/render live inline in the
+  `CMD_ADD_TO_SHOPPING_LIST` callback, `:953` to `:1130`. Three things in there
+  are pure and need names: reading `- [ ]` lines into items plus header lines,
+  merging new items into existing ones with unit conversion, and rendering items
+  back to markdown lines.
+- Tests: `test/shopping-line.test.ts` reaches the private methods through
+  `makePlugin() as any`. These become plain imports.
+
+**Note parsing (moves to core)**
+
+- `findMarkdownSection` (`:398`), `parseSectionList` (`:425`),
+  `parseRecipeSections` (`:448`), `replaceRecipeSections` (`:472`),
+  `parseIngredientsFromBody` (`:521`, the async wrapper stays, the string logic
+  moves). The web app needs these to derive ingredients from a stored note.
+
+**Template (moves to core)**
+
+- `DEFAULT_TEMPLATE` and `TEMPLATE_VERSION` in `src/constants.ts:17-`.
+- `registerHandlebarsHelpers` (`:2138`) registers `splitTags`,
+  `photoFrontmatter`, `magicTime`, and friends on the global `Handlebars`.
+  `formatPhotoValue` (`:2199`) is called from `photoFrontmatter` and uses the
+  vault path shape, so the helper takes it as a parameter in core.
+
+**Build and test**
+
+- `esbuild.config.mjs` bundles `src/main.ts` to `main.js`. Core gets bundled
+  in, so nothing changes for the release artifact.
+- `vitest.config.ts` aliases `obsidian` to `test/helpers/obsidian-stub.ts` and
+  only includes `test/**/*.test.ts`.
+- `tsconfig.json` has `"include": ["**/*.ts", "**/*.tsx"]`, which will pick up
+  the new packages. Needs `exclude` for `apps/**` and `packages/**` so the
+  plugin typecheck stays scoped.
+- `.github/workflows/ci.yml` runs `npm ci`, `npm run lint`, `npm run build`.
+  `npm run build` runs `tailwind:build`, `tsc -noEmit`, and esbuild.
+
+---
+
+## Step 1 - Shared core package
+
+### 1a. Workspace layout
+
+```
+.                          # plugin package, unchanged name "recipe-vault"
+├── package.json           # + "workspaces": ["packages/*", "apps/*"]
+├── src/                   # plugin source, shrinks
+├── test/                  # plugin tests (fetch-recipes.*, recipe-from-image)
+├── packages/
+│   └── core/
+│       ├── package.json   # "@recipe-vault/core", private, "type": "module"
+│       ├── tsconfig.json  # target ES2020, lib ES2020, no DOM
+│       ├── src/
+│       │   ├── index.ts
+│       │   ├── types.ts           # ParsedRecipe, InstructionStep, ShoppingItem
+│       │   ├── fetch/http.ts      # HttpPort interface
+│       │   ├── fetch/page.ts      # fetchPageHtml
+│       │   ├── parse/recipes.ts   # parseRecipesFromHtml, fetchRecipes
+│       │   ├── parse/microdata.ts
+│       │   ├── parse/wprm-notes.ts
+│       │   ├── parse/clean-name.ts
+│       │   ├── note/sections.ts   # findMarkdownSection etc.
+│       │   ├── note/template.ts   # DEFAULT_TEMPLATE, createRenderer
+│       │   └── shopping/*.ts      # parse-line, units, merge, markdown
+│       └── test/                  # shopping-line.test.ts moves here
+└── apps/
+    └── web/                       # step 2
+```
+
+Root `package.json` keeps its scripts. Add `"test": "vitest run && npm test -w packages/core"` or configure a root vitest workspace. Either is fine, pick the one that runs in CI without a second config.
+
+Core `tsconfig` deliberately drops `DOM` from `lib`. If something in the moved code fails to typecheck for that reason, it doesn't belong in core.
+
+Dependencies that move to core: `cheerio`, `handlebars`, `dateformat`,
+`schema-dts`. The plugin keeps them as transitive deps through the workspace
+link. esbuild resolves the symlink and bundles as before.
+
+### 1b. Core public API
+
+```ts
+// packages/core/src/fetch/http.ts
+export interface HttpResponse { status: number; text: string }
+export interface HttpPort {
+  get(url: string, headers: Record<string, string>): Promise<HttpResponse>;
+}
+
+// packages/core/src/parse/recipes.ts
+export interface ParseOptions {
+  decodeEntities: boolean;
+  debug: boolean;
+  fillerWordsMode: "auto" | "custom";
+  customFillerWords: string;
+  filterVeganWords: boolean;
+  filterGlutenFreeWords: boolean;
+}
+export interface FetchOptions extends ParseOptions {
+  proxyFallback: boolean;
+  retryDelayMs: number;                // plugin passes fetchRetryDelayMs
+  onProgress?: (message: string) => void;   // plugin maps to Notice
+}
+export async function fetchPageHtml(url: URL, http: HttpPort, opts: FetchOptions): Promise<string>;
+export function parseRecipesFromHtml(html: string, url: URL, opts: ParseOptions): ParsedRecipe[];
+export async function fetchRecipes(url: string, http: HttpPort, opts: FetchOptions): Promise<ParsedRecipe[]>;
+```
+
+`parseRecipesFromHtml` is the new seam. Today the fetch and the parse are one
+function. Splitting them lets the web app parse HTML that came from anywhere
+and lets tests skip the network entirely.
+
+```ts
+// packages/core/src/shopping/index.ts
+export interface ShoppingItem { checked: boolean; amount: number; unit: string; name: string; sources: string[]; original: string }
+export function parseShoppingLine(text: string): Omit<ShoppingItem, "checked" | "original"> | null;
+export function normalizeIngredientUnit(raw: string): string;
+export function toBaseAmount(amount: number, unit: string): { base: number; family: string } | null;
+export function fromBaseAmount(base: number, family: string): { amount: number; unit: string };
+export function formatIngredientAmount(amount: number, unit: string): string;
+export function itemFromLine(text: string, source: string, checked?: boolean): ShoppingItem;
+export function mergeShoppingItems(existing: ShoppingItem[], incoming: ShoppingItem[]): { items: ShoppingItem[]; mergedCount: number };
+export function parseShoppingListMarkdown(md: string): { headerLines: string[]; items: ShoppingItem[] };
+export function renderShoppingListMarkdown(headerLines: string[], items: ShoppingItem[]): string;
+```
+
+`mergeShoppingItems` is the loop at `main.ts:1054-1093` lifted out. It mutates
+`existing` today. Keep that behavior inside the function and return the array,
+so the plugin's call site changes by one line. The web app will pass rows from
+D1 and write the result back.
+
+```ts
+// packages/core/src/note/index.ts
+export function findMarkdownSection(md: string, heading: string): MarkdownSectionRange | null;
+export function parseRecipeSections(md: string): ParsedRecipeSections | null;
+export function replaceRecipeSections(md: string, ingredients: string[], instructions: string[]): string;
+export function ingredientsFromBody(md: string): string[];
+export { DEFAULT_TEMPLATE, TEMPLATE_VERSION };
+export function createRecipeRenderer(template: string, opts: { formatPhoto: (path: string) => string }): (recipe: ParsedRecipe) => string;
+```
+
+`createRecipeRenderer` builds a local `Handlebars.create()` instance and
+registers the helpers on it. The plugin currently registers on the global.
+Switching to an instance means core never mutates a global, and two renderers
+with different `formatPhoto` behavior can coexist.
+
+### 1c. Plugin adapter
+
+In `src/main.ts`:
+
+```ts
+import * as core from "@recipe-vault/core";
+
+private httpPort: core.HttpPort = {
+  get: async (url, headers) => {
+    const res = await requestUrl({ url, method: "GET", headers });
+    return { status: res.status, text: res.text };
+  },
+};
+
+private fetchOptions(): core.FetchOptions {
+  const s = this.settings;
+  return {
+    decodeEntities: s.decodeEntities, debug: s.debug,
+    fillerWordsMode: s.fillerWordsMode, customFillerWords: s.customFillerWords,
+    filterVeganWords: s.filterVeganWords, filterGlutenFreeWords: s.filterGlutenFreeWords,
+    proxyFallback: s.proxyFallback, retryDelayMs: this.fetchRetryDelayMs,
+    onProgress: (m) => new Notice(m),
+  };
+}
+
+async fetchRecipes(url: string): Promise<ParsedRecipe[]> {
+  return core.fetchRecipes(url, this.httpPort, this.fetchOptions());
+}
+```
+
+`fetchRecipes` stays as a public method with the same signature so
+`test/fetch-recipes.*.test.ts` and `makePlugin` keep working untouched. That is
+the behavior guard for the whole step.
+
+The shopping command callback shrinks to: collect checked lines, build items
+with `itemFromLine`, read the list file, `parseShoppingListMarkdown`,
+`mergeShoppingItems`, `renderShoppingListMarkdown`, write. Same Notices.
+
+`fetchPageHtml` stays private on the plugin as a one-line wrapper, or goes
+away if nothing else calls it. Check `:1400` callers first. `requestUrl` at
+`:2765` inside `fetchImage` stays. That is the plugin's own image download.
+
+### 1d. Order of moves (each a separate commit, tests green after each)
+
+1. Workspace scaffolding, empty core package, root `npm test` runs both.
+2. Shopping: move the five pure methods, then extract the three inline pieces
+   from the command callback. Move `test/shopping-line.test.ts` to
+   `packages/core/test/`, change the imports, drop the `as any`.
+3. Note sections and template helpers.
+4. Parser: move `fetchPageHtml`, then `fetchRecipes` and its helpers, splitting
+   `parseRecipesFromHtml` out as you go. Plugin tests must pass unchanged.
+5. Delete the now-unused private methods from `main.ts` and confirm
+   `npm run lint` is clean. `main.ts` should land somewhere near 2,000 lines.
+
+### 1e. Verification for step 1
+
+- `npm test` green at root and in core.
+- `npm run build` produces `main.js`. Load it in a dev vault and import the
+  three fixture URLs from `test/fixtures` plus one live WPRM site with proxy
+  fallback off, then on. Add checked ingredients to the list twice from two
+  recipes and confirm merging and the `*(Source)*` annotation look the same as
+  before.
+- CI passes with no workflow changes. If `npm ci` complains about workspaces,
+  the lockfile needs regenerating once.
+
+---
+
+## Step 2 - Household web app
+
+### 2a. Layout and stack
+
+```
+apps/web/
+├── package.json
+├── wrangler.toml          # worker + D1 binding + static assets dir
+├── drizzle.config.ts
+├── src/
+│   ├── worker/            # Hono app, /api/* routes, auth middleware
+│   │   ├── index.ts
+│   │   ├── auth.ts
+│   │   ├── db/schema.ts   # drizzle
+│   │   └── routes/{recipes,plan,list,import}.ts
+│   └── client/            # Vite + Preact + Tailwind 4 PWA
+│       ├── main.tsx
+│       ├── routes/{home,recipes,recipe,plan,list,import,login}.tsx
+│       └── components/
+└── test/
+```
+
+- Vite builds `src/client` to `dist/`. Wrangler serves `dist/` as static
+  assets and routes `/api/*` to the Worker. Single deploy.
+- `vite-plugin-pwa` for the manifest and service worker. Cache the shell, not
+  API responses. Installable on both phones.
+- Hono on Workers, `nodejs_compat` flag on because `cheerio` pulls in Node
+  built-ins. Verify a `parseRecipesFromHtml` call runs under `wrangler dev`
+  before writing any routes. If it doesn't, the fallback is `htmlparser2` in
+  core behind the same function signature. This is the one real unknown.
+- D1 with Drizzle for schema and migrations. Wrangler runs migrations.
+- Hosting at a subdomain of `recipes.taylordugger.com`. The docs site keeps the
+  root, `docs/CNAME` untouched.
+
+### 2b. Data model (D1)
+
+```sql
+recipes (
+  id TEXT PRIMARY KEY,            -- nanoid
+  title TEXT NOT NULL,
+  markdown TEXT NOT NULL,         -- full note, DEFAULT_TEMPLATE shape
+  author TEXT, source_url TEXT, photo_url TEXT,
+  meal_type TEXT,                 -- comma string, same as frontmatter
+  cook_time TEXT, cook_time_mins INTEGER,
+  ingredients TEXT NOT NULL,      -- JSON string[], derived from markdown
+  times_made INTEGER DEFAULT 0, last_made TEXT,
+  created_at TEXT, updated_at TEXT
+)
+plan_entries (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,             -- YYYY-MM-DD
+  slot TEXT NOT NULL DEFAULT 'dinner',
+  recipe_id TEXT REFERENCES recipes(id) ON DELETE CASCADE,
+  note TEXT,                      -- free text when there's no recipe ("leftovers")
+  position INTEGER DEFAULT 0
+)
+shopping_items (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL, amount REAL DEFAULT 0, unit TEXT DEFAULT '',
+  checked INTEGER DEFAULT 0,
+  sources TEXT DEFAULT '[]',      -- JSON string[]
+  original TEXT,
+  position INTEGER, updated_at TEXT
+)
+```
+
+`shopping_items` rows map one to one onto core's `ShoppingItem`, so the merge
+is: load all rows, call `mergeShoppingItems`, upsert. No new math.
+
+The derived columns on `recipes` are refreshed from `markdown` on every write
+using core's `ingredientsFromBody` and the frontmatter block. Editing a recipe
+in v1 is a raw markdown textarea. Structured editing can come later because
+the markdown is the truth.
+
+### 2c. API
+
+All routes behind the passcode cookie. JSON in, JSON out.
+
+- `POST /api/login` passcode, sets cookie. `POST /api/logout`.
+- `GET /api/recipes?q=` search across title, meal_type, ingredients. Mirrors
+  the gallery filter in `src/components/RecipeGallery.tsx`.
+- `GET /api/recipes/:id`, `PUT /api/recipes/:id` (markdown), `DELETE`.
+- `POST /api/recipes/:id/made` bumps `times_made`, sets `last_made`.
+- `POST /api/import/preview` `{ url }` returns `ParsedRecipe[]` via
+  `core.fetchRecipes` with a `fetch`-backed `HttpPort` and `proxyFallback: true`.
+  Worker egress comes from Cloudflare IPs, which some blogs block the same way
+  they block Obsidian mobile, so the jina fallback stays on by default here.
+- `POST /api/import` `{ recipe: ParsedRecipe }` renders with
+  `createRecipeRenderer(DEFAULT_TEMPLATE)` and inserts.
+- `GET /api/plan?from=&to=`, `PUT /api/plan/:date` replaces that day's entries,
+  `DELETE /api/plan/entries/:id`.
+- `POST /api/plan/to-list` `{ from, to, exclude?: string[] }` gathers
+  ingredients from every recipe in range, runs `mergeShoppingItems` against
+  current rows, writes. Returns the same "N merged, M new" counts the plugin
+  shows.
+- `GET /api/list`, `PATCH /api/list/:id` (checked), `POST /api/list` (free
+  text item, goes through `itemFromLine`), `DELETE /api/list/checked`.
+
+### 2d. Screens
+
+- **Login.** Passcode field. That's it.
+- **Home.** Today's dinner with photo and a "mark made" button. A seven-day
+  strip for the current week. Unchecked count on the list with a link. An
+  import button. This is the dashboard the plugin never had.
+- **Recipes.** Port of `RecipeGallery` and `RecipeCard`. Search box filters
+  title, meal type, and ingredients. Sort by recent, most made, cook time.
+- **Recipe.** Markdown rendered to HTML. Ingredients render as checkboxes and
+  a "send checked to list" button, same flow as the plugin's note actions.
+  "Add to plan" opens a day picker. "Mark made." Edit opens the raw markdown.
+- **Plan.** Week view, Monday to Sunday, previous and next. Tap a day to search
+  and pick a recipe, or type a free text note. Remove with a swipe or an x.
+  "Shopping list for this week" opens a preview with every ingredient checked,
+  uncheck what's already in the pantry, confirm.
+- **List.** Flat list, checkable, source annotation in small text. Add a free
+  text item at the top. "Clear checked" at the bottom. Polls every 5 seconds
+  while mounted, with optimistic toggles so a tap feels instant.
+- **Import.** URL field. Preview card, then save. Also registered as a PWA
+  share target so "share to Recipe Vault" from Chrome on Android drops the
+  URL straight in. iOS Safari doesn't support Web Share Target, so on iPhone
+  it's copy and paste.
+
+Mobile first. Bottom tab bar with Home, Plan, List, Recipes. Desktop gets the
+same layout wider.
+
+### 2e. Order of work
+
+1. Scaffold: Vite + Preact + Tailwind, Hono worker, D1 schema, passcode auth,
+   `wrangler dev` runs both. Confirm `cheerio` works on the Worker (2a).
+2. Import route plus the recipes screen. This proves core works server-side
+   and gets real data in.
+3. Recipe screen with ingredients to list. List screen with polling. At this
+   point both phones can use it for groceries, which is the first real win.
+4. Plan screen and plan-to-list.
+5. Home screen last, once there's data to show on it.
+6. PWA manifest, icons, share target. Deploy. Install on both phones.
+
+### 2f. Verification for step 2
+
+- Core tests cover the math. Worker route tests with Vitest and the Workers
+  pool are nice to have, not blocking. Routes are thin.
+- Manual: import five recipes from the same sites the vault has. Plan a week.
+  Generate a list. On phone A, check three items. Phone B shows them checked
+  within a poll. Clear checked on B, A updates.
+- Old phone check: open Recipes with 200 rows and scroll. If it stutters, the
+  gallery needs virtualization before anything else.
+
+---
+
+## Out of scope for this doc
+
+- Discovery (feeds, similar recipes). Step 4 in the earlier conversation.
+- Vault sync command in the plugin. Step 3. The markdown column exists so this
+  stays a file copy.
+- R2 image storage. Photo import (the vision path) in the web app. Servings
+  scaling. Multi-household. Realtime.
+
+## Open questions
+
+- Does `cheerio` 1.0.0-rc.12 run under Workers `nodejs_compat`? Test before
+  anything else in step 2.
+- Vitest workspace at root, or a second `npm test -w`? Whichever CI likes.
+- Does the plugin's `photoFrontmatter` behavior for vault-local images need a
+  web equivalent, or does the web app always store a URL? Assume URL for v1.

@@ -1,19 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { makePlugin } from "./helpers/plugin";
+import {
+  formatIngredientAmount,
+  fromBaseAmount,
+  normalizeIngredientUnit,
+  parseShoppingLine,
+  toBaseAmount,
+} from "../src";
 
 /**
- * Unit tests for the shopping-list math. These five helpers are private on
- * RecipeVault and pure (no Obsidian/network), so they're exercised directly
- * off an instance. They back the "add checked ingredients to shopping list"
- * merge flow: parse a line → convert to a base unit → sum → format back.
+ * Unit tests for the shopping-list math. These five helpers back the "add
+ * checked ingredients to shopping list" merge flow: parse a line → convert to
+ * a base unit → sum → format back.
  */
-const p = makePlugin() as any;
-const parseLine = (t: string) => p.parseShoppingLine(t);
-const unit = (u: string) => p.normalizeIngredientUnit(u);
-const fmt = (a: number, u: string) => p.formatIngredientAmount(a, u);
-const toBase = (a: number, u: string) => p.toBaseAmount(a, u);
-const fromBase = (b: number, f: string) => p.fromBaseAmount(b, f);
+const parseLine = parseShoppingLine;
+const unit = normalizeIngredientUnit;
+const fmt = formatIngredientAmount;
+const toBase = toBaseAmount;
+const fromBase = fromBaseAmount;
 
 describe("parseShoppingLine", () => {
   it("parses amount, unit, and name", () => {

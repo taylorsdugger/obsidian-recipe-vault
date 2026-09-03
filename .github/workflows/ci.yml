@@ -27,5 +27,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
+
+      - name: Check release files are at repo root
+        run: |
+          for f in main.js manifest.json styles.css; do
+            test -f "$f" || { echo "missing $f at repo root"; exit 1; }
+          done
