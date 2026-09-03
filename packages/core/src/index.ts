@@ -30,6 +30,8 @@ export type { FrontmatterOptions } from "./note/frontmatter";
 export {
   formatPhotoValue,
   formatIsoDuration,
+  readFrontmatter,
+  cookTimeToMinutes,
   ensureRequiredRecipeFrontmatter,
   isRecipeNotesSectionEmpty,
   ensureRecipeNotesSection,

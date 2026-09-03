@@ -3,8 +3,10 @@ import { useEffect, useState } from "preact/hooks";
 import { api } from "./api";
 import { TabBar } from "./components/tab-bar";
 import { usePath } from "./router";
+import { Import } from "./routes/import";
 import { Login } from "./routes/login";
 import { Placeholder } from "./routes/placeholder";
+import { Recipes } from "./routes/recipes";
 
 /** Which screen a pathname maps to. Everything but Login is scaffolding. */
 function Screen({ path }: { path: string }) {
@@ -24,21 +26,19 @@ function Screen({ path }: { path: string }) {
       />
     );
   }
-  if (path.startsWith("/recipes")) {
+  if (path.startsWith("/recipes/")) {
     return (
       <Placeholder
-        title="Recipes"
-        note="Port of the plugin's gallery and its search. Step 2e.2."
+        title="Recipe"
+        note="The note, its ingredients, and send-to-list. Step 2e.3."
       />
     );
   }
+  if (path.startsWith("/recipes")) {
+    return <Recipes />;
+  }
   if (path.startsWith("/import")) {
-    return (
-      <Placeholder
-        title="Import"
-        note="Paste a URL, preview, save. Step 2e.2."
-      />
-    );
+    return <Import />;
   }
   return (
     <Placeholder

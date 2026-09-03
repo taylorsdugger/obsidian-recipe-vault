@@ -1,9 +1,10 @@
 # Implementation Plan: shared core + household web app
 
-> **Status:** STEP 1 CODE COMPLETE, STEP 2 SCAFFOLDED, updated 2026-09-03.
+> **Status:** STEP 1 CODE COMPLETE, STEP 2 THROUGH 2e.2, updated 2026-09-03.
 > All five moves of 1d are done; the 1e manual pass in a dev vault is the only
-> thing left before a boring patch release. `apps/web` exists and runs, with
-> 2e.1 done. 2e.2 (import route plus the recipes screen) is next.
+> thing left before a boring patch release. In the web app, import and the
+> recipes screen work end to end against a real site. 2e.3 (recipe screen and
+> the shared list) is next, and it's the first one that's useful day to day.
 > **Branch when written:** `docs/landing-page` (clean, at `8bbdfe1`).
 > Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green.
 > **Author of plan:** design session 2026-09-02.
@@ -17,6 +18,13 @@
 > - `core/note-template` (commit `da55aaf`): note sections, frontmatter
 >   helpers, and the template moved. `main.ts` is at 2,457 lines, down from
 >   3,099.
+> - `apps/web` 2e.2: import and the gallery. Pasting a URL parses it, the
+>   preview card saves, and the note that lands is the same shape the plugin
+>   writes. Verified against noracooks (JSON-LD) and loveandlemons (the
+>   microdata fallback), both through the browser, not just curl. Search
+>   covers title, meal type, and ingredients; sorts are recent, most made,
+>   quickest. Editing a note re-derives every column, so a renamed ingredient
+>   is searchable straight away.
 > - `apps/web` scaffold: Vite + Preact + Tailwind 4 client, Hono worker, D1
 >   schema and migration, passcode auth. `wrangler dev` serves both.
 >   **cheerio runs on workerd under `nodejs_compat`** — `/api/health` parses a
@@ -61,6 +69,23 @@
 >   and the asset config never gets a say — `/plan` 404'd until this changed.
 > - Root `npm ci` now also installs the web app's dev deps (wrangler, vite,
 >   drizzle-kit). CI got slower. Nothing about the plugin build changed.
+> - Core gained `readFrontmatter` and `cookTimeToMinutes`. The plan said the
+>   derived columns come from "the frontmatter block" without saying who reads
+>   it; both clients need that, so it lives in core with tests pinned against
+>   what `DEFAULT_TEMPLATE` writes.
+> - **Handlebars needs a warm-up call on Workers.** `compile` is lazy: it
+>   generates code with `new Function` on the *first render*, and Workers only
+>   allows code generation while a module is being evaluated. So the first
+>   import request died with "Code generation from strings disallowed". The
+>   fix is one throwaway `renderRecipe({})` at module scope. Anything else
+>   that compiles a template at request time will hit this — worth knowing
+>   before the plan screen renders anything.
+> - The web app renders with `formatPhoto: (path) => path` so `photo:` is a
+>   bare URL, not the plugin's `[[wikilink]]`. That's locked decision 7 in
+>   practice, and it's why `createRecipeRenderer` took the option in step 1.
+> - `POST /api/import` takes the `ParsedRecipe` the client was shown rather
+>   than re-fetching the URL. What gets saved is what was on screen, and the
+>   site can't change underneath the preview.
 
 ## Goal
 
@@ -585,8 +610,14 @@ same layout wider.
    migration applies and creates all three tables, and a deep link to `/plan`
    serves `index.html`. Every route but login, health, and import preview
    answers 501 with a TODO naming the step that fills it in.
-2. Import route plus the recipes screen. This proves core works server-side
-   and gets real data in.
+2. **DONE.** Import route plus the recipes screen. Core runs server-side on
+   real sites, and there's real data in D1. `POST /api/import/preview` parses,
+   `POST /api/import` renders through `DEFAULT_TEMPLATE` and inserts,
+   `GET /api/recipes` searches and sorts, and `PUT` re-derives every column
+   from the edited markdown. Checked by hand: a JSON-LD site and a microdata
+   site both import through the UI, ingredient search finds a recipe by an
+   ingredient, editing a note moves it in the search index, and delete is
+   404-safe on a second call.
 3. Recipe screen with ingredients to list. List screen with polling. At this
    point both phones can use it for groceries, which is the first real win.
 4. Plan screen and plan-to-list.
@@ -619,5 +650,7 @@ same layout wider.
   parses a JSON-LD fixture through core on workerd and returns `parser: true`.
   The fallback to `htmlparser2` is not needed.
 - Vitest workspace at root, or a second `npm test -w`? Whichever CI likes.
-- Does the plugin's `photoFrontmatter` behavior for vault-local images need a
-  web equivalent, or does the web app always store a URL? Assume URL for v1.
+- ~~Does the plugin's `photoFrontmatter` behavior for vault-local images need
+  a web equivalent?~~ No. The web app renders with `formatPhoto: (path) =>
+  path` and `deriveRecipeFields` drops any non-`http` photo value, so a note
+  imported from a vault backup won't put a broken vault path in `photo_url`.
