@@ -1,9 +1,35 @@
 # Implementation Plan: shared core + household web app
 
-> **Status:** DRAFT 2026-09-02. Nothing implemented.
+> **Status:** STEP 1 IN PROGRESS, updated 2026-09-03. Moves 1 to 3 of 1d are
+> done (workspace, shopping, note sections + template). Move 4 (parser) is
+> next. Step 2 not started.
 > **Branch when written:** `docs/landing-page` (clean, at `8bbdfe1`).
 > Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green.
 > **Author of plan:** design session 2026-09-02.
+>
+> **Progress log:**
+> - PR #13 (merged to `main`): workspace scaffold, shopping module, CI guard
+>   for the three release files, and `npm test` added to CI. Also fixed three
+>   proxy fallback tests that had been failing on `main` because the retry
+>   `sleep` used `window.setTimeout` under the Node test env. Built `main.js`
+>   was checked by hand on desktop and Android. No release tagged yet.
+> - `core/note-template` (commit `da55aaf`): note sections, frontmatter
+>   helpers, and the template moved. `main.ts` is at 2,457 lines, down from
+>   3,099.
+>
+> **Deviations from the plan so far:**
+> - Core also has `removeCheckedItems` (the clear command's logic) so the web
+>   app can reuse it. Not in the original API sketch.
+> - `ingredientsFromBody` takes the note text, not a `TFile`. The plugin keeps
+>   a one-line async wrapper that reads the file first.
+> - `ensureRequiredRecipeFrontmatter` and `createRecipeRenderer` take an
+>   optional `formatPhoto` so the web app can write URLs where the plugin
+>   writes wikilinks. Default is the plugin's wikilink-or-URL behaviour.
+> - Filling an empty `## Notes` section leaves an extra blank line above the
+>   notes. That is pre-existing plugin behaviour, now pinned by a core test
+>   with a comment. Left as is on purpose; changing it changes note output.
+> - Line numbers in the integration map are as of `8bbdfe1` and no longer
+>   match `main.ts` after the moves. Grep for the method names instead.
 
 ## Goal
 
@@ -362,13 +388,20 @@ away if nothing else calls it. Check `:1400` callers first. `requestUrl` at
 
 ### 1d. Order of moves (each a separate commit, tests green after each)
 
-1. Workspace scaffolding, empty core package, root `npm test` runs both.
-2. Shopping: move the five pure methods, then extract the three inline pieces
-   from the command callback. Move `test/shopping-line.test.ts` to
-   `packages/core/test/`, change the imports, drop the `as any`.
-3. Note sections and template helpers.
+1. **DONE (PR #13).** Workspace scaffolding, empty core package, root
+   `npm test` runs both.
+2. **DONE (PR #13).** Shopping: move the five pure methods, then extract the
+   three inline pieces from the command callback. Move
+   `test/shopping-line.test.ts` to `packages/core/test/`, change the imports,
+   drop the `as any`.
+3. **DONE (`da55aaf`).** Note sections and template helpers.
 4. Parser: move `fetchPageHtml`, then `fetchRecipes` and its helpers, splitting
    `parseRecipesFromHtml` out as you go. Plugin tests must pass unchanged.
+   Helpers still on the plugin that go with it: `stripHtml`,
+   `decodeHtmlEntities`, `normalizeRecipeNotes`, `normalizeImages`,
+   `cleanRecipeName` and its filler word helpers, `extractMicrodataRecipes`,
+   `extractWprmRecipeNotes`, `isJsonRecord`, `ParsedRecipe`, `InstructionStep`.
+   `sleep` and `fetchRetryDelayMs` become the `retryDelayMs` option.
 5. Delete the now-unused private methods from `main.ts` and confirm
    `npm run lint` is clean. `main.ts` should land somewhere near 2,000 lines.
 
