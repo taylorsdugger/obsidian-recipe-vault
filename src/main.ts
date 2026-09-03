@@ -11,7 +11,6 @@ import {
   TFile,
   Vault,
 } from "obsidian";
-import * as handlebars from "handlebars";
 import * as cheerio from "cheerio";
 
 import * as c from "./constants";
@@ -33,26 +32,19 @@ import {
 import type { ChatMessage } from "./utils/openrouter";
 import dateFormat from "dateformat";
 import {
+  createRecipeRenderer,
+  ensureRecipeNotesSection,
+  ensureRequiredRecipeFrontmatter,
+  ingredientsFromBody,
   itemFromLine,
   mergeShoppingItems,
+  parseRecipeSections,
+  replaceRecipeSections,
   parseShoppingListMarkdown,
   removeCheckedItems,
   renderShoppingListMarkdown,
 } from "@recipe-vault/core";
 import type { ShoppingItem } from "@recipe-vault/core";
-
-interface MarkdownSectionRange {
-  headingEnd: number;
-  bodyStart: number;
-  bodyEnd: number;
-}
-
-interface ParsedRecipeSections {
-  recipeIngredient: string[];
-  recipeInstructions: string[];
-  ingredientRange: MarkdownSectionRange;
-  instructionRange: MarkdownSectionRange;
-}
 
 /** One note's entry in the persisted ingredient search index. */
 interface IngredientIndexEntry {
@@ -394,123 +386,6 @@ export default class RecipeVault extends Plugin {
     }
   }
 
-  private findMarkdownSection(
-    markdown: string,
-    sectionTitle: string,
-  ): MarkdownSectionRange | null {
-    const escapedTitle = sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const headingRegex = new RegExp(`^#{1,6}\\s+${escapedTitle}\\s*$`, "im");
-    const headingMatch = headingRegex.exec(markdown);
-    if (!headingMatch || headingMatch.index === undefined) {
-      return null;
-    }
-
-    const headingStart = headingMatch.index;
-    const headingEnd = headingStart + headingMatch[0].length;
-    const afterHeading = markdown.slice(headingEnd);
-    const nextHeadingMatch = /\n#{1,6}\s+/.exec(afterHeading);
-    const bodyEnd =
-      nextHeadingMatch && nextHeadingMatch.index !== undefined
-        ? headingEnd + nextHeadingMatch.index
-        : markdown.length;
-
-    return {
-      headingEnd,
-      bodyStart: headingEnd,
-      bodyEnd,
-    };
-  }
-
-  private parseSectionList(
-    sectionBody: string,
-    isIngredients: boolean,
-  ): string[] {
-    return sectionBody
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        if (isIngredients) {
-          return line
-            .replace(/^-\s*\[(?: |x|X)\]\s*/, "")
-            .replace(/^-\s*/, "")
-            .trim();
-        }
-        return line
-          .replace(/^[-*]\s*/, "")
-          .replace(/^\d+\.\s*/, "")
-          .trim();
-      })
-      .filter((line) => line.length > 0);
-  }
-
-  private parseRecipeSections(markdown: string): ParsedRecipeSections | null {
-    const ingredientRange = this.findMarkdownSection(markdown, "Ingredients");
-    const instructionRange = this.findMarkdownSection(markdown, "Instructions");
-    if (!ingredientRange || !instructionRange) {
-      return null;
-    }
-
-    const recipeIngredient = this.parseSectionList(
-      markdown.slice(ingredientRange.bodyStart, ingredientRange.bodyEnd),
-      true,
-    );
-    const recipeInstructions = this.parseSectionList(
-      markdown.slice(instructionRange.bodyStart, instructionRange.bodyEnd),
-      false,
-    );
-
-    return {
-      recipeIngredient,
-      recipeInstructions,
-      ingredientRange,
-      instructionRange,
-    };
-  }
-
-  private replaceRecipeSections(
-    markdown: string,
-    recipeIngredient: string[],
-    recipeInstructions: string[],
-  ): string {
-    const parsed = this.parseRecipeSections(markdown);
-    if (!parsed) {
-      throw new Error(
-        "Could not find both Ingredients and Instructions sections in this note.",
-      );
-    }
-
-    const ingredientBody = recipeIngredient
-      .map((line) => `- [ ] ${line}`)
-      .join("\n");
-    const instructionBody = recipeInstructions
-      .map((line) => `- ${line}`)
-      .join("\n");
-
-    const replacements: Array<{ start: number; end: number; value: string }> = [
-      {
-        start: parsed.ingredientRange.bodyStart,
-        end: parsed.ingredientRange.bodyEnd,
-        value: `\n\n${ingredientBody}\n`,
-      },
-      {
-        start: parsed.instructionRange.bodyStart,
-        end: parsed.instructionRange.bodyEnd,
-        value: `\n\n${instructionBody}\n`,
-      },
-    ].sort((a, b) => b.start - a.start);
-
-    let nextMarkdown = markdown;
-    for (const replacement of replacements) {
-      nextMarkdown =
-        nextMarkdown.slice(0, replacement.start) +
-        replacement.value +
-        nextMarkdown.slice(replacement.end);
-    }
-
-    return nextMarkdown;
-  }
-
   /** Ingredient lines for a note path, for the gallery search (loadRecipes). */
   getIngredients(path: string): string[] {
     return this.ingredientIndex.get(path)?.ingredients ?? [];
@@ -519,12 +394,7 @@ export default class RecipeVault extends Plugin {
   /** Parse a recipe's body `### Ingredients` section into searchable lines. */
   private async parseIngredientsFromBody(file: TFile): Promise<string[]> {
     const content = await this.app.vault.cachedRead(file);
-    const range = this.findMarkdownSection(content, "Ingredients");
-    if (!range) return [];
-    return this.parseSectionList(
-      content.slice(range.bodyStart, range.bodyEnd),
-      true,
-    );
+    return ingredientsFromBody(content);
   }
 
   /** Path of the sidecar index file, or null if the plugin dir is unknown. */
@@ -677,7 +547,7 @@ export default class RecipeVault extends Plugin {
     // edits stay in sync with any edits already applied this session.
     const readRecipe = async () => {
       const content = await this.app.vault.read(file);
-      const parsed = this.parseRecipeSections(content);
+      const parsed = parseRecipeSections(content);
       if (!parsed) {
         throw new Error(
           "Could not find Ingredients and Instructions sections in this note.",
@@ -756,7 +626,7 @@ export default class RecipeVault extends Plugin {
         }
 
         const latestContent = await this.app.vault.read(file);
-        const updated = this.replaceRecipeSections(
+        const updated = replaceRecipeSections(
           latestContent,
           result.recipeIngredient,
           result.recipeInstructions,
@@ -839,8 +709,6 @@ export default class RecipeVault extends Plugin {
       c.VIEW_TYPE_RECIPE_GALLERY,
       (leaf) => new RecipeGalleryView(leaf, this),
     );
-
-    this.registerHandlebarsHelpers();
 
     // Ribbon icon to open/reveal the gallery
     this.addRibbonIcon("utensils", "Open recipe gallery", () => {
@@ -1691,7 +1559,7 @@ export default class RecipeVault extends Plugin {
    * This function handles all the templating of the recipes
    */
   private addRecipeToMarkdown = async (url: string): Promise<void> => {
-    const markdown = handlebars.compile(this.settings.recipeTemplate);
+    const markdown = createRecipeRenderer(this.settings.recipeTemplate);
     try {
       const recipes = await this.fetchRecipes(url);
 
@@ -1839,12 +1707,12 @@ export default class RecipeVault extends Plugin {
           md = this.decodeHtmlEntities(md);
         }
 
-        md = this.ensureRequiredRecipeFrontmatter(md, {
+        md = ensureRequiredRecipeFrontmatter(md, {
           cookTime:
             typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
           image: typeof recipe.image === "string" ? recipe.image : undefined,
         });
-        md = this.ensureRecipeNotesSection(
+        md = ensureRecipeNotesSection(
           md,
           this.normalizeRecipeNotes(recipe.recipeNotes),
         );
@@ -1871,7 +1739,7 @@ export default class RecipeVault extends Plugin {
     const name = recipeName.trim();
     if (!name) return;
 
-    const markdown = handlebars.compile(this.settings.recipeTemplate);
+    const markdown = createRecipeRenderer(this.settings.recipeTemplate);
     const stub = { name };
     let md = markdown(stub);
 
@@ -1879,7 +1747,7 @@ export default class RecipeVault extends Plugin {
       md = this.decodeHtmlEntities(md);
     }
 
-    md = this.ensureRequiredRecipeFrontmatter(md, {});
+    md = ensureRequiredRecipeFrontmatter(md, {});
 
     const folder =
       this.settings.folder !== ""
@@ -1957,7 +1825,7 @@ export default class RecipeVault extends Plugin {
         }
       }
 
-      const markdown = handlebars.compile(this.settings.recipeTemplate);
+      const markdown = createRecipeRenderer(this.settings.recipeTemplate);
       let md = markdown({
         ...recipe,
         json: JSON.stringify(recipe, null, 2),
@@ -1966,12 +1834,12 @@ export default class RecipeVault extends Plugin {
       if (this.settings.decodeEntities) {
         md = this.decodeHtmlEntities(md);
       }
-      md = this.ensureRequiredRecipeFrontmatter(md, {
+      md = ensureRequiredRecipeFrontmatter(md, {
         cookTime:
           typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
         image: typeof recipe.image === "string" ? recipe.image : undefined,
       });
-      md = this.ensureRecipeNotesSection(
+      md = ensureRecipeNotesSection(
         md,
         this.normalizeRecipeNotes(recipe.recipeNotes),
       );
@@ -2039,139 +1907,6 @@ export default class RecipeVault extends Plugin {
       console.error("Recipe Vault: failed to save recipe photo", err);
       return null;
     }
-  }
-
-  /**
-   * Registers all Handlebars helpers used by recipe templates.
-   * Called once from onload() so helpers are available to all template paths.
-   */
-  private registerHandlebarsHelpers(): void {
-    handlebars.registerHelper("splitTags", function (tags) {
-      if (!tags || typeof tags != "string") {
-        return "";
-      }
-      const tagsArray = tags.split(",");
-      let tagString = "";
-      for (const tag of tagsArray) {
-        tagString += "- " + tag.trim() + "\n";
-      }
-      return tagString;
-    });
-
-    const formatPhotoValue = (imgPath: string): string =>
-      this.formatPhotoValue(imgPath);
-    handlebars.registerHelper("photoFrontmatter", function (imgPath) {
-      if (!imgPath) return "";
-      return formatPhotoValue(String(imgPath));
-    });
-
-    const formatIsoDuration = (duration: string): string =>
-      this.formatIsoDuration(duration);
-    handlebars.registerHelper(
-      "magicTime",
-      function (arg1: unknown, arg2: unknown) {
-        if (typeof arg1 === "undefined") {
-          return "";
-        }
-        if (arguments.length === 1) {
-          return dateFormat(new Date(), "yyyy-mm-dd HH:MM");
-        }
-        const value = typeof arg1 === "string" ? arg1 : String(arg1);
-        if (arguments.length === 2) {
-          if (!isNaN(Date.parse(value))) {
-            return dateFormat(new Date(value), "yyyy-mm-dd HH:MM");
-          }
-          if (value.trim().startsWith("PT")) {
-            return formatIsoDuration(value);
-          }
-          try {
-            return dateFormat(new Date(), value);
-          } catch {
-            return "";
-          }
-        } else if (arguments.length === 3) {
-          const mask = typeof arg2 === "string" ? arg2 : String(arg2);
-          if (!isNaN(Date.parse(value))) {
-            return dateFormat(new Date(value), mask);
-          }
-          return "Error in template or source";
-        } else {
-          return "Error in template";
-        }
-      },
-    );
-  }
-
-  /**
-   * Formats an image path/URL as a frontmatter photo value.
-   * Local paths are wrapped in [[...]] (Obsidian wikilink); remote URLs are returned as-is.
-   */
-  private formatPhotoValue(imgPath: string): string {
-    if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
-      return imgPath;
-    }
-    return `[[${imgPath}]]`;
-  }
-
-  /**
-   * Ensures required frontmatter keys exist even when users have customized/older templates.
-   */
-  private ensureRequiredRecipeFrontmatter(
-    markdown: string,
-    values: { cookTime?: string; image?: string },
-  ): string {
-    const cookTimeValue = this.normalizeCookTimeValue(values.cookTime);
-    const photoValue = this.normalizePhotoValue(values.image).replace(
-      /"/g,
-      '\\"',
-    );
-
-    const requiredLines = [
-      "cssclasses: recipe-note",
-      `cook_time: ${cookTimeValue}`,
-      `photo: "${photoValue}"`,
-    ];
-
-    if (markdown.startsWith("---\n")) {
-      const frontmatterStart = 4;
-      const frontmatterEnd = markdown.indexOf("\n---", frontmatterStart);
-      if (frontmatterEnd !== -1) {
-        let fmContent = markdown.slice(frontmatterStart, frontmatterEnd);
-        const remainder = markdown.slice(frontmatterEnd + 4);
-
-        const hasKey = (key: string): boolean =>
-          new RegExp(`^${key}\\s*:`, "m").test(fmContent);
-
-        const missingLines = requiredLines.filter((line) => {
-          const key = line.split(":", 1)[0];
-          return !hasKey(key);
-        });
-
-        if (missingLines.length === 0) {
-          return markdown;
-        }
-
-        if (fmContent.length > 0 && !fmContent.endsWith("\n")) {
-          fmContent += "\n";
-        }
-        fmContent += `${missingLines.join("\n")}\n`;
-
-        const remainderPrefix = remainder.startsWith("\n") ? "" : "\n";
-        return `---\n${fmContent}---${remainderPrefix}${remainder}`;
-      }
-    }
-
-    return `---\n${requiredLines.join("\n")}\n---\n\n${markdown}`;
-  }
-
-  private normalizeCookTimeValue(raw?: string): string {
-    if (!raw) return "";
-    return raw.trim().startsWith("PT") ? this.formatIsoDuration(raw) : raw;
-  }
-
-  private normalizePhotoValue(raw?: string): string {
-    if (!raw) return "";
-    return this.formatPhotoValue(raw);
   }
 
   private normalizeRecipeNotes(raw: unknown): string[] {
@@ -2345,51 +2080,6 @@ export default class RecipeVault extends Plugin {
     return recipes;
   }
 
-  private isRecipeNotesSectionEmpty(markdown: string): boolean {
-    const headingMatch = markdown.match(/^##\s+Notes\s*$/m);
-    if (!headingMatch || headingMatch.index === undefined) return true;
-
-    const sectionStart = headingMatch.index + headingMatch[0].length;
-    const afterHeading = markdown.slice(sectionStart);
-    const nextHeadingMatch = afterHeading.match(/\n##\s+/);
-    const sectionBody =
-      nextHeadingMatch && nextHeadingMatch.index !== undefined
-        ? afterHeading.slice(0, nextHeadingMatch.index)
-        : afterHeading;
-
-    return sectionBody.trim().length === 0;
-  }
-
-  private ensureRecipeNotesSection(markdown: string, notes: string[]): string {
-    if (notes.length === 0) return markdown;
-
-    const headingMatch = markdown.match(/^##\s+Notes\s*$/m);
-    const notesBody = `${notes.map((note) => `- ${note}`).join("\n")}\n`;
-
-    if (!headingMatch || headingMatch.index === undefined) {
-      const separator = markdown.endsWith("\n") ? "" : "\n";
-      return `${markdown}${separator}\n## Notes\n\n${notesBody}`;
-    }
-
-    const sectionStart = headingMatch.index + headingMatch[0].length;
-    const beforeSection = markdown.slice(0, sectionStart);
-    const afterHeading = markdown.slice(sectionStart);
-    const nextHeadingMatch = afterHeading.match(/\n##\s+/);
-    const sectionBody =
-      nextHeadingMatch && nextHeadingMatch.index !== undefined
-        ? afterHeading.slice(0, nextHeadingMatch.index)
-        : afterHeading;
-
-    if (sectionBody.trim().length > 0) return markdown;
-
-    const tail =
-      nextHeadingMatch && nextHeadingMatch.index !== undefined
-        ? afterHeading.slice(nextHeadingMatch.index)
-        : "";
-
-    return `${beforeSection}\n\n${notesBody}${tail}`;
-  }
-
   /**
    * This function checks for an existing folder (creates if it doesn't exist)
    */
@@ -2537,20 +2227,6 @@ export default class RecipeVault extends Plugin {
   private toLooseWordPattern(word: string): string {
     const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return escaped.replace(/\s+/g, "[-\\s]+");
-  }
-
-  /**
-   * Format an ISO 8601 duration string (e.g. "PT1H30M") into a human-readable
-   * string (e.g. "1h 30m "). Returns the original string if it doesn't start with "PT".
-   */
-  private formatIsoDuration(duration: string): string {
-    const raw = duration.trim();
-    if (!raw.startsWith("PT")) return raw;
-    return raw
-      .replace("PT", "")
-      .replace("H", "h ")
-      .replace("M", "m ")
-      .replace("S", "s ");
   }
 
   /**
