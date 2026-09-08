@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
 import { api, type ParsedRecipePreview } from "../api";
 import { navigate } from "../router";
@@ -8,20 +8,35 @@ function asText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+/**
+ * Pull a URL out of the share target's query string. Android hands the shared
+ * link over in `url` when the app shares a proper URL, but Chrome's own share
+ * puts the whole thing in `text`, sometimes as "Page title https://…". So take
+ * `url` if it's there and otherwise dig the first link out of `text`.
+ */
+function sharedUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  const direct = params.get("url");
+  if (direct) return direct.trim();
+
+  const text = params.get("text") ?? "";
+  const match = text.match(/https?:\/\/\S+/);
+  return match ? match[0] : "";
+}
+
 /** URL field, preview card, save. The share target lands here too (2e.6). */
 export function Import() {
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(sharedUrl);
   const [preview, setPreview] = useState<ParsedRecipePreview[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const lookUp = async (event: Event) => {
-    event.preventDefault();
+  const look = async (target: string) => {
     setBusy(true);
     setError(null);
     setPreview(null);
     try {
-      const res = await api.importPreview(url.trim());
+      const res = await api.importPreview(target.trim());
       setPreview(res.recipes);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -29,6 +44,23 @@ export function Import() {
       setBusy(false);
     }
   };
+
+  const lookUp = (event: Event) => {
+    event.preventDefault();
+    void look(url);
+  };
+
+  // Arriving from the share sheet: look the URL up without a second tap, and
+  // drop the query string so a reload doesn't re-import.
+  const shared = useRef(false);
+  useEffect(() => {
+    if (shared.current) return;
+    shared.current = true;
+    const fromShare = sharedUrl();
+    if (!fromShare) return;
+    window.history.replaceState({}, "", "/import");
+    void look(fromShare);
+  }, []);
 
   const save = async (recipe: ParsedRecipePreview) => {
     setBusy(true);

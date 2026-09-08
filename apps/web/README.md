@@ -64,4 +64,11 @@ scripts above from anywhere in the repo. Running bare `npx wrangler …` at the
 repo root fails with "Required Worker name missing" because there's no config
 up there to find.
 
+## Icons
+
+`npm run icons -w @recipe-vault/web` redraws everything in `public/` from
+`scripts/make-icons.mjs`. The shapes are signed distance fields and the PNG is
+written by hand, so there's no image dependency and no binary source file to
+keep in sync. Output is deterministic: a run with no edits changes nothing.
+
 Nothing here touches the plugin or the GitHub Pages site in `docs/`.
