@@ -65,10 +65,10 @@ export type RecipeSort = "recent" | "made" | "quick";
 
 export const api = {
   session: () => request<{ signedIn: boolean }>("/session"),
-  login: (passcode: string) =>
+  login: (password: string) =>
     request<{ signedIn: boolean }>("/login", {
       method: "POST",
-      body: JSON.stringify({ passcode }),
+      body: JSON.stringify({ password }),
     }),
   logout: () => request<{ signedIn: boolean }>("/logout", { method: "POST" }),
 

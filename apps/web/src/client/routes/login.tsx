@@ -2,9 +2,9 @@ import { useState } from "preact/hooks";
 
 import { api } from "../api";
 
-/** One household, one passcode. No accounts (locked decision 3). */
+/** One household, one password. No accounts (locked decision 3). */
 export function Login({ onSignedIn }: { onSignedIn: () => void }) {
-  const [passcode, setPasscode] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -13,7 +13,7 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api.login(passcode);
+      await api.login(password);
       onSignedIn();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -27,19 +27,18 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
       <form class="w-full max-w-xs space-y-4" onSubmit={submit}>
         <h1 class="text-center text-2xl font-semibold">Recipe Vault</h1>
         <input
-          class="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-center text-lg tracking-widest"
+          class="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3"
           type="password"
-          inputMode="numeric"
           autocomplete="current-password"
-          placeholder="Passcode"
-          value={passcode}
-          onInput={(e) => setPasscode((e.target as HTMLInputElement).value)}
+          placeholder="Password"
+          value={password}
+          onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
         />
         {error && <p class="text-center text-sm text-red-600">{error}</p>}
         <button
           class="w-full rounded-lg bg-neutral-900 py-3 font-medium text-white disabled:opacity-50"
           type="submit"
-          disabled={busy || passcode.length === 0}
+          disabled={busy || password.length === 0}
         >
           {busy ? "Checking…" : "Enter"}
         </button>

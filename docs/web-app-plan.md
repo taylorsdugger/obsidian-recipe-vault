@@ -18,6 +18,13 @@
 > - `core/note-template` (commit `da55aaf`): note sections, frontmatter
 >   helpers, and the template moved. `main.ts` is at 2,457 lines, down from
 >   3,099.
+> - Auth reworked to match the workout app: `AUTH_PASSWORD_HASH` (PBKDF2,
+>   `pbkdf2$sha256$<iters>$<salt>$<hash>`) and `AUTH_COOKIE_SECRET`, generated
+>   by `scripts/hash-password.mjs`, which is that repo's script unchanged. The
+>   cookie is `v1.<expiry>.<hmac>` and carries its own expiry, so a stale one
+>   is rejected even when the signature is good. Failed logins are held to a
+>   400ms floor. A missing or malformed secret throws with the command that
+>   fixes it rather than making every correct password look wrong.
 > - `apps/web` 2e.3: recipe screen and the shared list. Checked ingredients go
 >   to the list with the recipe as the source, the merge math matches the
 >   plugin (2 tbsp + 2 tbsp = 4 tbsp, ½ cup + 1½ cups = 2 cups, sources
@@ -105,6 +112,10 @@
 > - Sending ingredients to the list is `POST /api/list` with `{ lines, source }`,
 >   not a route under `/api/recipes`. The list screen's free-text add is the
 >   same call with no source, so there's one merge path instead of two.
+> - `Uint8Array<ArrayBuffer>` in the workout app's auth code needs a newer TS
+>   than this repo resolves. Dropped the type argument; the explicit
+>   `new Uint8Array(new ArrayBuffer(n))` allocation it was there to support
+>   stays.
 > - `wrangler dev` falls over every so often with an empty ProxyController
 >   error while a browser is polling it. Wrangler's own dev proxy, not our
 >   code — restart it and the D1 state is still there.
@@ -157,8 +168,10 @@ running Obsidian.
    the rendered note (same `DEFAULT_TEMPLATE`), and the structured columns the
    UI needs are derived from it. This is what makes the later vault sync a
    file copy instead of a migration.
-3. **One household, one passcode.** No accounts, no multi-tenant. A
-   `HOUSEHOLD_SECRET` env var and a signed cookie. Two people.
+3. **One household, one password.** No accounts, no multi-tenant. A PBKDF2
+   hash in `AUTH_PASSWORD_HASH` and a cookie signed with `AUTH_COOKIE_SECRET`,
+   both Worker secrets. Two people. Same shape as the workout app, so there's
+   one auth pattern to remember across both.
 4. **Shopping list sharing is polling, not websockets.** Poll every few seconds
    while the list screen is visible. Durable Objects or realtime can come later
    if polling annoys.
@@ -577,7 +590,7 @@ the markdown is the truth.
 
 All routes behind the passcode cookie. JSON in, JSON out.
 
-- `POST /api/login` passcode, sets cookie. `POST /api/logout`.
+- `POST /api/login` password, sets cookie. `POST /api/logout`.
 - `GET /api/recipes?q=` search across title, meal_type, ingredients. Mirrors
   the gallery filter in `src/components/RecipeGallery.tsx`.
 - `GET /api/recipes/:id`, `PUT /api/recipes/:id` (markdown), `DELETE`.
@@ -599,7 +612,7 @@ All routes behind the passcode cookie. JSON in, JSON out.
 
 ### 2d. Screens
 
-- **Login.** Passcode field. That's it.
+- **Login.** Password field. That's it.
 - **Home.** Today's dinner with photo and a "mark made" button. A seven-day
   strip for the current week. Unchecked count on the list with a link. An
   import button. This is the dashboard the plugin never had.

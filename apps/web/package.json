@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "hash-password": "node scripts/hash-password.mjs",
     "build": "vite build",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -noEmit",

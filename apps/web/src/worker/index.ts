@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { parseRecipesFromHtml } from "@recipe-vault/core";
 
-import { isSignedIn, passcodeMatches, requireAuth, signIn, signOut } from "./auth";
+import { isSignedIn, requireAuth, signIn, signOut } from "./auth";
 import type { AppBindings } from "./env";
 import { importRoutes } from "./routes/import";
 import { listRoutes } from "./routes/list";
@@ -41,12 +41,12 @@ const api = new Hono<AppBindings>()
 
   .post("/login", async (c) => {
     const body = await c.req
-      .json<{ passcode?: unknown }>()
-      .catch((): { passcode?: unknown } => ({}));
-    if (!passcodeMatches(c.env, body.passcode)) {
-      return c.json({ error: "That passcode doesn't match." }, 401);
+      .json<{ password?: unknown }>()
+      .catch((): { password?: unknown } => ({}));
+
+    if (!(await signIn(c, body.password))) {
+      return c.json({ error: "That password doesn't match." }, 401);
     }
-    await signIn(c);
     return c.json({ signedIn: true });
   })
 
