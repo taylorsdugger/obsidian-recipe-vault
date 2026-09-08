@@ -94,6 +94,26 @@ export const api = {
       body: JSON.stringify({ recipe }),
     }),
 
+  vaultStatus: () =>
+    request<{
+      prefix: string;
+      notes: number;
+      alreadyImported: number;
+    }>("/vault/list"),
+
+  vaultImport: (offset: number, dryRun = false) =>
+    request<{
+      total: number;
+      processed: number;
+      nextOffset: number | null;
+      added: number;
+      updated: number;
+      skipped: number;
+    }>("/vault/import", {
+      method: "POST",
+      body: JSON.stringify({ offset, dryRun }),
+    }),
+
   recipe: (id: string) => request<{ recipe: RecipeDetail }>(`/recipes/${id}`),
 
   saveRecipe: (id: string, markdown: string) =>

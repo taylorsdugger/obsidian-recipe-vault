@@ -64,6 +64,25 @@ scripts above from anywhere in the repo. Running bare `npx wrangler …` at the
 repo root fails with "Required Worker name missing" because there's no config
 up there to find.
 
+## Importing the vault
+
+The Obsidian vault is synced to the `obsidian` R2 bucket, and the recipe notes
+under `Recipes/All recipes/` are already in this app's format. So the import is
+a copy, not a parse: the markdown goes in as written, and `times_made` and
+`last_made` come with it.
+
+The Import screen has a "From the vault" panel that runs it. Running it again
+updates what it imported last time rather than making a second copy, so it
+doubles as a re-sync after the vault changes.
+
+A note whose photo is a vault-local `[[image.jpg]]` gets served out of the same
+bucket through `/api/vault/media/…`, resolved by filename the way Obsidian
+resolves a wikilink. Those files are full-size camera photos, a few MB each.
+
+`wrangler dev` reads the real bucket while D1 stays local, so an import can be
+tried out without touching deployed data. That only works with plain `wrangler
+dev` - `--local` disables remote bindings.
+
 ## Icons
 
 `npm run icons -w @recipe-vault/web` redraws everything in `public/` from

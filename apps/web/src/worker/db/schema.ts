@@ -4,6 +4,7 @@ import {
   sqliteTable,
   text,
   index,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 /**
@@ -30,8 +31,17 @@ export const recipes = sqliteTable(
     lastMade: text("last_made"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
+    /**
+     * The object key this note came from in the synced vault. Unique, so a
+     * re-import updates its own row rather than adding a copy. Null for
+     * recipes imported from a URL in the app.
+     */
+    vaultKey: text("vault_key"),
   },
-  (table) => [index("recipes_title_idx").on(table.title)],
+  (table) => [
+    index("recipes_title_idx").on(table.title),
+    uniqueIndex("recipes_vault_key_idx").on(table.vaultKey),
+  ],
 );
 
 /** One meal on one day. Either a recipe or free text ("leftovers"), not both. */

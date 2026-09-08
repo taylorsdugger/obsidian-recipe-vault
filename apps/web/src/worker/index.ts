@@ -7,6 +7,7 @@ import { importRoutes } from "./routes/import";
 import { listRoutes } from "./routes/list";
 import { planRoutes } from "./routes/plan";
 import { recipeRoutes } from "./routes/recipes";
+import { vaultRoutes } from "./routes/vault";
 import { PARSE_OPTIONS as HEALTH_PARSE_OPTIONS } from "./parse-options";
 
 /** A one-recipe page, parsed by /api/health to prove the parser still runs. */
@@ -60,11 +61,13 @@ api.use("/recipes/*", requireAuth);
 api.use("/plan/*", requireAuth);
 api.use("/list/*", requireAuth);
 api.use("/import/*", requireAuth);
+api.use("/vault/*", requireAuth);
 
 api.route("/recipes", recipeRoutes);
 api.route("/plan", planRoutes);
 api.route("/list", listRoutes);
 api.route("/import", importRoutes);
+api.route("/vault", vaultRoutes);
 
 /**
  * The Worker only sees requests that didn't match a built asset. An unknown

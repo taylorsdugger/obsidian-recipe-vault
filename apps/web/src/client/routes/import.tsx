@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import { api, type ParsedRecipePreview } from "../api";
+import { VaultImport } from "../components/vault-import";
 import { navigate } from "../router";
 
 /** Read a parsed value that may be a string, or anything else, as text. */
@@ -97,6 +98,8 @@ export function Import() {
       </form>
 
       {error && <p class="text-sm text-red-600">{error}</p>}
+
+      {!preview && <VaultImport onDone={() => undefined} />}
 
       {preview?.map((recipe, i) => {
         const name = asText(recipe.name) || "Untitled recipe";

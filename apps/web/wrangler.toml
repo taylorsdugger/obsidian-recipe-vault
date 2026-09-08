@@ -24,3 +24,13 @@ database_name = "recipe-vault"
 # Filled in by `wrangler d1 create recipe-vault`. Local dev works without it.
 database_id = "862f52f9-0c2d-4f68-804c-e893388619df"
 migrations_dir = "migrations"
+
+# The Obsidian vault, synced here by the sync plugin. Read-only as far as this
+# app is concerned - the plugin owns what's in it. `remote = true` means
+# `wrangler dev` talks to the real bucket while D1 stays local, so an import
+# can be tried out without touching the deployed database. That only holds if
+# you run plain `wrangler dev`: the `--local` flag turns remote bindings off.
+[[r2_buckets]]
+binding = "VAULT"
+bucket_name = "obsidian"
+remote = true
