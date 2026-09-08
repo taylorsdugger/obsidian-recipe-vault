@@ -8,7 +8,11 @@ import { indexNote } from "../db/index-recipe";
 import type { AppBindings } from "../env";
 import { RECIPE_PREFIX } from "../vault-store";
 
-/** Notes per request. Small enough to stay well inside a Worker's budget. */
+/**
+ * Notes *read* per request. Notes that haven't changed cost nothing - the
+ * listing already carries their etag - so they don't count against this and a
+ * sync with nothing to do finishes in one round trip.
+ */
 const BATCH = 25;
 
 /** Ids per delete statement. D1 rejects a statement with too many of them. */
@@ -33,20 +37,25 @@ function extensionOf(key: string): string {
 /** What happened to one note. */
 type Outcome = "added" | "updated" | "skipped";
 
-/** List every `.md` key under the prefix, in bucket order. */
-async function listNotes(bucket: R2Bucket, prefix: string): Promise<string[]> {
-  const keys: string[] = [];
+/** Every `.md` under the prefix, with the etag the listing reports. */
+async function listNotes(
+  bucket: R2Bucket,
+  prefix: string,
+): Promise<{ key: string; etag: string }[]> {
+  const notes: { key: string; etag: string }[] = [];
   let cursor: string | undefined;
 
   do {
     const page = await bucket.list({ prefix, cursor, limit: 1000 });
     for (const object of page.objects) {
-      if (object.key.toLowerCase().endsWith(".md")) keys.push(object.key);
+      if (object.key.toLowerCase().endsWith(".md")) {
+        notes.push({ key: object.key, etag: object.etag });
+      }
     }
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
 
-  return keys.sort();
+  return notes.sort((a, b) => a.key.localeCompare(b.key));
 }
 
 /**
@@ -105,8 +114,8 @@ export const vaultRoutes = new Hono<AppBindings>()
     return c.json({
       prefix,
       notes: notes.length,
-      alreadyImported: notes.filter((key) => already.has(key)).length,
-      sample: notes.slice(0, 20),
+      alreadyImported: notes.filter((n) => already.has(n.key)).length,
+      sample: notes.slice(0, 20).map((n) => n.key),
     });
   })
 
@@ -140,19 +149,49 @@ export const vaultRoutes = new Hono<AppBindings>()
     const offset = Number.isInteger(body.offset) ? (body.offset as number) : 0;
     const dryRun = body.dryRun === true;
 
-    const keys = await listNotes(c.env.VAULT, prefix);
-    const batch = keys.slice(offset, offset + BATCH);
+    const notes = await listNotes(c.env.VAULT, prefix);
     const database = db(c.env.DB);
 
     let added = 0;
     let updated = 0;
     let skipped = 0;
+    let unchanged = 0;
     const skippedNotes: { key: string; why: string }[] = [];
 
     // Only built when a note in this batch actually needs it.
     let mediaIndex: Map<string, string> | null = null;
 
-    for (const key of batch) {
+    // What the index already holds, so notes that haven't moved are skipped
+    // without reading them. On a scheduled sync that's nearly all of them.
+    const indexed = new Map(
+      (
+        await database
+          .select({
+            vaultKey: schema.recipes.vaultKey,
+            vaultEtag: schema.recipes.vaultEtag,
+          })
+          .from(schema.recipes)
+      )
+        .filter((row) => row.vaultKey)
+        .map((row) => [row.vaultKey as string, row.vaultEtag]),
+    );
+
+    // Walk from `offset` until BATCH notes have actually been read, so a sync
+    // where nothing moved gets through the whole vault in one go.
+    let cursor = offset;
+    let reads = 0;
+
+    while (cursor < notes.length && reads < BATCH) {
+      const { key, etag } = notes[cursor];
+      cursor++;
+
+      // The listing already told us the etag; an unchanged note needs no read.
+      if (indexed.get(key) === etag) {
+        unchanged++;
+        continue;
+      }
+      reads++;
+
       const object = await c.env.VAULT.get(key);
       if (!object) {
         skipped++;
@@ -171,7 +210,10 @@ export const vaultRoutes = new Hono<AppBindings>()
       }
 
       if (dryRun) {
-        added++;
+        // Anything reaching here is new or changed; unchanged notes were
+        // counted above without a read.
+        if (indexed.has(key)) updated++;
+        else added++;
         continue;
       }
 
@@ -193,8 +235,8 @@ export const vaultRoutes = new Hono<AppBindings>()
       else updated++;
     }
 
-    const nextOffset = offset + batch.length;
-    const done = nextOffset >= keys.length;
+    const nextOffset = cursor;
+    const done = nextOffset >= notes.length;
 
     // On the last batch, drop recipes whose note is no longer in the vault.
     let removed = 0;
@@ -202,7 +244,7 @@ export const vaultRoutes = new Hono<AppBindings>()
       const rows = await database
         .select({ id: schema.recipes.id, vaultKey: schema.recipes.vaultKey })
         .from(schema.recipes);
-      const live = new Set(keys);
+      const live = new Set(notes.map((n) => n.key));
       const gone = rows
         .filter((row) => row.vaultKey && !live.has(row.vaultKey))
         .map((row) => row.id);
@@ -219,11 +261,12 @@ export const vaultRoutes = new Hono<AppBindings>()
 
     return c.json({
       dryRun,
-      total: keys.length,
+      total: notes.length,
       processed: nextOffset,
       nextOffset: done ? null : nextOffset,
       added,
       updated,
+      unchanged,
       skipped,
       removed,
       skippedNotes,

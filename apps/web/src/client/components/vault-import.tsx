@@ -1,16 +1,18 @@
 import { useEffect, useState } from "preact/hooks";
 
 import { api } from "../api";
+import { lastSyncAt, syncFromVault } from "../sync";
 
 /**
- * Pull the recipes out of the synced Obsidian vault.
+ * The manual sync, and the fallback when the automatic one hasn't run or
+ * hasn't picked something up.
  *
- * The vault is the source of truth and every change the app makes is written
- * there first, so this only reads: it copies notes in, rebuilds their index
- * rows, and drops recipes whose note is gone. Nothing the app did can be lost
- * by running it.
+ * The app syncs itself on open and when it comes back to the foreground, so
+ * most of the time this button has nothing to do. It exists for the case where
+ * you've just saved a note in Obsidian, watched Remotely Save push it, and
+ * don't want to wait for the app to notice on its own.
  */
-export function VaultImport({ onDone }: { onDone: () => void }) {
+export function VaultImport() {
   const [status, setStatus] = useState<{
     notes: number;
     alreadyImported: number;
@@ -18,41 +20,29 @@ export function VaultImport({ onDone }: { onDone: () => void }) {
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [syncedAt, setSyncedAt] = useState(lastSyncAt());
 
   useEffect(() => {
     api
       .vaultStatus()
       .then(setStatus)
       .catch((err) => setError(err.message));
-  }, []);
+  }, [syncedAt]);
 
   const run = async () => {
     setRunning(true);
     setError(null);
-    let offset = 0;
-    let added = 0;
-    let updated = 0;
-    let skipped = 0;
-    let removed = 0;
-
+    setProgress(null);
     try {
-      for (;;) {
-        const res = await api.vaultImport(offset);
-        added += res.added;
-        updated += res.updated;
-        skipped += res.skipped;
-        removed += res.removed;
-        setProgress(`${res.processed} of ${res.total}…`);
-        if (res.nextOffset === null) break;
-        offset = res.nextOffset;
-      }
+      const res = await syncFromVault(true);
       setProgress(
-        `Done. ${added} added, ${updated} updated` +
-          (removed > 0 ? `, ${removed} removed` : "") +
-          (skipped > 0 ? `, ${skipped} skipped` : "") +
-          ".",
+        res.changed
+          ? `${res.added} added, ${res.updated} updated` +
+              (res.removed > 0 ? `, ${res.removed} removed` : "") +
+              "."
+          : "Already up to date.",
       );
-      onDone();
+      setSyncedAt(lastSyncAt());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -60,36 +50,30 @@ export function VaultImport({ onDone }: { onDone: () => void }) {
     }
   };
 
-  if (error) {
-    return <p class="text-sm text-red-600">{error}</p>;
-  }
+  if (error) return <p class="text-sm text-red-600">{error}</p>;
   if (!status) return null;
-
-  const remaining = status.notes - status.alreadyImported;
 
   return (
     <div class="space-y-2 rounded-xl border border-neutral-200 bg-white p-4">
       <h2 class="font-medium">From the vault</h2>
       <p class="text-sm text-neutral-500">
-        {status.notes} notes in the synced vault
-        {status.alreadyImported > 0 &&
-          `, ${status.alreadyImported} already here`}
-        . The vault is the source of truth: this pulls it in, and everything
-        you change here is written back to it.
+        {status.notes} recipes in the vault. The app syncs when you open it, so
+        this is only needed if you've just changed something in Obsidian.
       </p>
       <button
         type="button"
-        class="w-full rounded-lg bg-neutral-900 py-2 text-white disabled:opacity-50"
-        disabled={running || status.notes === 0}
+        class="w-full rounded-lg bg-neutral-200 py-2 disabled:opacity-50"
+        disabled={running}
         onClick={run}
       >
-        {running
-          ? "Importing…"
-          : remaining > 0
-            ? `Import ${remaining}`
-            : "Sync from the vault"}
+        {running ? "Syncing…" : "Sync now"}
       </button>
       {progress && <p class="text-sm text-neutral-500">{progress}</p>}
+      {!progress && syncedAt > 0 && (
+        <p class="text-sm text-neutral-400">
+          Last synced {new Date(syncedAt).toLocaleTimeString()}.
+        </p>
+      )}
     </div>
   );
 }

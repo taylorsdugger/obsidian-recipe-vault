@@ -91,6 +91,17 @@ Syncing only reads. It copies notes in, rebuilds the index, and drops recipes
 whose note has gone. Nothing the app did can be lost by running it, because
 everything the app did is already in the vault.
 
+Nothing pushes from R2 - no cron, no queue, nothing billable. The app syncs
+itself when it opens and when it comes back to the foreground, throttled to
+once every two minutes. A sync with nothing to do is one request and under a
+second: the bucket listing carries each note's etag, so a note matching the
+index is skipped without being read. The "Sync now" button on the Import
+screen is the fallback for when you've just saved something in Obsidian and
+don't want to wait for the app to notice.
+
+That leaves Remotely Save's own schedule as the only real delay in either
+direction, which is why a push from R2 wouldn't buy much.
+
 A note whose photo is a vault-local `[[image.jpg]]` gets served out of the same
 bucket through `/api/vault/media/…`, resolved by filename the way Obsidian
 resolves a wikilink. Those files are full-size camera photos, a few MB each.

@@ -99,7 +99,7 @@ export function Import() {
 
       {error && <p class="text-sm text-red-600">{error}</p>}
 
-      {!preview && <VaultImport onDone={() => undefined} />}
+      {!preview && <VaultImport />}
 
       {preview?.map((recipe, i) => {
         const name = asText(recipe.name) || "Untitled recipe";

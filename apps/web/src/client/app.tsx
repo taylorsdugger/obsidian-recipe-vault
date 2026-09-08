@@ -3,6 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import { api } from "./api";
 import { TabBar } from "./components/tab-bar";
 import { usePath } from "./router";
+import { startAutoSync } from "./sync";
 import { Import } from "./routes/import";
 import { List } from "./routes/list";
 import { Login } from "./routes/login";
@@ -50,6 +51,13 @@ export function App() {
       .then((s) => setSignedIn(s.signedIn))
       .catch(() => setSignedIn(false));
   }, []);
+
+  // Pull the vault in on open and whenever the app comes back to the front.
+  // Nothing pushes from R2, so this is what keeps the two sides together.
+  useEffect(() => {
+    if (!signedIn) return;
+    return startAutoSync();
+  }, [signedIn]);
 
   // Don't flash the login screen while the session check is in flight.
   if (signedIn === null) return null;

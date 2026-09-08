@@ -108,6 +108,7 @@ export const api = {
       nextOffset: number | null;
       added: number;
       updated: number;
+      unchanged: number;
       skipped: number;
       removed: number;
     }>("/vault/import", {

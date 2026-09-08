@@ -3,6 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import { api, type RecipeSort, type RecipeSummary } from "../api";
 import { RecipeCard } from "../components/recipe-card";
 import { navigate } from "../router";
+import { SYNCED_EVENT } from "../sync";
 
 const SORTS: { key: RecipeSort; label: string }[] = [
   { key: "recent", label: "Recent" },
@@ -19,6 +20,15 @@ export function Recipes() {
   const [sort, setSort] = useState<RecipeSort>("recent");
   const [recipes, setRecipes] = useState<RecipeSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [syncTick, setSyncTick] = useState(0);
+
+  // A background sync that changed something means this list is stale.
+  useEffect(() => {
+    const onSynced = () => setSyncTick((n) => n + 1);
+    window.addEventListener(SYNCED_EVENT, onSynced);
+    return () => window.removeEventListener(SYNCED_EVENT, onSynced);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +51,7 @@ export function Recipes() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, sort]);
+  }, [query, sort, syncTick]);
 
   return (
     <div class="space-y-4 p-4">
