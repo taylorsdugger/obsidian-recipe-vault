@@ -1,7 +1,21 @@
 @import "tailwindcss";
 
-/* Mobile first: the app is a full-height column with a fixed bottom tab bar,
-   so the scrollable area has to know about the phone's safe area. */
+/*
+ * A small palette rather than raw Tailwind greys. Warm neutrals because the
+ * screens are mostly food photography, and the amber from the app icon as the
+ * one accent. Everything else is spacing and type.
+ */
+@theme {
+  --color-canvas: oklch(0.98 0.004 85);
+  --color-surface: oklch(1 0 0);
+  --color-line: oklch(0.92 0.006 85);
+  --color-ink: oklch(0.24 0.01 65);
+  --color-muted: oklch(0.55 0.012 70);
+  --color-faint: oklch(0.68 0.01 75);
+  --color-accent: oklch(0.72 0.16 65);
+  --color-accent-ink: oklch(0.42 0.12 60);
+}
+
 @layer base {
   html,
   body,
@@ -10,6 +24,61 @@
   }
 
   body {
-    @apply bg-neutral-50 text-neutral-900 antialiased;
+    @apply bg-canvas text-ink antialiased;
+    /* Stop iOS inflating text in the standalone PWA. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Kitchen use: never let a tap target be smaller than a fingertip. */
+  button,
+  a,
+  label {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+
+  /* A pill of metadata: meal type, cook time, how often it's been made. */
+  /* On the recipe sheet the background is canvas, so a chip needs the surface
+     colour and a hairline to read as a pill rather than as loose text. */
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-muted;
+  }
+
+  /* Tailwind 4 won't @apply one custom class inside another, so the shared
+     button rules are spelled out in both rather than composed. */
+  .btn-primary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-ink px-4 text-sm font-medium text-white transition-colors active:bg-ink/90 disabled:opacity-40;
+  }
+
+  .btn-quiet {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium text-ink transition-colors active:bg-canvas disabled:opacity-40;
+  }
+
+  .field {
+    @apply min-h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-base placeholder:text-faint focus:border-accent focus:outline-none;
+  }
+
+  /*
+   * Checkboxes are the whole interaction on both of these screens, so they get
+   * a real box instead of the 13px native one, and the row around them is the
+   * hit area.
+   */
+  .check {
+    @apply relative grid size-6 shrink-0 place-items-center rounded-md border-2 border-line bg-surface transition-colors;
+  }
+
+  .check:checked {
+    @apply border-accent bg-accent;
+  }
+
+  .check:checked::after {
+    content: "";
+    @apply absolute h-2 w-3.5 rotate-[-45deg] border-b-2 border-l-2 border-white;
+    margin-top: -0.15rem;
   }
 }

@@ -5,16 +5,8 @@ import { readFrontmatter } from "@recipe-vault/core/note/frontmatter";
 import { useEffect, useMemo, useState } from "preact/hooks";
 
 import { api, type RecipeDetail } from "../api";
+import { shortDate, spaced } from "../format";
 import { navigate } from "../router";
-
-/** Comma strings out of frontmatter read better with spaces. */
-function spaced(value: string | null): string {
-  return (value ?? "")
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join(", ");
-}
 
 /**
  * One recipe. The note is the source of truth, so the sections rendered here
@@ -49,7 +41,7 @@ export function Recipe({ id }: { id: string }) {
     recipe,
   ]);
 
-  if (error) return <p class="p-4 text-sm text-red-600">{error}</p>;
+  if (error) return <p class="p-4 text-sm text-red-700">{error}</p>;
   if (!recipe) return null;
 
   const ingredients = sections?.recipeIngredient ?? [];
@@ -116,15 +108,19 @@ export function Recipe({ id }: { id: string }) {
   if (editing) {
     return (
       <div class="flex h-full flex-col gap-3 p-4">
+        <p class="text-sm text-muted">
+          The note itself. Saving writes it back to the vault.
+        </p>
         <textarea
-          class="min-h-0 flex-1 rounded-lg border border-neutral-300 bg-white p-3 font-mono text-xs"
+          class="min-h-0 flex-1 rounded-2xl border border-line bg-surface p-3 font-mono text-xs leading-relaxed focus:border-accent focus:outline-none"
           value={draft}
           onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
         />
+        {status && <p class="text-sm text-muted">{status}</p>}
         <div class="flex gap-2">
           <button
             type="button"
-            class="flex-1 rounded-lg bg-neutral-900 py-2 text-white disabled:opacity-50"
+            class="btn-primary flex-1"
             disabled={busy}
             onClick={saveEdit}
           >
@@ -132,7 +128,7 @@ export function Recipe({ id }: { id: string }) {
           </button>
           <button
             type="button"
-            class="rounded-lg bg-neutral-200 px-4 py-2"
+            class="btn-quiet"
             onClick={() => setEditing(false)}
           >
             Cancel
@@ -142,147 +138,200 @@ export function Recipe({ id }: { id: string }) {
     );
   }
 
-  const meta = [spaced(recipe.mealType), recipe.cookTime, recipe.author]
-    .filter(Boolean)
-    .join(" · ");
+  const madeLabel =
+    recipe.timesMade > 0
+      ? `Made ${recipe.timesMade}${recipe.timesMade === 1 ? " time" : " times"}`
+      : null;
 
   return (
-    <div class="space-y-5 pb-6">
-      {recipe.photoUrl && (
-        <img class="aspect-video w-full object-cover" src={recipe.photoUrl} alt="" />
-      )}
-
-      <div class="space-y-1 px-4">
-        <h1 class="text-xl font-semibold">{recipe.title}</h1>
-        {meta && <p class="text-sm text-neutral-500">{meta}</p>}
-        {recipe.timesMade > 0 && (
-          <p class="text-sm text-neutral-400">
-            Made {recipe.timesMade}
-            {recipe.timesMade === 1 ? " time" : " times"}
-            {recipe.lastMade ? `, last on ${recipe.lastMade}` : ""}
-          </p>
+    <div class="pb-28">
+      {/* A fixed-height hero rather than the photo's own aspect ratio: these
+          come from other people's sites and range from square to tall, and a
+          tall one used to push everything below the fold. */}
+      <div class="relative">
+        {recipe.photoUrl ? (
+          <img
+            class="h-44 w-full object-cover"
+            src={recipe.photoUrl}
+            alt=""
+          />
+        ) : (
+          <div class="h-24 w-full bg-linear-to-b from-canvas to-surface" />
+        )}
+        {recipe.photoUrl && (
+          <div class="absolute inset-x-0 bottom-0 h-20 bg-linear-to-t from-black/45 to-transparent" />
         )}
       </div>
 
-      <div class="flex gap-2 px-4">
-        <button
-          type="button"
-          class="rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-          disabled={busy}
-          onClick={markMade}
-        >
-          Mark made
-        </button>
-        <button
-          type="button"
-          class="rounded-lg bg-neutral-200 px-4 py-2 text-sm"
-          onClick={() => {
-            setDraft(recipe.markdown);
-            setEditing(true);
-          }}
-        >
-          Edit
-        </button>
-        {recipe.sourceUrl && (
-          <a
-            class="rounded-lg bg-neutral-200 px-4 py-2 text-sm"
-            href={recipe.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Source
-          </a>
-        )}
-      </div>
+      {/* The content sheet laps over the photo, which hides the crop line and
+          gives the title somewhere to sit. */}
+      <div class="relative -mt-5 rounded-t-3xl bg-canvas pt-5">
+        <div class="space-y-3 px-4">
+          <h1 class="text-2xl leading-tight font-semibold">{recipe.title}</h1>
 
-      {status && <p class="px-4 text-sm text-neutral-500">{status}</p>}
+          <div class="flex flex-wrap gap-1.5">
+            {spaced(recipe.mealType) && (
+              <span class="chip">{spaced(recipe.mealType)}</span>
+            )}
+            {recipe.cookTime && <span class="chip">{recipe.cookTime}</span>}
+            {madeLabel && (
+              <span class="chip">
+                {madeLabel}
+                {recipe.lastMade ? ` · ${shortDate(recipe.lastMade)}` : ""}
+              </span>
+            )}
+          </div>
 
-      <section class="space-y-2 px-4">
-        <h2 class="font-semibold">Ingredients</h2>
-        {ingredients.length === 0 && (
-          <p class="text-sm text-neutral-500">
-            This note has no Ingredients section.
-          </p>
+          {recipe.author && <p class="text-sm text-muted">{recipe.author}</p>}
+
+          <div class="flex gap-2 pt-1">
+            <button
+              type="button"
+              class="btn-primary flex-1"
+              disabled={busy}
+              onClick={markMade}
+            >
+              Mark made
+            </button>
+            <button
+              type="button"
+              class="btn-quiet"
+              onClick={() => {
+                setDraft(recipe.markdown);
+                setEditing(true);
+              }}
+            >
+              Edit
+            </button>
+            {recipe.sourceUrl && (
+              <a
+                class="btn-quiet"
+                href={recipe.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Source
+              </a>
+            )}
+          </div>
+
+          {status && (
+            <p class="rounded-xl bg-surface px-3 py-2 text-sm text-muted">
+              {status}
+            </p>
+          )}
+        </div>
+
+        <section class="mt-6 space-y-2 px-4">
+          <div class="flex items-baseline justify-between">
+            <h2 class="text-lg font-semibold">Ingredients</h2>
+            {ingredients.length > 0 && (
+              <span class="text-sm text-faint">{ingredients.length}</span>
+            )}
+          </div>
+
+          {ingredients.length === 0 ? (
+            <p class="text-sm text-muted">
+              This note has no Ingredients section.
+            </p>
+          ) : (
+            <ul class="card divide-y divide-line overflow-hidden">
+              {ingredients.map((line, i) => (
+                <li key={`${line}-${i}`}>
+                  {/* The whole row is the hit area, not the box. */}
+                  <label class="flex min-h-12 cursor-pointer items-center gap-3 px-4 py-2.5">
+                    <input
+                      type="checkbox"
+                      class="check appearance-none"
+                      checked={checked.has(i)}
+                      onChange={() => toggle(i)}
+                    />
+                    <span
+                      class={`text-[15px] leading-snug ${
+                        checked.has(i) ? "text-faint" : ""
+                      }`}
+                    >
+                      {line}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {instructions.length > 0 && (
+          <section class="mt-6 space-y-2 px-4">
+            <h2 class="text-lg font-semibold">Instructions</h2>
+            <ol class="space-y-3">
+              {instructions.map((step, i) => (
+                <li key={`${step}-${i}`} class="flex gap-3">
+                  <span class="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-accent/15 text-xs font-semibold text-accent-ink">
+                    {i + 1}
+                  </span>
+                  <span class="text-[15px] leading-relaxed">{step}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
         )}
-        <ul class="space-y-1">
-          {ingredients.map((line, i) => (
-            <li key={`${line}-${i}`}>
-              <label class="flex gap-2 py-1">
-                <input
-                  type="checkbox"
-                  class="mt-1"
-                  checked={checked.has(i)}
-                  onChange={() => toggle(i)}
-                />
-                <span class="text-sm">{line}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
-        {checked.size > 0 && (
+
+        {notes.length > 0 && (
+          <section class="mt-6 space-y-2 px-4">
+            <h2 class="text-lg font-semibold">Notes</h2>
+            <ul class="card space-y-2 p-4 text-[15px] leading-relaxed">
+              {notes.map((note, i) => (
+                <li key={`${note}-${i}`}>{note}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <div class="mt-8 px-4">
           <button
             type="button"
-            class="w-full rounded-lg bg-neutral-900 py-2 text-white disabled:opacity-50"
+            class="text-sm text-muted underline underline-offset-4"
+            onClick={async () => {
+              // This removes the note from the vault too, so it needs to say so.
+              if (
+                !confirm(
+                  `Delete "${recipe.title}"? This deletes the note from the vault as well.`,
+                )
+              ) {
+                return;
+              }
+              try {
+                await api.deleteRecipe(recipe.id);
+                navigate("/recipes");
+              } catch (err) {
+                setStatus(err instanceof Error ? err.message : String(err));
+              }
+            }}
+          >
+            Delete recipe
+          </button>
+        </div>
+
+        {frontmatter.created && (
+          <p class="mt-3 px-4 text-xs text-faint">
+            Published {frontmatter.created.slice(0, 10)}
+          </p>
+        )}
+      </div>
+
+      {/* Sits above the tab bar so the button is reachable with a thumb no
+          matter how far down the ingredient list you are. */}
+      {checked.size > 0 && (
+        <div class="fixed inset-x-0 bottom-14 z-10 border-t border-line bg-surface/95 p-3 backdrop-blur">
+          <button
+            type="button"
+            class="btn-primary w-full"
             disabled={busy}
             onClick={sendToList}
           >
             Send {checked.size} to the list
           </button>
-        )}
-      </section>
-
-      {instructions.length > 0 && (
-        <section class="space-y-2 px-4">
-          <h2 class="font-semibold">Instructions</h2>
-          <ol class="list-decimal space-y-2 pl-5 text-sm">
-            {instructions.map((step, i) => (
-              <li key={`${step}-${i}`}>{step}</li>
-            ))}
-          </ol>
-        </section>
-      )}
-
-      {notes.length > 0 && (
-        <section class="space-y-2 px-4">
-          <h2 class="font-semibold">Notes</h2>
-          <ul class="list-disc space-y-1 pl-5 text-sm">
-            {notes.map((note, i) => (
-              <li key={`${note}-${i}`}>{note}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <div class="px-4 pt-2">
-        <button
-          type="button"
-          class="text-sm text-red-600"
-          onClick={async () => {
-            // This removes the note from the vault too, so it needs to say so.
-            if (
-              !confirm(
-                `Delete "${recipe.title}"? This deletes the note from the vault as well.`,
-              )
-            ) {
-              return;
-            }
-            try {
-              await api.deleteRecipe(recipe.id);
-              navigate("/recipes");
-            } catch (err) {
-              setStatus(err instanceof Error ? err.message : String(err));
-            }
-          }}
-        >
-          Delete recipe
-        </button>
-      </div>
-
-      {/* `created` is written by the template; show it only if it's there. */}
-      {frontmatter.created && (
-        <p class="px-4 text-xs text-neutral-400">
-          Published {frontmatter.created.slice(0, 10)}
-        </p>
+        </div>
       )}
     </div>
   );

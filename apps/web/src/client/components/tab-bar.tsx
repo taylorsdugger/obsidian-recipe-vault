@@ -10,7 +10,7 @@ const TABS = [
 /** Bottom tab bar. Mobile first; desktop gets the same layout, wider. */
 export function TabBar({ path }: { path: string }) {
   return (
-    <nav class="flex shrink-0 border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)]">
+    <nav class="flex shrink-0 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]">
       {TABS.map((tab) => {
         const active =
           tab.path === "/" ? path === "/" : path.startsWith(tab.path);
@@ -19,7 +19,7 @@ export function TabBar({ path }: { path: string }) {
             key={tab.path}
             type="button"
             class={`flex-1 py-3 text-sm ${
-              active ? "font-semibold text-neutral-900" : "text-neutral-500"
+              active ? "font-semibold text-ink" : "text-muted"
             }`}
             onClick={() => navigate(tab.path)}
           >

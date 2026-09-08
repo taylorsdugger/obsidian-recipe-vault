@@ -27,16 +27,16 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
       <form class="w-full max-w-xs space-y-4" onSubmit={submit}>
         <h1 class="text-center text-2xl font-semibold">Recipe Vault</h1>
         <input
-          class="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3"
+          class="field min-h-12"
           type="password"
           autocomplete="current-password"
           placeholder="Password"
           value={password}
           onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
         />
-        {error && <p class="text-center text-sm text-red-600">{error}</p>}
+        {error && <p class="text-center text-sm text-red-700">{error}</p>}
         <button
-          class="w-full rounded-lg bg-neutral-900 py-3 font-medium text-white disabled:opacity-50"
+          class="btn-primary min-h-12 w-full"
           type="submit"
           disabled={busy || password.length === 0}
         >

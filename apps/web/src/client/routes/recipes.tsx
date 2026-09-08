@@ -58,7 +58,7 @@ export function Recipes() {
       <div class="space-y-3">
         <div class="flex gap-2">
           <input
-            class="min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2"
+            class="field min-w-0 flex-1"
             type="search"
             placeholder="Search recipes, meal types, ingredients"
             value={query}
@@ -66,7 +66,7 @@ export function Recipes() {
           />
           <button
             type="button"
-            class="shrink-0 rounded-lg bg-neutral-900 px-4 py-2 text-white"
+            class="btn-primary shrink-0"
             onClick={() => navigate("/import")}
           >
             Import
@@ -77,10 +77,10 @@ export function Recipes() {
             <button
               key={option.key}
               type="button"
-              class={`rounded-full px-3 py-1 text-sm ${
+              class={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
                 sort === option.key
-                  ? "bg-neutral-900 text-white"
-                  : "bg-neutral-200 text-neutral-700"
+                  ? "border-ink bg-ink text-white"
+                  : "border-line bg-surface text-muted"
               }`}
               onClick={() => setSort(option.key)}
             >
@@ -90,17 +90,17 @@ export function Recipes() {
         </div>
       </div>
 
-      {error && <p class="text-sm text-red-600">{error}</p>}
+      {error && <p class="text-sm text-red-700">{error}</p>}
 
       {recipes && recipes.length === 0 && (
         <div class="space-y-3 py-8 text-center">
-          <p class="text-sm text-neutral-500">
+          <p class="text-sm text-muted">
             {query ? "Nothing matches that." : "No recipes yet."}
           </p>
           {!query && (
             <button
               type="button"
-              class="rounded-lg bg-neutral-900 px-4 py-2 text-sm text-white"
+              class="btn-primary"
               onClick={() => navigate("/import")}
             >
               Import one

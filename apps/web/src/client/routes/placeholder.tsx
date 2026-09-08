@@ -7,7 +7,7 @@ export function Placeholder({ title, note }: { title: string; note: string }) {
   return (
     <div class="space-y-2 p-6">
       <h1 class="text-xl font-semibold">{title}</h1>
-      <p class="text-sm text-neutral-500">{note}</p>
+      <p class="text-sm text-muted">{note}</p>
     </div>
   );
 }

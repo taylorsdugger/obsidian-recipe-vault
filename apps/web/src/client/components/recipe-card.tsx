@@ -1,4 +1,5 @@
 import type { RecipeSummary } from "../api";
+import { madeSummary, spaced } from "../format";
 
 /**
  * The gallery card, ported from the plugin's `RecipeCard`. Photo on top,
@@ -11,19 +12,15 @@ export function RecipeCard({
   recipe: RecipeSummary;
   onOpen: (id: string) => void;
 }) {
-  // Meal type is a comma string copied straight out of the frontmatter, so it
-  // arrives as "Main Course,Soup". Space it out for reading.
-  const mealType = recipe.mealType
-    ?.split(",")
-    .map((part) => part.trim())
+  const meta = [spaced(recipe.mealType), recipe.cookTime]
     .filter(Boolean)
-    .join(", ");
-  const meta = [mealType, recipe.cookTime].filter(Boolean).join(" · ");
+    .join(" · ");
+  const made = madeSummary(recipe.timesMade, recipe.lastMade);
 
   return (
     <button
       type="button"
-      class="overflow-hidden rounded-xl border border-neutral-200 bg-white text-left"
+      class="card overflow-hidden text-left"
       onClick={() => onOpen(recipe.id)}
     >
       {recipe.photoUrl ? (
@@ -34,18 +31,16 @@ export function RecipeCard({
           loading="lazy"
         />
       ) : (
-        <div class="aspect-[4/3] w-full bg-neutral-100" />
+        <div class="aspect-[4/3] w-full bg-canvas" />
       )}
       <div class="space-y-1 p-3">
-        <h2 class="line-clamp-2 font-medium leading-snug">{recipe.title}</h2>
-        {meta && <p class="text-xs text-neutral-500">{meta}</p>}
-        {recipe.timesMade > 0 && (
-          <p class="text-xs text-neutral-400">
-            Made {recipe.timesMade}
-            {recipe.timesMade === 1 ? " time" : " times"}
-            {recipe.lastMade ? `, last on ${recipe.lastMade}` : ""}
-          </p>
-        )}
+        <h2 class="line-clamp-2 text-sm leading-snug font-medium">
+          {recipe.title}
+        </h2>
+        {/* Both meta lines are single-line and truncated, so a row of cards
+            keeps the same height whatever the recipe is called. */}
+        {meta && <p class="truncate text-xs text-muted">{meta}</p>}
+        {made && <p class="truncate text-xs text-faint">{made}</p>}
       </div>
     </button>
   );

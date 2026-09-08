@@ -50,27 +50,27 @@ export function VaultImport() {
     }
   };
 
-  if (error) return <p class="text-sm text-red-600">{error}</p>;
+  if (error) return <p class="text-sm text-red-700">{error}</p>;
   if (!status) return null;
 
   return (
-    <div class="space-y-2 rounded-xl border border-neutral-200 bg-white p-4">
+    <div class="card space-y-2 p-4">
       <h2 class="font-medium">From the vault</h2>
-      <p class="text-sm text-neutral-500">
+      <p class="text-sm text-muted">
         {status.notes} recipes in the vault. The app syncs when you open it, so
         this is only needed if you've just changed something in Obsidian.
       </p>
       <button
         type="button"
-        class="w-full rounded-lg bg-neutral-200 py-2 disabled:opacity-50"
+        class="btn-quiet w-full"
         disabled={running}
         onClick={run}
       >
         {running ? "Syncing…" : "Sync now"}
       </button>
-      {progress && <p class="text-sm text-neutral-500">{progress}</p>}
+      {progress && <p class="text-sm text-muted">{progress}</p>}
       {!progress && syncedAt > 0 && (
-        <p class="text-sm text-neutral-400">
+        <p class="text-sm text-faint">
           Last synced {new Date(syncedAt).toLocaleTimeString()}.
         </p>
       )}

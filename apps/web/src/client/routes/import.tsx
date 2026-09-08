@@ -81,7 +81,7 @@ export function Import() {
 
       <form class="flex gap-2" onSubmit={lookUp}>
         <input
-          class="min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2"
+          class="field min-w-0 flex-1"
           type="url"
           inputMode="url"
           placeholder="https://…"
@@ -89,7 +89,7 @@ export function Import() {
           onInput={(e) => setUrl((e.target as HTMLInputElement).value)}
         />
         <button
-          class="shrink-0 rounded-lg bg-neutral-900 px-4 py-2 text-white disabled:opacity-50"
+          class="btn-primary shrink-0"
           type="submit"
           disabled={busy || url.trim().length === 0}
         >
@@ -97,7 +97,7 @@ export function Import() {
         </button>
       </form>
 
-      {error && <p class="text-sm text-red-600">{error}</p>}
+      {error && <p class="text-sm text-red-700">{error}</p>}
 
       {!preview && <VaultImport />}
 
@@ -108,7 +108,7 @@ export function Import() {
         return (
           <div
             key={`${name}-${i}`}
-            class="space-y-3 overflow-hidden rounded-xl border border-neutral-200 bg-white"
+            class="card space-y-3 overflow-hidden"
           >
             {image && (
               <img class="aspect-video w-full object-cover" src={image} alt="" />
@@ -116,9 +116,9 @@ export function Import() {
             <div class="space-y-2 px-4">
               <h2 class="font-medium">{name}</h2>
               {asText(recipe.author) && (
-                <p class="text-sm text-neutral-500">{asText(recipe.author)}</p>
+                <p class="text-sm text-muted">{asText(recipe.author)}</p>
               )}
-              <p class="text-sm text-neutral-500">
+              <p class="text-sm text-muted">
                 {ingredients.length} ingredients,{" "}
                 {recipe.recipeInstructions?.length ?? 0} steps
               </p>
@@ -126,7 +126,7 @@ export function Import() {
             <div class="px-4 pb-4">
               <button
                 type="button"
-                class="w-full rounded-lg bg-neutral-900 py-2 text-white disabled:opacity-50"
+                class="btn-primary w-full"
                 disabled={busy}
                 onClick={() => save(recipe)}
               >

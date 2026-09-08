@@ -5,6 +5,64 @@ import { api, type ListItem } from "../api";
 /** Poll while the screen is open (locked decision 4). Five seconds is enough. */
 const POLL_MS = 5000;
 
+/**
+ * Split "2 tbsp olive oil" into its amount and its name. The API sends both
+ * the formatted line and the bare name, so this is a suffix trim rather than
+ * a second parse. The amount reads as secondary; the thing you're looking for
+ * on a shelf is the name.
+ */
+function splitAmount(item: ListItem): { amount: string; name: string } {
+  const name = item.name;
+  if (item.text.toLowerCase().endsWith(name.toLowerCase())) {
+    return {
+      amount: item.text.slice(0, item.text.length - name.length).trim(),
+      name: item.text.slice(item.text.length - name.length),
+    };
+  }
+  return { amount: "", name: item.text };
+}
+
+function Row({
+  item,
+  onToggle,
+}: {
+  item: ListItem;
+  onToggle: (item: ListItem) => void;
+}) {
+  const { amount, name } = splitAmount(item);
+
+  return (
+    <li>
+      {/* The row is the hit area, not the box. */}
+      <label class="flex min-h-14 cursor-pointer items-center gap-3 px-4 py-2.5">
+        <input
+          type="checkbox"
+          class="check appearance-none"
+          checked={item.checked}
+          onChange={() => onToggle(item)}
+        />
+        <span class="min-w-0 flex-1">
+          <span
+            class={`block leading-snug ${
+              item.checked ? "text-faint line-through" : ""
+            }`}
+          >
+            {amount && (
+              <span class="text-muted tabular-nums">{amount} </span>
+            )}
+            <span class="font-medium">{name}</span>
+          </span>
+          {item.sources.length > 0 && !item.checked && (
+            <span class="mt-0.5 block truncate text-xs text-faint">
+              {item.sources.join(" · ")}
+            </span>
+          )}
+        </span>
+      </label>
+    </li>
+  );
+}
+
 export function List() {
   const [items, setItems] = useState<ListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,19 +155,22 @@ export function List() {
     }
   };
 
-  const checkedCount = items?.filter((item) => item.checked).length ?? 0;
+  // Checked things drop to the bottom rather than holding their place. What's
+  // left to find stays together at the top, which is the whole job in a shop.
+  const todo = items?.filter((item) => !item.checked) ?? [];
+  const done = items?.filter((item) => item.checked) ?? [];
 
   return (
-    <div class="space-y-4 p-4">
+    <div class="space-y-4 p-4 pb-8">
       <form class="flex gap-2" onSubmit={add}>
         <input
-          class="min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2"
+          class="field flex-1"
           placeholder="Add an item"
           value={entry}
           onInput={(e) => setEntry((e.target as HTMLInputElement).value)}
         />
         <button
-          class="shrink-0 rounded-lg bg-neutral-900 px-4 py-2 text-white disabled:opacity-50"
+          class="btn-primary shrink-0"
           type="submit"
           disabled={busy || entry.trim().length === 0}
         >
@@ -117,52 +178,50 @@ export function List() {
         </button>
       </form>
 
-      {error && <p class="text-sm text-red-600">{error}</p>}
+      {error && <p class="text-sm text-red-700">{error}</p>}
 
       {items && items.length === 0 && (
-        <p class="py-8 text-center text-sm text-neutral-500">
-          The list is empty.
-        </p>
+        <div class="py-16 text-center">
+          <p class="text-muted">Nothing on the list.</p>
+          <p class="mt-1 text-sm text-faint">
+            Add something above, or send ingredients from a recipe.
+          </p>
+        </div>
       )}
 
-      <ul class="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
-        {items?.map((item) => (
-          <li key={item.id}>
-            <label class="flex items-start gap-3 p-3">
-              <input
-                type="checkbox"
-                class="mt-1"
-                checked={item.checked}
-                onChange={() => toggle(item)}
-              />
-              <span class="min-w-0 flex-1">
-                <span
-                  class={`block text-sm ${
-                    item.checked ? "text-neutral-400 line-through" : ""
-                  }`}
-                >
-                  {item.text}
-                </span>
-                {item.sources.length > 0 && (
-                  <span class="block text-xs text-neutral-400">
-                    {item.sources.join(", ")}
-                  </span>
-                )}
-              </span>
-            </label>
-          </li>
-        ))}
-      </ul>
+      {todo.length > 0 && (
+        <section class="space-y-2">
+          <div class="flex items-baseline justify-between px-1">
+            <h1 class="text-lg font-semibold">To get</h1>
+            <span class="text-sm text-faint">{todo.length}</span>
+          </div>
+          <ul class="card divide-y divide-line overflow-hidden">
+            {todo.map((item) => (
+              <Row key={item.id} item={item} onToggle={toggle} />
+            ))}
+          </ul>
+        </section>
+      )}
 
-      {checkedCount > 0 && (
-        <button
-          type="button"
-          class="w-full rounded-lg bg-neutral-200 py-2 text-sm disabled:opacity-50"
-          disabled={busy}
-          onClick={clearChecked}
-        >
-          Clear {checkedCount} checked
-        </button>
+      {done.length > 0 && (
+        <section class="space-y-2">
+          <div class="flex items-baseline justify-between px-1">
+            <h2 class="text-sm font-medium text-muted">In the basket</h2>
+            <button
+              type="button"
+              class="text-sm text-muted underline underline-offset-4 disabled:opacity-40"
+              disabled={busy}
+              onClick={clearChecked}
+            >
+              Clear {done.length}
+            </button>
+          </div>
+          <ul class="card divide-y divide-line overflow-hidden opacity-70">
+            {done.map((item) => (
+              <Row key={item.id} item={item} onToggle={toggle} />
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );
