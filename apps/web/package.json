@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "hash-password": "node scripts/hash-password.mjs",
+    "secret:password": "wrangler secret put AUTH_PASSWORD_HASH",
+    "secret:cookie": "wrangler secret put AUTH_COOKIE_SECRET",
     "build": "vite build",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -noEmit",

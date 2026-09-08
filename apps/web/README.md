@@ -40,14 +40,28 @@ parsed a fixture. That was the one real unknown in the plan (2a) and it holds.
 
 ## Before the first deploy
 
-1. `wrangler d1 create recipe-vault`, put the id in `wrangler.toml`.
-2. `npm run db:migrate -w @recipe-vault/web`.
-3. `wrangler secret put AUTH_PASSWORD_HASH` and `wrangler secret put
-   AUTH_COOKIE_SECRET`. The deployed worker's secrets are separate from
+1. `npx wrangler login`, if you haven't on this machine.
+2. `npx wrangler d1 create recipe-vault` from `apps/web`, and put the id it
+   prints into `wrangler.toml` where it says `REPLACE_ME`.
+3. `npm run db:migrate -w @recipe-vault/web` to create the tables remotely.
+4. `npm run deploy -w @recipe-vault/web`. Do this before the secrets: they
+   attach to a Worker that has to exist first, and `wrangler secret put` on a
+   Worker that was never deployed just tells you to deploy it.
+5. `npm run secret:password -w @recipe-vault/web` and `npm run secret:cookie
+   -w @recipe-vault/web`. The deployed worker's secrets are separate from
    `.dev.vars`, so they can be a different password if you want.
-4. `npm run deploy -w @recipe-vault/web`.
+
+Between 4 and 5 the app is up but every login throws, because
+`AUTH_PASSWORD_HASH` isn't set yet. Secrets take effect on their own, so
+there's no need to redeploy after step 5.
 
 Rotating `AUTH_COOKIE_SECRET` signs every device out. That's the recovery move
 if a phone goes missing.
+
+Every `wrangler` command reads `wrangler.toml`, which lives here in
+`apps/web`. Run them from this directory, or use the `-w @recipe-vault/web`
+scripts above from anywhere in the repo. Running bare `npx wrangler …` at the
+repo root fails with "Required Worker name missing" because there's no config
+up there to find.
 
 Nothing here touches the plugin or the GitHub Pages site in `docs/`.
