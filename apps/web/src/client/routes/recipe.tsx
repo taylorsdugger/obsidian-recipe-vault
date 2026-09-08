@@ -85,10 +85,15 @@ export function Recipe({ id }: { id: string }) {
 
   const markMade = async () => {
     setBusy(true);
+    setStatus(null);
     try {
       const res = await api.markMade(recipe.id);
       setRecipe({ ...recipe, timesMade: res.timesMade, lastMade: res.lastMade });
       setStatus("Marked as made.");
+    } catch (err) {
+      // A 409 means the note changed in the vault since this page loaded, and
+      // the count lives in the note - so say so rather than failing quietly.
+      setStatus(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -253,9 +258,20 @@ export function Recipe({ id }: { id: string }) {
           type="button"
           class="text-sm text-red-600"
           onClick={async () => {
-            if (!confirm(`Delete "${recipe.title}"?`)) return;
-            await api.deleteRecipe(recipe.id);
-            navigate("/recipes");
+            // This removes the note from the vault too, so it needs to say so.
+            if (
+              !confirm(
+                `Delete "${recipe.title}"? This deletes the note from the vault as well.`,
+              )
+            ) {
+              return;
+            }
+            try {
+              await api.deleteRecipe(recipe.id);
+              navigate("/recipes");
+            } catch (err) {
+              setStatus(err instanceof Error ? err.message : String(err));
+            }
           }}
         >
           Delete recipe

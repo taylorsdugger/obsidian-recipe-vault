@@ -13,7 +13,7 @@
     "build": "vite build",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "db:migrate:local": "wrangler d1 migrations apply recipe-vault --local",
     "db:migrate": "wrangler d1 migrations apply recipe-vault --remote",
     "cf-typegen": "wrangler types"

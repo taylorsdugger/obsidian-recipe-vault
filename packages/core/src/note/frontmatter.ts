@@ -231,3 +231,42 @@ export function cookTimeToMinutes(value: string | undefined): number | null {
     (hours ? Number(hours[1]) * 60 : 0) + (minutes ? Number(minutes[1]) : 0);
   return Math.round(total);
 }
+
+/**
+ * Set frontmatter values on a note, leaving everything else byte for byte as
+ * it was. An existing key is rewritten in place so the note keeps its order;
+ * a missing one is appended to the block. A null value clears the key but
+ * keeps the line, which is how the template writes an empty `last_made:`.
+ *
+ * Returns the note unchanged when it has no frontmatter block - callers that
+ * need one should run `ensureRequiredRecipeFrontmatter` first.
+ */
+export function setFrontmatterValues(
+  markdown: string,
+  values: Record<string, string | number | null>,
+): string {
+  if (!markdown.startsWith("---\n")) return markdown;
+  const end = markdown.indexOf("\n---", 4);
+  if (end === -1) return markdown;
+
+  let block = markdown.slice(4, end);
+  const rest = markdown.slice(end);
+
+  for (const [key, raw] of Object.entries(values)) {
+    const value = raw === null ? "" : String(raw);
+    // Quote anything that would otherwise change the YAML's meaning.
+    const written = /^[\s]|[\s]$|^["'#[{]|:\s/.test(value)
+      ? `"${value.replace(/"/g, '\\"')}"`
+      : value;
+    const line = written ? `${key}: ${written}` : `${key}:`;
+
+    const existing = new RegExp(`^${key}\\s*:.*$`, "m");
+    if (existing.test(block)) {
+      block = block.replace(existing, line);
+    } else {
+      block = block.endsWith("\n") ? `${block}${line}\n` : `${block}\n${line}`;
+    }
+  }
+
+  return `---\n${block}${rest}`;
+}

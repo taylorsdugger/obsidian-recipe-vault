@@ -109,6 +109,7 @@ export const api = {
       added: number;
       updated: number;
       skipped: number;
+      removed: number;
     }>("/vault/import", {
       method: "POST",
       body: JSON.stringify({ offset, dryRun }),

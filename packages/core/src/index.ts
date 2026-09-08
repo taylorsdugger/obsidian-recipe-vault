@@ -31,6 +31,7 @@ export {
   formatPhotoValue,
   formatIsoDuration,
   readFrontmatter,
+  setFrontmatterValues,
   cookTimeToMinutes,
   ensureRequiredRecipeFrontmatter,
   isRecipeNotesSectionEmpty,

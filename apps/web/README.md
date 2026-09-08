@@ -64,24 +64,46 @@ scripts above from anywhere in the repo. Running bare `npx wrangler …` at the
 repo root fails with "Required Worker name missing" because there's no config
 up there to find.
 
-## Importing the vault
+## The vault is the source of truth
 
-The Obsidian vault is synced to the `obsidian` R2 bucket, and the recipe notes
-under `Recipes/All recipes/` are already in this app's format. So the import is
-a copy, not a parse: the markdown goes in as written, and `times_made` and
-`last_made` come with it.
+The Obsidian vault syncs to the `obsidian` R2 bucket, and the recipe notes
+under `Recipes/All recipes/` are already in this app's format. R2 holds the
+recipes; D1 is an index of them that can be thrown away and rebuilt.
 
-The Import screen has a "From the vault" panel that runs it. Running it again
-updates what it imported last time rather than making a second copy, so it
-doubles as a re-sync after the vault changes.
+Every change the app makes to a recipe is written to the note first, then the
+index row is rebuilt from what landed:
+
+- **Mark made** rewrites `times_made` and `last_made` in the frontmatter.
+- **Edit** saves the markdown you typed.
+- **Delete** deletes the note.
+- **Importing a URL** writes a new note under `Recipes/All recipes/`, so it
+  turns up in Obsidian like any other recipe.
+
+Remotely Save syncs both directions, so a note written here reaches Obsidian on
+its next run, and a note edited in Obsidian reaches the app on the next sync
+from the Import screen. Neither is instant.
+
+A write is conditional on the note's R2 etag matching what the app last read.
+If Obsidian changed the note in between, the write is refused with a 409 and
+the app says to sync first - it never overwrites a change it hasn't seen.
+
+Syncing only reads. It copies notes in, rebuilds the index, and drops recipes
+whose note has gone. Nothing the app did can be lost by running it, because
+everything the app did is already in the vault.
 
 A note whose photo is a vault-local `[[image.jpg]]` gets served out of the same
 bucket through `/api/vault/media/…`, resolved by filename the way Obsidian
 resolves a wikilink. Those files are full-size camera photos, a few MB each.
 
-`wrangler dev` reads the real bucket while D1 stays local, so an import can be
+The week plan and the shopping list live only in D1. They have no vault
+representation yet.
+
+`wrangler dev` reads the real bucket while D1 stays local, so a sync can be
 tried out without touching deployed data. That only works with plain `wrangler
-dev` - `--local` disables remote bindings.
+dev` - `--local` disables remote bindings. Careful with the write paths in that
+mode: they go to the real bucket. To exercise writes, run `--local` and seed
+the local bucket with `wrangler r2 object put … --local` instead (note that the
+CLI can't handle a key with spaces in it).
 
 ## Icons
 

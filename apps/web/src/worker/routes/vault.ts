@@ -1,18 +1,18 @@
-import { eq } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { parseRecipeSections } from "@recipe-vault/core/note/sections";
 import { readFrontmatter } from "@recipe-vault/core/note/frontmatter";
-import { nanoid } from "nanoid";
 
 import { db, schema } from "../db/client";
-import { deriveRecipeFields } from "../db/recipe-row";
+import { indexNote } from "../db/index-recipe";
 import type { AppBindings } from "../env";
-
-/** Where the sync plugin puts the recipe notes. */
-export const RECIPE_PREFIX = "Recipes/All recipes/";
+import { RECIPE_PREFIX } from "../vault-store";
 
 /** Notes per request. Small enough to stay well inside a Worker's budget. */
 const BATCH = 25;
+
+/** Ids per delete statement. D1 rejects a statement with too many of them. */
+const DELETE_CHUNK = 50;
 
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"];
 
@@ -89,18 +89,6 @@ function vaultPhotoUrl(
   return key ? `/api/vault/media/${key.split("/").map(encodeURIComponent).join("/")}` : null;
 }
 
-/** Whole numbers only; the vault writes `times_made: 2`. */
-function counter(value: string | undefined): number {
-  const n = Number.parseInt((value ?? "").trim(), 10);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-/** `last_made: 2026-07-16`, or nothing. */
-function isoDate(value: string | undefined): string | null {
-  const raw = (value ?? "").trim();
-  return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : null;
-}
-
 export const vaultRoutes = new Hono<AppBindings>()
   /** What's in the bucket, without writing anything. */
   .get("/list", async (c) => {
@@ -134,15 +122,14 @@ export const vaultRoutes = new Hono<AppBindings>()
   })
 
   /**
-   * Copy notes from the vault into the app.
+   * Pull the vault into the app.
    *
-   * The vault's notes are already in the template's shape, so there is nothing
-   * to parse: the markdown goes in as-is and the columns are derived from it,
-   * exactly as they are for a URL import. `times_made` and `last_made` come
-   * across too, because that history is real and the app can't recreate it.
+   * R2 is the source of truth, so this only ever reads: notes are copied in
+   * as they are, the index rows are rebuilt from them, and a recipe whose note
+   * has gone is dropped. Anything the app changed is already in the vault,
+   * because every write goes there first - so there is nothing to lose here.
    *
-   * Works in batches. Pass back `nextOffset` until it comes back null. Pass
-   * `dryRun` to see what would happen without writing.
+   * Works in batches. Pass back `nextOffset` until it comes back null.
    */
   .post("/import", async (c) => {
     const body = await c.req
@@ -157,21 +144,19 @@ export const vaultRoutes = new Hono<AppBindings>()
     const batch = keys.slice(offset, offset + BATCH);
     const database = db(c.env.DB);
 
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
+    const skippedNotes: { key: string; why: string }[] = [];
+
     // Only built when a note in this batch actually needs it.
     let mediaIndex: Map<string, string> | null = null;
-
-    const counts: Record<Outcome, number> = {
-      added: 0,
-      updated: 0,
-      skipped: 0,
-    };
-    const skipped: { key: string; why: string }[] = [];
 
     for (const key of batch) {
       const object = await c.env.VAULT.get(key);
       if (!object) {
-        counts.skipped++;
-        skipped.push({ key, why: "disappeared from the bucket mid-import" });
+        skipped++;
+        skippedNotes.push({ key, why: "disappeared from the bucket mid-sync" });
         continue;
       }
 
@@ -180,68 +165,68 @@ export const vaultRoutes = new Hono<AppBindings>()
       // A note with no Ingredients section isn't a recipe - the vault has a
       // few templates and stubs mixed in with the real ones.
       if (!parseRecipeSections(markdown)) {
-        counts.skipped++;
-        skipped.push({ key, why: "no Ingredients or Instructions section" });
+        skipped++;
+        skippedNotes.push({ key, why: "no Ingredients or Instructions section" });
         continue;
       }
 
-      const frontmatter = readFrontmatter(markdown);
-      const derived = deriveRecipeFields(markdown);
-      const now = new Date().toISOString();
+      if (dryRun) {
+        added++;
+        continue;
+      }
 
       // A photo the plugin saved into the vault rather than hot-linked. The
       // file is in the bucket too, so serve it from there.
-      if (!derived.photoUrl && frontmatter.photo) {
+      let photoUrl: string | null = null;
+      const frontmatter = readFrontmatter(markdown);
+      if (frontmatter.photo && !frontmatter.photo.startsWith("http")) {
         mediaIndex ??= await buildMediaIndex(c.env.VAULT);
-        derived.photoUrl = vaultPhotoUrl(frontmatter.photo, mediaIndex);
+        photoUrl = vaultPhotoUrl(frontmatter.photo, mediaIndex);
       }
 
-      const [existing] = await database
-        .select({ id: schema.recipes.id })
-        .from(schema.recipes)
-        .where(eq(schema.recipes.vaultKey, key))
-        .limit(1);
-
-      if (dryRun) {
-        counts[existing ? "updated" : "added"]++;
-        continue;
-      }
-
-      const values = {
-        markdown,
-        ...derived,
-        timesMade: counter(frontmatter.times_made),
-        lastMade: isoDate(frontmatter.last_made),
-        updatedAt: now,
-      };
-
-      if (existing) {
-        await database
-          .update(schema.recipes)
-          .set(values)
-          .where(eq(schema.recipes.id, existing.id));
-        counts.updated++;
-      } else {
-        await database.insert(schema.recipes).values({
-          id: nanoid(12),
-          vaultKey: key,
-          // `date_added` is when the note was written, which is a better
-          // created date than "just now".
-          createdAt: frontmatter.date_added || now,
-          ...values,
-        });
-        counts.added++;
-      }
+      const result = await indexNote(
+        database,
+        { key, markdown, etag: object.etag },
+        photoUrl,
+      );
+      if (result.created) added++;
+      else updated++;
     }
 
     const nextOffset = offset + batch.length;
+    const done = nextOffset >= keys.length;
+
+    // On the last batch, drop recipes whose note is no longer in the vault.
+    let removed = 0;
+    if (done && !dryRun) {
+      const rows = await database
+        .select({ id: schema.recipes.id, vaultKey: schema.recipes.vaultKey })
+        .from(schema.recipes);
+      const live = new Set(keys);
+      const gone = rows
+        .filter((row) => row.vaultKey && !live.has(row.vaultKey))
+        .map((row) => row.id);
+
+      // D1 caps the bound parameters in one statement, so a first sync that
+      // clears out a lot of rows has to go in chunks.
+      for (let i = 0; i < gone.length; i += DELETE_CHUNK) {
+        await database
+          .delete(schema.recipes)
+          .where(inArray(schema.recipes.id, gone.slice(i, i + DELETE_CHUNK)));
+      }
+      removed = gone.length;
+    }
+
     return c.json({
       dryRun,
       total: keys.length,
       processed: nextOffset,
-      nextOffset: nextOffset < keys.length ? nextOffset : null,
-      ...counts,
+      nextOffset: done ? null : nextOffset,
+      added,
+      updated,
       skipped,
+      removed,
+      skippedNotes,
     });
   });
 

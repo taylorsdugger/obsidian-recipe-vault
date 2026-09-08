@@ -5,10 +5,10 @@ import { api } from "../api";
 /**
  * Pull the recipes out of the synced Obsidian vault.
  *
- * The notes are already in this app's own format, so there's nothing to parse
- * and nothing to lose: the markdown goes in as written, and `times_made` and
- * `last_made` come with it. Running it again updates what it imported before
- * rather than making a second copy, so it doubles as a re-sync.
+ * The vault is the source of truth and every change the app makes is written
+ * there first, so this only reads: it copies notes in, rebuilds their index
+ * rows, and drops recipes whose note is gone. Nothing the app did can be lost
+ * by running it.
  */
 export function VaultImport({ onDone }: { onDone: () => void }) {
   const [status, setStatus] = useState<{
@@ -33,6 +33,7 @@ export function VaultImport({ onDone }: { onDone: () => void }) {
     let added = 0;
     let updated = 0;
     let skipped = 0;
+    let removed = 0;
 
     try {
       for (;;) {
@@ -40,12 +41,14 @@ export function VaultImport({ onDone }: { onDone: () => void }) {
         added += res.added;
         updated += res.updated;
         skipped += res.skipped;
+        removed += res.removed;
         setProgress(`${res.processed} of ${res.total}…`);
         if (res.nextOffset === null) break;
         offset = res.nextOffset;
       }
       setProgress(
         `Done. ${added} added, ${updated} updated` +
+          (removed > 0 ? `, ${removed} removed` : "") +
           (skipped > 0 ? `, ${skipped} skipped` : "") +
           ".",
       );
@@ -71,7 +74,8 @@ export function VaultImport({ onDone }: { onDone: () => void }) {
         {status.notes} notes in the synced vault
         {status.alreadyImported > 0 &&
           `, ${status.alreadyImported} already here`}
-        .
+        . The vault is the source of truth: this pulls it in, and everything
+        you change here is written back to it.
       </p>
       <button
         type="button"
@@ -83,7 +87,7 @@ export function VaultImport({ onDone }: { onDone: () => void }) {
           ? "Importing…"
           : remaining > 0
             ? `Import ${remaining}`
-            : "Re-sync from the vault"}
+            : "Sync from the vault"}
       </button>
       {progress && <p class="text-sm text-neutral-500">{progress}</p>}
     </div>

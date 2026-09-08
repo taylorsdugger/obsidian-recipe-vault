@@ -37,6 +37,12 @@ export const recipes = sqliteTable(
      * recipes imported from a URL in the app.
      */
     vaultKey: text("vault_key"),
+    /**
+     * The note's R2 etag when this row was last written from or to the vault.
+     * Writes are conditional on it, so a note Obsidian changed underneath the
+     * app is refused rather than overwritten.
+     */
+    vaultEtag: text("vault_etag"),
   },
   (table) => [
     index("recipes_title_idx").on(table.title),

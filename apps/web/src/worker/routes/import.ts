@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { nanoid } from "nanoid";
 import {
   createRecipeRenderer,
   DEFAULT_TEMPLATE,
@@ -11,11 +10,13 @@ import {
   type ParsedRecipe,
 } from "@recipe-vault/core";
 
-import { db, schema } from "../db/client";
+import { db } from "../db/client";
+import { indexNote } from "../db/index-recipe";
 import { deriveRecipeFields } from "../db/recipe-row";
 import type { AppBindings } from "../env";
 import { workerHttpPort } from "../http";
 import { PARSE_OPTIONS } from "../parse-options";
+import { freeKeyFor, writeNote } from "../vault-store";
 
 /**
  * The web app stores remote image URLs, so `photo:` is written bare rather
@@ -111,21 +112,14 @@ export const importRoutes = new Hono<AppBindings>()
     }
 
     const markdown = recipeToMarkdown(recipe as ParsedRecipe);
-    const now = new Date().toISOString();
+    const { title } = deriveRecipeFields(markdown);
 
-    const [saved] = await db(c.env.DB)
-      .insert(schema.recipes)
-      .values({
-        id: nanoid(12),
-        markdown,
-        ...deriveRecipeFields(markdown),
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning({
-        id: schema.recipes.id,
-        title: schema.recipes.title,
-      });
+    // The vault is the source of truth, so a recipe imported here becomes a
+    // note like any other. Remotely Save carries it into Obsidian on its next
+    // run, and the D1 row is just the index of it.
+    const key = await freeKeyFor(c.env, title);
+    const etag = await writeNote(c.env, key, markdown, null);
+    const { id } = await indexNote(db(c.env.DB), { key, markdown, etag });
 
-    return c.json({ recipe: saved }, 201);
+    return c.json({ recipe: { id, title } }, 201);
   });
