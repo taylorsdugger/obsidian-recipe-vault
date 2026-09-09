@@ -44,6 +44,34 @@ export function fromBaseAmount(
   return { amount: base, unit: "" };
 }
 
+/**
+ * Units that are words get pluralised; abbreviations don't. "3 cups flour"
+ * reads right, "3 tsps salt" does not.
+ *
+ * Every plural here has to be something `normalizeIngredientUnit` maps back to
+ * its singular, or a line this writes stops parsing as an amount when it is
+ * read back out of the note.
+ */
+const PLURAL_UNITS: Record<string, string> = {
+  cup: "cups",
+  clove: "cloves",
+  slice: "slices",
+  piece: "pieces",
+  can: "cans",
+  package: "packages",
+  bunch: "bunches",
+  pinch: "pinches",
+  sprig: "sprigs",
+  head: "heads",
+  handful: "handfuls",
+  stalk: "stalks",
+};
+
+/** "cup" for one or less, "cups" past that. */
+export function pluraliseUnit(unit: string, amount: number): string {
+  return amount > 1 ? (PLURAL_UNITS[unit] ?? unit) : unit;
+}
+
 /** Format a numeric amount as a readable string with unicode fractions. */
 export function formatIngredientAmount(amount: number, unit: string): string {
   if (amount === 0) return unit || "";
@@ -76,5 +104,5 @@ export function formatIngredientAmount(amount: number, unit: string): string {
       : whole > 0
         ? `${whole}`
         : fracStr || `${Math.round(amount * 100) / 100}`;
-  return unit ? `${numStr} ${unit}` : numStr;
+  return unit ? `${numStr} ${pluraliseUnit(unit, amount)}` : numStr;
 }

@@ -7,6 +7,7 @@ export {
   toBaseAmount,
   fromBaseAmount,
   formatIngredientAmount,
+  pluraliseUnit,
 } from "./shopping/units";
 export { itemFromLine, mergeShoppingItems } from "./shopping/merge";
 export {

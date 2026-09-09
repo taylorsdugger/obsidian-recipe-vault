@@ -142,6 +142,7 @@ export function normalizeIngredientUnit(raw: string): string {
     head: "head",
     heads: "head",
     handful: "handful",
+    handfuls: "handful",
     stalk: "stalk",
     stalks: "stalk",
   };

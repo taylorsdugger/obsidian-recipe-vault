@@ -5,6 +5,7 @@ import {
   fromBaseAmount,
   normalizeIngredientUnit,
   parseShoppingLine,
+  pluraliseUnit,
   toBaseAmount,
 } from "../src";
 
@@ -137,11 +138,11 @@ describe("formatIngredientAmount", () => {
   });
 
   it("formats a whole number with a unit", () => {
-    expect(fmt(2, "cup")).toBe("2 cup");
+    expect(fmt(2, "cup")).toBe("2 cups");
   });
 
   it("renders mixed numbers with a unicode fraction", () => {
-    expect(fmt(1.5, "cup")).toBe("1½ cup");
+    expect(fmt(1.5, "cup")).toBe("1½ cups");
     expect(fmt(2.75, "lb")).toBe("2¾ lb");
   });
 
@@ -178,12 +179,53 @@ describe("toBaseAmount / fromBaseAmount", () => {
   });
 
   it("sums compatible volumes across units end-to-end", () => {
-    // 1 cup + 2 tbsp = 48 + 6 = 54 tsp → 1.125 cup → "1⅛ cup"
+    // 1 cup + 2 tbsp = 48 + 6 = 54 tsp → 1.125 cup → "1⅛ cups"
     const a = toBase(1, "cup")!;
     const b = toBase(2, "tbsp")!;
     expect(a.family).toBe(b.family);
     const sum = fromBase(a.base + b.base, a.family);
     expect(sum).toEqual({ amount: 54 / 48, unit: "cup" });
-    expect(fmt(sum.amount, sum.unit)).toBe("1⅛ cup");
+    expect(fmt(sum.amount, sum.unit)).toBe("1⅛ cups");
+  });
+});
+
+describe("plural units survive a round trip", () => {
+  // Every spelled-out unit gets pluralised on the way into a note, so
+  // `normalizeIngredientUnit` has to map each plural back on the way out.
+  // Miss one - "handfuls" was missing - and the amount stops parsing: the
+  // whole "2 handfuls spinach" becomes a nameless line with no quantity.
+  const WORD_UNITS = [
+    "cup",
+    "clove",
+    "slice",
+    "piece",
+    "can",
+    "package",
+    "bunch",
+    "pinch",
+    "sprig",
+    "head",
+    "handful",
+    "stalk",
+  ];
+
+  it.each(WORD_UNITS)("reads back '2 %ss spinach'", (unit) => {
+    const line = `${formatIngredientAmount(2, unit)} spinach`;
+    expect(line).toBe(`2 ${pluraliseUnit(unit, 2)} spinach`);
+
+    const parsed = parseShoppingLine(line);
+    expect(parsed).toMatchObject({ amount: 2, unit, name: "spinach" });
+  });
+
+  it("leaves abbreviations alone", () => {
+    for (const unit of ["tsp", "tbsp", "oz", "lb", "g", "kg", "ml", "l"]) {
+      expect(formatIngredientAmount(3, unit)).toBe(`3 ${unit}`);
+      expect(parseShoppingLine(`3 ${unit} salt`)).toMatchObject({ unit });
+    }
+  });
+
+  it("stays singular at one or less", () => {
+    expect(formatIngredientAmount(1, "cup")).toBe("1 cup");
+    expect(formatIngredientAmount(0.5, "cup")).toBe("½ cup");
   });
 });
