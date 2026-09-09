@@ -44,9 +44,19 @@ export function findMarkdownSection(
   };
 }
 
+/** A markdown thematic break: `---`, `***`, `___`, and their longer forms. */
+function isThematicBreak(line: string): boolean {
+  return /^([-*_])(\s*\1){2,}$/.test(line);
+}
+
 /**
  * Turn a section body into clean lines. Ingredient lines drop the `- [ ]`
  * checkbox; instruction lines drop `-`, `*`, or `1.` list markers.
+ *
+ * Horizontal rules are dropped rather than parsed. The default template puts a
+ * `-----` between the instructions and `## Notes`, and a section body runs to
+ * the next heading, so without this the rule loses its first dash to the
+ * list-marker strip and shows up as a final `----` step.
  */
 export function parseSectionList(
   sectionBody: string,
@@ -56,6 +66,7 @@ export function parseSectionList(
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter((line) => !isThematicBreak(line))
     .map((line) => {
       if (isIngredients) {
         return line

@@ -34,6 +34,23 @@ const NOTE = [
   "",
 ].join("\n");
 
+describe("parseSectionList", () => {
+  it("drops the horizontal rule the default template puts before Notes", () => {
+    const body = ["- Simmer.", "", "-----", ""].join("\n");
+    expect(parseSectionList(body, false)).toEqual(["Simmer."]);
+  });
+
+  it("drops every thematic break form", () => {
+    const body = ["---", "***", "___", "- - -", "- Real step."].join("\n");
+    expect(parseSectionList(body, false)).toEqual(["Real step."]);
+  });
+
+  it("keeps a list item that only looks like a rule", () => {
+    // Mixed characters are a list item in CommonMark, not a break.
+    expect(parseSectionList("- * -", false)).toEqual(["* -"]);
+  });
+});
+
 describe("findMarkdownSection", () => {
   it("finds a heading at any level, case-insensitively", () => {
     const range = findMarkdownSection(NOTE, "ingredients");
