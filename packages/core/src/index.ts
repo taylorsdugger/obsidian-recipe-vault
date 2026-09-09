@@ -38,6 +38,12 @@ export {
   isRecipeNotesSectionEmpty,
   ensureRecipeNotesSection,
 } from "./note/frontmatter";
+export type { NoteToJsonLdOptions, RecipeVaultState } from "./note/to-json-ld";
+export {
+  noteToJsonLd,
+  readRecipeVaultState,
+  VAULT_STATE_KEY,
+} from "./note/to-json-ld";
 export type { RecipeRenderer, RendererOptions } from "./note/template";
 export {
   DEFAULT_TEMPLATE,

@@ -23,6 +23,7 @@ import {
 import { RecipeGalleryView, resetGalleryUiState } from "./view-recipe-gallery";
 import { getRecipeFiles, thumbPathForImage } from "./utils/recipeLoader";
 import { PhotoRecipeModal } from "./modal-photo-recipe";
+import { PickJsonFileModal, isJsonLdFile } from "./modal-pick-json";
 import {
   requestRecipeEditSuggestion,
   requestRecipeChatResponse,
@@ -40,7 +41,9 @@ import {
   itemFromLine,
   mergeShoppingItems,
   normalizeRecipeNotes,
+  noteToJsonLd,
   parseRecipeSections,
+  readRecipeVaultState,
   replaceRecipeSections,
   parseShoppingListMarkdown,
   removeCheckedItems,
@@ -725,7 +728,10 @@ export default class RecipeVault extends Plugin {
               })),
             };
             if (result.recipeYield) recipe.recipeYield = result.recipeYield;
-            void this.saveParsedRecipe(recipe, { localImage: imageBlob });
+            void this.saveParsedRecipe(recipe, {
+              localImage: imageBlob,
+              source: "photo",
+            });
           },
         ).open();
       },
@@ -932,6 +938,61 @@ export default class RecipeVault extends Plugin {
         );
       },
     });
+
+    // Import a recipe from a JSON-LD file already in the vault. Obsidian can't
+    // open a .json file, so the command pops a picker; the file explorer's
+    // right-click menu (registered below) is the other way in.
+    this.addCommand({
+      id: c.CMD_IMPORT_JSONLD,
+      name: "Import recipe from JSON-LD file",
+      callback: () => {
+        new PickJsonFileModal(this.app, (file) => {
+          void this.importRecipeFromJsonLdFile(file);
+        }).open();
+      },
+    });
+
+    // Export the current recipe note as a portable JSON-LD file.
+    this.addCommand({
+      id: c.CMD_EXPORT_JSONLD,
+      name: "Export recipe as JSON-LD file",
+      callback: async () => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view?.file) {
+          new Notice("No active recipe file open.");
+          return;
+        }
+        await this.exportRecipeAsJsonLd(view.file);
+      },
+    });
+
+    // Both actions from the file explorer's right-click menu, which is the
+    // only place a .json file is reachable at all.
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, abstractFile) => {
+        if (!(abstractFile instanceof TFile)) return;
+        const target = abstractFile;
+
+        if (isJsonLdFile(target)) {
+          menu.addItem((item) =>
+            item
+              .setTitle("Import as recipe")
+              .setIcon("chef-hat")
+              .onClick(() => void this.importRecipeFromJsonLdFile(target)),
+          );
+          return;
+        }
+
+        if (target.extension === "md") {
+          menu.addItem((item) =>
+            item
+              .setTitle("Export recipe as JSON-LD")
+              .setIcon("braces")
+              .onClick(() => void this.exportRecipeAsJsonLd(target)),
+          );
+        }
+      }),
+    );
 
     // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new settings.SettingsTab(this.app, this));
@@ -1342,16 +1403,18 @@ export default class RecipeVault extends Plugin {
 
   /**
    * Renders a single already-parsed recipe to a brand-new note using the same
-   * template + frontmatter/notes helpers as the URL importer, and optionally
-   * attaches a local image Blob (e.g. the captured photo). Returns the created
-   * file, or null on failure.
+   * template + frontmatter/notes helpers as the URL importer. Returns the
+   * created file, or null on failure.
    *
-   * Used by the "Add recipe from photo" flow. Uses the Vault API throughout so
-   * it works on mobile; `recipe.url` is left empty (the template guards it).
+   * The photo flow hands it a local image Blob; the JSON-LD flow leaves that
+   * empty and lets the remote `recipe.image` URL be downloaded instead.
+   * `opts.source` is written to frontmatter so the note records where it came
+   * from. Uses the Vault API throughout so it works on mobile; `recipe.url` may
+   * be empty (the template guards it).
    */
   private async saveParsedRecipe(
     recipe: ParsedRecipe,
-    opts: { localImage?: Blob } = {},
+    opts: { localImage?: Blob; source?: string } = {},
   ): Promise<TFile | null> {
     try {
       const rawName = typeof recipe.name === "string" ? recipe.name.trim() : "";
@@ -1377,6 +1440,12 @@ export default class RecipeVault extends Plugin {
       // Create the note up front so the attachment-path helper can anchor the
       // image next to it when no dedicated image folder is configured.
       const file = await this.app.vault.create(notePath, "");
+
+      if (!opts.localImage && this.settings.saveImg) {
+        // A JSON-LD file points at a remote photo. Pull it into the vault now,
+        // otherwise the note breaks the day that host goes away.
+        await this.saveRemoteMainImage(recipe, file);
+      }
 
       if (opts.localImage) {
         // Name the image from the note's final (de-duplicated) basename, not the
@@ -1414,8 +1483,18 @@ export default class RecipeVault extends Plugin {
       );
 
       await this.app.vault.modify(file, md);
+      const source = opts.source ?? "photo";
+      // The template always writes `times_made: 0`, so any history carried in
+      // by the import has to be put back afterwards.
+      const vaultState = readRecipeVaultState(recipe as JsonRecord);
       await this.app.fileManager.processFrontMatter(file, (fm: JsonRecord) => {
-        fm.source = "photo";
+        fm.source = source;
+        if (vaultState.timesMade !== undefined) {
+          fm.times_made = vaultState.timesMade;
+        }
+        if (vaultState.lastMade !== undefined) {
+          fm.last_made = vaultState.lastMade;
+        }
       });
 
       new Notice(`Recipe "${rawName || safeName}" created.`);
@@ -1553,6 +1632,132 @@ export default class RecipeVault extends Plugin {
    * When `options.thumbnail` is set, a downscaled gallery thumbnail is also
    * generated alongside the saved image (see {@link createThumbnail}).
    */
+  /**
+   * Download a recipe's remote `image` into the vault and rewrite the field to
+   * the saved path. No-op when the image is missing or already a local path.
+   *
+   * The URL importer does the same thing inline, plus the per-step instruction
+   * images. Worth folding the two together, but that block returns out of the
+   * whole import on a missing filename, so it isn't a clean lift.
+   */
+  private async saveRemoteMainImage(
+    recipe: ParsedRecipe,
+    file: TFile,
+  ): Promise<void> {
+    const image = recipe.image;
+    if (typeof image !== "string" || !/^https?:\/\//i.test(image)) return;
+
+    const rawName = recipe.name;
+    const filename =
+      typeof rawName === "string"
+        ? rawName.replace(/\s+/g, "-").replace(/"|\*|\\|\/|<|>|:|\?/g, "")
+        : "";
+    if (!filename) return;
+
+    if (this.settings.imgFolder != "") {
+      await this.folderCheck(this.settings.imgFolder);
+      if (this.settings.saveImgSubdir) {
+        await this.folderCheck(this.settings.imgFolder + "/" + filename);
+      }
+    }
+
+    const imgFile = await this.fetchImage(filename, image, file, undefined, {
+      thumbnail: true,
+    });
+    if (imgFile) {
+      recipe.image = imgFile.path;
+    }
+  }
+
+  /**
+   * Create recipe notes from a `.json` / `.jsonld` file already in the vault.
+   *
+   * The file goes through the same normalize pass as a web page, so a Recipe
+   * nested in an `@graph`, a bare array, or a single object all work. No
+   * `sourceUrl` is passed: a standalone file has no page, so the recipe keeps
+   * whatever `url` it carries and gets none if it has none.
+   */
+  private importRecipeFromJsonLdFile = async (file: TFile): Promise<void> => {
+    try {
+      const raw = await this.app.vault.read(file);
+
+      let json: unknown;
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        new Notice(`${file.name} isn't valid JSON.`);
+        return;
+      }
+
+      const recipes = core.parseRecipesFromJsonLd([json], this.fetchOptions());
+      if (recipes.length === 0) {
+        new Notice(
+          `No schema.org Recipe found in ${file.name}. It needs a node with "@type": "Recipe".`,
+        );
+        return;
+      }
+
+      let saved = 0;
+      for (const recipe of recipes) {
+        const note = await this.saveParsedRecipe(recipe, { source: "jsonld" });
+        if (note) saved += 1;
+      }
+
+      // saveParsedRecipe already notices each note it creates, so only say
+      // something here when one file turned into several.
+      if (saved > 1) {
+        new Notice(`Imported ${saved} recipes from ${file.name}.`);
+      }
+    } catch (error) {
+      console.error("Recipe Vault: JSON-LD import failed", file.path, error);
+      const msg = error instanceof Error ? error.message : String(error);
+      new Notice(`JSON-LD import failed: ${msg}`, 10000);
+    }
+  };
+
+  /**
+   * Write a recipe note back out as a `.json` JSON-LD file next to it, so it
+   * can be handed to someone using a different recipe app.
+   *
+   * The note is what gets read, not a stored copy of the original import, so
+   * any edits since come along. An existing export is overwritten: the note is
+   * the source of truth and a stale export next to it is worse than none.
+   */
+  private exportRecipeAsJsonLd = async (file: TFile): Promise<void> => {
+    try {
+      const markdown = await this.app.vault.read(file);
+      const recipe = noteToJsonLd(markdown, { name: file.basename });
+
+      if (!recipe.recipeIngredient && !recipe.recipeInstructions) {
+        new Notice(
+          `${file.basename} has no Ingredients or Instructions section to export.`,
+        );
+        return;
+      }
+
+      const folder = file.parent?.path ?? "";
+      const outPath = normalizePath(
+        folder === "" || folder === "/"
+          ? `${file.basename}.json`
+          : `${folder}/${file.basename}.json`,
+      );
+      const body = JSON.stringify(recipe, null, 2);
+
+      const existing = this.app.vault.getAbstractFileByPath(outPath);
+      if (existing instanceof TFile) {
+        await this.app.vault.modify(existing, body);
+      } else {
+        await this.app.vault.create(outPath, body);
+      }
+
+      new Notice(`Exported to ${outPath}`);
+    } catch (error) {
+      console.error("Recipe Vault: JSON-LD export failed", file.path, error);
+      const msg = error instanceof Error ? error.message : String(error);
+      new Notice(`JSON-LD export failed: ${msg}`, 10000);
+    }
+  };
+
   private async fetchImage(
     filename: string,
     imgUrl: unknown,
