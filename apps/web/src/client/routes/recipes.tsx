@@ -6,6 +6,7 @@ import { navigate } from "../router";
 import { SYNCED_EVENT } from "../sync";
 
 const SORTS: { key: RecipeSort; label: string }[] = [
+  { key: "alpha", label: "A-Z" },
   { key: "recent", label: "Recent" },
   { key: "made", label: "Most made" },
   { key: "quick", label: "Quickest" },
@@ -17,7 +18,7 @@ const SORTS: { key: RecipeSort; label: string }[] = [
  */
 export function Recipes() {
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<RecipeSort>("recent");
+  const [sort, setSort] = useState<RecipeSort>("alpha");
   const [recipes, setRecipes] = useState<RecipeSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

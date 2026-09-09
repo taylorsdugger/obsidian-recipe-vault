@@ -58,10 +58,42 @@ export interface ListItem {
   text: string;
   name: string;
   sources: string[];
-  updatedAt: string;
 }
 
-export type RecipeSort = "recent" | "made" | "quick";
+/** Just enough of a recipe to draw the card on a plan day. */
+export interface PlanRecipe {
+  id: string;
+  title: string;
+  photoUrl: string | null;
+  cookTime: string | null;
+}
+
+/** One meal on one day. `recipe` is null for a free-text entry. */
+export interface PlanEntry {
+  id: string;
+  date: string;
+  slot: string;
+  note: string | null;
+  position: number;
+  recipe: PlanRecipe | null;
+}
+
+/** What a day replace sends back up. No id: the server writes the day fresh. */
+export interface PlanEntryInput {
+  recipeId?: string | null;
+  note?: string | null;
+}
+
+/** A line in the "shopping list for this week" preview, already merged. */
+export interface PlanListItem {
+  /** The merge key, and what `exclude` takes. */
+  name: string;
+  /** "3 tbsp olive oil". */
+  text: string;
+  sources: string[];
+}
+
+export type RecipeSort = "alpha" | "recent" | "made" | "quick";
 
 export const api = {
   session: () => request<{ signedIn: boolean }>("/session"),
@@ -75,7 +107,7 @@ export const api = {
   recipes: (q: string, sort: RecipeSort) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
-    if (sort !== "recent") params.set("sort", sort);
+    if (sort !== "alpha") params.set("sort", sort);
     const query = params.toString();
     return request<{ recipes: RecipeSummary[] }>(
       `/recipes${query ? `?${query}` : ""}`,
@@ -133,6 +165,33 @@ export const api = {
       { method: "POST" },
     ),
 
+  plan: (from: string, to: string) =>
+    request<{ entries: PlanEntry[] }>(
+      `/plan?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
+
+  /** Replace one day. The client holds the day and sends the whole thing. */
+  setPlanDay: (date: string, entries: PlanEntryInput[]) =>
+    request<{ entries: PlanEntry[] }>(`/plan/${date}`, {
+      method: "PUT",
+      body: JSON.stringify({ entries }),
+    }),
+
+  removePlanEntry: (id: string) =>
+    request<{ deleted: string }>(`/plan/entries/${id}`, { method: "DELETE" }),
+
+  planListPreview: (from: string, to: string) =>
+    request<{ items: PlanListItem[] }>(
+      `/plan/to-list?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
+
+  /** `exclude` is the names unchecked in the preview - what's already in. */
+  planToList: (from: string, to: string, exclude: string[]) =>
+    request<{ merged: number; added: number }>("/plan/to-list", {
+      method: "POST",
+      body: JSON.stringify({ from, to, exclude }),
+    }),
+
   list: () => request<{ items: ListItem[] }>("/list"),
 
   addToList: (lines: string[], source?: string) =>
@@ -142,7 +201,7 @@ export const api = {
     }),
 
   setChecked: (id: string, checked: boolean) =>
-    request<{ item: ListItem }>(`/list/${id}`, {
+    request<{ item: ListItem }>(`/list/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify({ checked }),
     }),
@@ -151,5 +210,7 @@ export const api = {
     request<{ removed: number }>("/list/checked", { method: "DELETE" }),
 
   removeListItem: (id: string) =>
-    request<{ deleted: string }>(`/list/${id}`, { method: "DELETE" }),
+    request<{ deleted: string }>(`/list/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
 };

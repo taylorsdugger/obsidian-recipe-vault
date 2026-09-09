@@ -1,4 +1,4 @@
-import { desc, eq, like, or, sql } from "drizzle-orm";
+import { eq, like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { setFrontmatterValues } from "@recipe-vault/core/note/frontmatter";
 
@@ -8,17 +8,36 @@ import { deriveRecipeFields } from "../db/recipe-row";
 import type { AppBindings } from "../env";
 import { deleteNote, VaultConflict, writeNote } from "../vault-store";
 
-/** Sort orders the recipes screen offers. Anything else falls back to recent. */
+/**
+ * Title, case-insensitively. SQLite's default collation is binary, so a plain
+ * ASC puts every capitalised title before every lowercase one - "Zucchini"
+ * ahead of "apple". NOCASE is what a person means by alphabetical.
+ */
+const BY_TITLE = sql`${schema.recipes.title} COLLATE NOCASE ASC`;
+
+/**
+ * Sort orders the recipes screen offers. Anything else falls back to A-Z.
+ *
+ * A-Z is the default because the others don't answer "where is that recipe".
+ * `recent` reads as random: `updated_at` is distinct per row, but a vault sync
+ * rewrites every note's timestamp in whatever order it walked the bucket, so
+ * "recent" means "sync order", not anything the cook did.
+ *
+ * They all end in `BY_TITLE` so the rest is at least stable. `times_made` ties
+ * hard - 97 of 174 recipes sit at zero - and without a tiebreaker SQLite may
+ * return those in any order, so the list reshuffles between loads.
+ */
 const SORTS = {
-  recent: desc(schema.recipes.updatedAt),
-  made: desc(schema.recipes.timesMade),
-  quick: sql`CASE WHEN ${schema.recipes.cookTimeMins} IS NULL THEN 1 ELSE 0 END, ${schema.recipes.cookTimeMins} ASC`,
+  alpha: sql`${BY_TITLE}`,
+  recent: sql`${schema.recipes.updatedAt} DESC, ${BY_TITLE}`,
+  made: sql`${schema.recipes.timesMade} DESC, ${BY_TITLE}`,
+  quick: sql`CASE WHEN ${schema.recipes.cookTimeMins} IS NULL THEN 1 ELSE 0 END, ${schema.recipes.cookTimeMins} ASC, ${BY_TITLE}`,
 } as const;
 
 type SortKey = keyof typeof SORTS;
 
 function sortFor(raw: string | undefined) {
-  return SORTS[(raw ?? "recent") as SortKey] ?? SORTS.recent;
+  return SORTS[(raw ?? "alpha") as SortKey] ?? SORTS.alpha;
 }
 
 export const recipeRoutes = new Hono<AppBindings>()

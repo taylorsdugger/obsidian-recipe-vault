@@ -8,18 +8,14 @@ import { Import } from "./routes/import";
 import { List } from "./routes/list";
 import { Login } from "./routes/login";
 import { Placeholder } from "./routes/placeholder";
+import { Plan } from "./routes/plan";
 import { Recipe } from "./routes/recipe";
 import { Recipes } from "./routes/recipes";
 
-/** Which screen a pathname maps to. Everything but Login is scaffolding. */
+/** Which screen a pathname maps to. Home is the last one still scaffolding. */
 function Screen({ path }: { path: string }) {
   if (path.startsWith("/plan")) {
-    return (
-      <Placeholder
-        title="Plan"
-        note="Week view, Monday to Sunday. Step 2e.4."
-      />
-    );
+    return <Plan />;
   }
   if (path.startsWith("/list")) {
     return <List />;

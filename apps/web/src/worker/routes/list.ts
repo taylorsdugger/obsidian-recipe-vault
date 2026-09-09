@@ -1,112 +1,154 @@
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import {
-  formatIngredientAmount,
-  itemFromLine,
-  type ShoppingItem,
-} from "@recipe-vault/core";
+import { removeCheckedItems } from "@recipe-vault/core/shopping/markdown";
 
-import { db, schema } from "../db/client";
-import { addToList, itemFromRow, listRows } from "../db/shopping";
-import type { ShoppingItemRow } from "../db/schema";
 import type { AppBindings } from "../env";
+import {
+  applyMerge,
+  formatItemText,
+  itemsFromLines,
+  mutateList,
+  readList,
+  removeLine,
+  setChecked,
+  type ListLine,
+  type ShoppingNote,
+} from "../shopping-store";
 
-/** One list row as the client renders it. */
-function toJson(row: ShoppingItemRow) {
-  const item = itemFromRow(row);
+/**
+ * One row as the client renders it.
+ *
+ * The id is the item's *name*, which is also the merge key. A note has no ids
+ * of its own, and a line number would break the moment Obsidian reordered the
+ * file, whereas the name survives a reorder and is what the merge already
+ * treats as identity. Two lines with the same name would already have merged,
+ * so a collision means the cook hand-wrote a duplicate; first line wins.
+ */
+function toJson(line: ListLine) {
+  const item = line.item;
   return {
-    id: row.id,
+    id: item.name,
     checked: item.checked,
-    // The same "2 1/2 cups flour" text the plugin writes into the note.
-    text: formatIngredientAmount(item.amount, item.unit)
-      ? `${formatIngredientAmount(item.amount, item.unit)} ${item.name}`
-      : item.name,
+    text: formatItemText(item),
     name: item.name,
     sources: item.sources,
-    updatedAt: row.updatedAt,
   };
 }
 
-/** Read a `{ lines, source }` body into items, ignoring blank lines. */
-function itemsFromBody(lines: unknown, source: unknown): ShoppingItem[] {
-  if (!Array.isArray(lines)) return [];
-  const from = typeof source === "string" && source.trim() ? source.trim() : "";
-  return lines
-    .filter((line): line is string => typeof line === "string" && !!line.trim())
-    .map((line) => itemFromLine(line.trim(), from));
+/** Find a row by the id the client sent. */
+function findByName(note: ShoppingNote, id: string): ListLine | undefined {
+  return note.lines.find((line) => line.item.name === id);
+}
+
+function body(note: ShoppingNote) {
+  return { items: note.lines.map(toJson) };
 }
 
 export const listRoutes = new Hono<AppBindings>()
   /**
-   * The whole list. Both phones poll this every few seconds while the list
-   * screen is open (locked decision 4), so it stays one cheap query.
+   * The whole list, read straight out of the vault note. Both phones poll this
+   * every few seconds while the list screen is open (locked decision 4), so it
+   * stays one R2 read and no database round trip.
    */
-  .get("/", async (c) => {
-    const rows = await listRows(db(c.env.DB));
-    return c.json({ items: rows.map(toJson) });
-  })
+  .get("/", async (c) => c.json(body(await readList(c.env))))
 
   /**
-   * Add lines to the list. A free-text item from the list screen sends one
-   * line and no source; the recipe screen sends its checked ingredients and
-   * the recipe's title, which becomes the *(Source)* annotation.
+   * Add lines. A free-text item from the list screen sends one line and no
+   * source; the recipe screen sends its checked ingredients and the recipe's
+   * title, which becomes the *(Source)* annotation in the note.
    */
   .post("/", async (c) => {
-    const body = await c.req
+    const raw = await c.req
       .json<{ lines?: unknown; source?: unknown }>()
       .catch((): { lines?: unknown; source?: unknown } => ({}));
 
-    const incoming = itemsFromBody(body.lines, body.source);
+    const lines = Array.isArray(raw.lines)
+      ? raw.lines.filter((l): l is string => typeof l === "string")
+      : [];
+    const source =
+      typeof raw.source === "string" && raw.source.trim()
+        ? raw.source.trim()
+        : "";
+
+    const incoming = itemsFromLines(lines, source);
     if (incoming.length === 0) {
       return c.json({ error: "Nothing to add." }, 400);
     }
 
-    const database = db(c.env.DB);
-    const { merged, added } = await addToList(database, incoming);
-    const rows = await listRows(database);
+    let merged = 0;
+    let added = 0;
+    const note = await mutateList(c.env, (current) => {
+      const result = applyMerge(current, incoming);
+      merged = result.merged;
+      added = result.added;
+      return result.markdown;
+    });
 
-    return c.json({ merged, added, items: rows.map(toJson) });
+    return c.json({ merged, added, ...body(note) });
   })
 
   /** Check or uncheck one item. The client toggles optimistically. */
   .patch("/:id", async (c) => {
-    const body = await c.req
+    const raw = await c.req
       .json<{ checked?: unknown }>()
       .catch((): { checked?: unknown } => ({}));
-    if (typeof body.checked !== "boolean") {
+    if (typeof raw.checked !== "boolean") {
       return c.json({ error: "Send `checked` as true or false." }, 400);
     }
 
-    const updated = await db(c.env.DB)
-      .update(schema.shoppingItems)
-      .set({
-        checked: body.checked ? 1 : 0,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(schema.shoppingItems.id, c.req.param("id")))
-      .returning();
+    // Hono has already percent-decoded this. Decoding again would throw on a
+    // name with a literal '%' in it - "50% cream" is a real thing to buy.
+    const id = c.req.param("id");
+    const checked = raw.checked;
+    let missing = false;
 
-    if (updated.length === 0) return c.json({ error: "No such item." }, 404);
-    return c.json({ item: toJson(updated[0]) });
+    const note = await mutateList(c.env, (current) => {
+      const line = findByName(current, id);
+      if (!line) {
+        missing = true;
+        return null;
+      }
+      // Already in the wanted state - the other phone tapped it too.
+      if (line.item.checked === checked) return null;
+      return setChecked(current.markdown, line.lineIndex, checked);
+    });
+
+    if (missing) return c.json({ error: "No such item." }, 404);
+
+    const line = findByName(note, id);
+    return c.json({ item: line ? toJson(line) : null });
   })
 
-  /** "Clear checked" at the bottom of the list. */
+  /**
+   * "Clear checked" at the bottom of the list. `removeCheckedItems` is core's
+   * own line filter - the same one the plugin's clear command uses - so the
+   * header and any unchecked line come through untouched.
+   */
   .delete("/checked", async (c) => {
-    const deleted = await db(c.env.DB)
-      .delete(schema.shoppingItems)
-      .where(eq(schema.shoppingItems.checked, 1))
-      .returning({ id: schema.shoppingItems.id });
+    let removed = 0;
+    await mutateList(c.env, (current) => {
+      if (!current.markdown.trim()) return null;
+      const result = removeCheckedItems(current.markdown);
+      removed = result.removed;
+      return result.removed > 0 ? result.content : null;
+    });
 
-    return c.json({ removed: deleted.length });
+    return c.json({ removed });
   })
 
   /** Remove one item outright, for a mistyped free-text row. */
   .delete("/:id", async (c) => {
-    const deleted = await db(c.env.DB)
-      .delete(schema.shoppingItems)
-      .where(eq(schema.shoppingItems.id, c.req.param("id")))
-      .returning({ id: schema.shoppingItems.id });
+    const id = c.req.param("id");
+    let missing = false;
 
-    if (deleted.length === 0) return c.json({ error: "No such item." }, 404);
-    return c.json({ deleted: deleted[0].id });
+    await mutateList(c.env, (current) => {
+      const line = findByName(current, id);
+      if (!line) {
+        missing = true;
+        return null;
+      }
+      return removeLine(current.markdown, line.lineIndex);
+    });
+
+    if (missing) return c.json({ error: "No such item." }, 404);
+    return c.json({ deleted: id });
   });

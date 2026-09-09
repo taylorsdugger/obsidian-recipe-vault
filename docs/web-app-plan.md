@@ -1,17 +1,26 @@
 # Implementation Plan: shared core + household web app
 
-> **Status:** STEP 1 DONE, STEP 2 THROUGH 2e.3 PLUS 2e.6, DEPLOYED,
-> updated 2026-09-08.
+> **Status:** STEP 1 DONE, STEP 2 THROUGH 2e.4 PLUS 2e.6, DEPLOYED,
+> updated 2026-09-09.
 > Step 1 passed the 1e dev vault check, so a patch release is all that's left
 > there. The web app is deployed to Cloudflare and in use: import, the
-> gallery, the recipe screen, the shared shopping list, and now the PWA bits
-> so it installs on a phone. 2e.4 (the plan screen) and 2e.5 (home) are what's
-> left.
+> gallery, the recipe screen, the shared shopping list, the week plan, and the
+> PWA bits so it installs on a phone. 2e.5 (home) is what's left.
+> The shopping list is now the vault's own `Shopping List.md` rather than a
+> D1 table, so the app and Obsidian share one list. Recipes sort A-Z.
+> Not yet committed as of this edit; `wrangler` is at 4.130.0 after the dev
+> server kept crashing on 4.129.0.
 > **Branch when written:** `docs/landing-page` (clean, at `8bbdfe1`).
+> **Branch now:** `core/note-template`, at `cb56af0`, with the plan screen, the
+> shopping-list move and the sort change uncommitted in the working tree.
 > Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green.
 > **Author of plan:** design session 2026-09-02.
 >
 > **Progress log:**
+> - 2026-09-09: shopping list moved into the vault note, recipes sort A-Z, and
+>   spelled-out units pluralise. Wrangler bumped 4.45 -> 4.130 (dragging
+>   `@cloudflare/workers-types` to v5) to stop `wrangler dev` dying mid-session.
+>   Details in the deviations below. 174 core/plugin tests, 14 web tests.
 > - PR #13 (merged to `main`): workspace scaffold, shopping module, CI guard
 >   for the three release files, and `npm test` added to CI. Also fixed three
 >   proxy fallback tests that had been failing on `main` because the retry
@@ -144,11 +153,90 @@
 >   and `/api/` in the navigate-fallback denylist. Registration itself wants a
 >   check in real Chrome or on the phone.
 > - `wrangler dev --env-file` and `--var` both mangle a value containing `$`,
->   so neither can carry `AUTH_PASSWORD_HASH`. `.dev.vars` parses it fine.
->   Testing against a throwaway password means swapping that file, not a flag.
-> - `wrangler dev` falls over every so often with an empty ProxyController
->   error while a browser is polling it. Wrangler's own dev proxy, not our
->   code — restart it and the D1 state is still there.
+>   so neither carries `AUTH_PASSWORD_HASH` as written. It's dotenv variable
+>   expansion eating `$sha256` and `$100000`: escape them as `\$` in an
+>   `--env-file` and it loads fine. That's how to point a dev run at a
+>   throwaway password without touching `.dev.vars`.
+> - The plan screen adds `GET /api/plan/to-list`, which 2c didn't list. The
+>   confirm needs a preview to uncheck things out of, and the preview has to be
+>   the same merged set the POST works from or the two disagree. Same path,
+>   read on GET and write on POST.
+> - `exclude` on `POST /api/plan/to-list` is item names, not ingredient lines.
+>   The name is the merge key, so unchecking olive oil keeps every recipe's
+>   olive oil off the list instead of only the one line you happened to see.
+> - Adding a meal is the whole-day `PUT` from 2c: the client sends the day it
+>   already has plus the new entry. Two phones on the same day is last write
+>   wins. The plan screen doesn't poll and every mutation refetches, which has
+>   been enough for two people and one week.
+> - `PUT /api/plan/:date` drops a recipe id it can't find rather than failing
+>   the foreign key. A recipe deleted on the other phone would otherwise 500
+>   the whole day, including the entries that were still fine.
+> - The week is in the URL as `/plan?week=YYYY-MM-DD`, written with
+>   `replaceState` so paging through weeks doesn't fill the back stack.
+> - `weekLabel` uses `Intl.DateTimeFormat.formatRange`. The hand-rolled version
+>   read "7 - Sep 13" in a month-first locale; `formatRange` drops the repeated
+>   month and puts day and month in the order the phone expects.
+> - `wrangler dev` used to fall over every so often with an empty
+>   ProxyController error while a browser was polling it. Three crashes in one
+>   morning on 4.129.0, each serving zero requests before dying. Ruled out our
+>   own code first: 45 curl polls against `/api/list` never reproduced it, and
+>   the last crash followed a 1.2s no-op vault sync rather than a long R2 read,
+>   so it was neither the poll loop nor the remote binding. Upgrading wrangler
+>   to 4.130.0 - which wrangler's own error text suggests - has held all
+>   afternoon. Unproven as a fix, only untriggered since.
+> - That upgrade dragged `@cloudflare/workers-types` from v4 to v5, because
+>   wrangler 4.130.0 peer-requires it. v5 drops the dated entrypoints, so
+>   `apps/web/tsconfig.json` moved from `@cloudflare/workers-types/2023-07-01`
+>   to the plain package. That pin was stale anyway: it named 2023 while
+>   `wrangler.toml` sets `compatibility_date = "2026-09-01"`, so the types were
+>   a generation behind the runtime being deployed against. Verified after the
+>   bump: web typecheck, both test suites, the web build, and the root plugin
+>   build still emitting `main.js`, `manifest.json`, `styles.css`.
+> - **Wrangler splits any flag value containing a space.** `--command "SELECT
+>   ..."` is rejected outright with "You must provide either --command or
+>   --file", and `r2 object get 'obsidian/Shopping List.md'` needs the key
+>   percent-encoded as `Shopping%20List.md`. Checked against both 4.129.0 and
+>   4.130.0 - it predates the upgrade. Same family as the `$` bug above. Use
+>   `--file` for SQL. Note that `--file` against `--remote` goes through the
+>   import API and returns only stats, never rows, so a remote SELECT has no
+>   good CLI path; read `meta.rows_read` / `rows_written` instead.
+> - The shopping list moved out of D1 and into the vault note (locked decision
+>   2). `shopping_items` is retired, not dropped: nothing reads or writes it,
+>   but a migration that deletes somebody's groceries is not undoable. Its rows
+>   turned out to be local dev leftovers - production was already empty.
+> - **Every list mutation is a line edit, never a re-render.** This is the whole
+>   reason the change is safe. `parseShoppingLine` strips prep notes, so
+>   "1 onion, diced" parses to "onion"; rendering the parsed items back would
+>   quietly rewrite what the cook typed in Obsidian. Toggling flips one line's
+>   `[ ]`, adding appends, merging rewrites just the matched line, and
+>   clear-checked is core's own `removeCheckedItems` line filter. Headers and
+>   anything unparseable pass through untouched.
+> - A list row's id is the item's *name*, which is also the merge key. A note
+>   has no ids, and a line number breaks the moment Obsidian reorders the file.
+>   Two lines with the same name would already have merged, so a collision
+>   means a hand-written duplicate; first line wins.
+> - Mutating the list is a compare-and-swap on one R2 object: read, edit, put
+>   `onlyIf` the etag still matches. Five simultaneous toggles beat four
+>   lockstep retries and one 500'd, so it is eight attempts with jittered
+>   backoff now. Two phones at human speed never get near it. Unlike a recipe
+>   edit, a lost race retries instead of surfacing a 409 - a checkbox should
+>   not ask the user to resolve a conflict.
+> - Hono percent-decodes path params already. Decoding again in the route threw
+>   `URIError` on any name with a literal `%` in it, which 500'd "50% cream".
+>   The client encodes; the Worker does not decode.
+> - The recipes screen defaults to A-Z. "Recent" read as random and the reason
+>   was not ties: `updated_at` is distinct on all 174 rows, but a vault sync
+>   rewrites every note's timestamp in whatever order it walked the bucket, so
+>   "recent" meant "sync order". Every sort now ends in a title tiebreaker
+>   anyway, because `times_made` ties hard - 97 of 174 sit at zero. Sorting is
+>   `COLLATE NOCASE`; SQLite's default binary collation puts "Zucchini" ahead
+>   of "apple".
+> - Spelled-out units are pluralised - "3 cups", not "3 cup" - while
+>   abbreviations are left alone, because "3 tsps" is wrong. This changes what
+>   the *plugin* writes into notes too, not just the app. Every plural has to
+>   round-trip back through `normalizeIngredientUnit`, and `handfuls` was
+>   missing from that map: writing "2 handfuls spinach" and reading it back
+>   would have dropped the amount. A test now pins all twelve word units.
 
 ## Goal
 
@@ -199,7 +287,9 @@ running Obsidian.
    live in the `obsidian` bucket that Remotely Save already syncs; every recipe
    write in the app goes there first, conditional on the note's etag, and the
    D1 row is an index rebuilt from what landed. D1 can be dropped and rebuilt
-   from the bucket. The plan and the shopping list are still D1-only.
+   from the bucket. **The shopping list joined this on 2026-09-09** and lives in
+   `Shopping List.md` at the vault root, with no D1 copy at all. Only the week
+   plan is still D1-only, and it has no note to be the truth.
 3. **One household, one password.** No accounts, no multi-tenant. A PBKDF2
    hash in `AUTH_PASSWORD_HASH` and a cookie signed with `AUTH_COOKIE_SECRET`,
    both Worker secrets. Two people. Same shape as the workout app, so there's
@@ -610,8 +700,11 @@ shopping_items (
 )
 ```
 
-`shopping_items` rows map one to one onto core's `ShoppingItem`, so the merge
-is: load all rows, call `mergeShoppingItems`, upsert. No new math.
+`shopping_items` is **retired as of 2026-09-09**. The list lives in
+`Shopping List.md` at the vault root and has no D1 copy - see locked decision 2
+and `src/worker/shopping-store.ts`. The table is left in place because dropping
+it is not undoable; nothing reads or writes it. The merge is unchanged, it just
+runs against lines parsed out of the note instead of rows.
 
 The derived columns on `recipes` are refreshed from `markdown` on every write
 using core's `ingredientsFromBody` and the frontmatter block. Editing a recipe
@@ -635,12 +728,17 @@ All routes behind the passcode cookie. JSON in, JSON out.
   `createRecipeRenderer(DEFAULT_TEMPLATE)` and inserts.
 - `GET /api/plan?from=&to=`, `PUT /api/plan/:date` replaces that day's entries,
   `DELETE /api/plan/entries/:id`.
+- `GET /api/plan/to-list?from=&to=` previews the merged set without writing.
 - `POST /api/plan/to-list` `{ from, to, exclude?: string[] }` gathers
   ingredients from every recipe in range, runs `mergeShoppingItems` against
   current rows, writes. Returns the same "N merged, M new" counts the plugin
   shows.
 - `GET /api/list`, `PATCH /api/list/:id` (checked), `POST /api/list` (free
-  text item, goes through `itemFromLine`), `DELETE /api/list/checked`.
+  text item, goes through `itemFromLine`), `DELETE /api/list/checked`,
+  `DELETE /api/list/:id`. All of these read and write `Shopping List.md` in R2
+  rather than D1, and `:id` is the item's name, percent-encoded by the client.
+  Writes are a compare-and-swap on the note's etag with backoff, and every edit
+  touches only the lines that changed.
 
 ### 2d. Screens
 
@@ -649,7 +747,8 @@ All routes behind the passcode cookie. JSON in, JSON out.
   strip for the current week. Unchecked count on the list with a link. An
   import button. This is the dashboard the plugin never had.
 - **Recipes.** Port of `RecipeGallery` and `RecipeCard`. Search box filters
-  title, meal type, and ingredients. Sort by recent, most made, cook time.
+  title, meal type, and ingredients. Sorted A-Z by default; recent, most made
+  and cook time are the other chips, each falling back to title.
 - **Recipe.** Markdown rendered to HTML. Ingredients render as checkboxes and
   a "send checked to list" button, same flow as the plugin's note actions.
   "Add to plan" opens a day picker. "Mark made." Edit opens the raw markdown.
@@ -657,7 +756,10 @@ All routes behind the passcode cookie. JSON in, JSON out.
   and pick a recipe, or type a free text note. Remove with a swipe or an x.
   "Shopping list for this week" opens a preview with every ingredient checked,
   uncheck what's already in the pantry, confirm.
-- **List.** Flat list, checkable, source annotation in small text. Add a free
+- **List.** The vault's own `Shopping List.md`, so what the app shows and what
+  Obsidian shows are one list. No sync step either way: edit the note and the
+  next poll picks it up; tick something here and Remotely Save carries it back.
+  Flat list, checkable, source annotation in small text. Add a free
   text item at the top. "Clear checked" at the bottom. Polls every 5 seconds
   while mounted, with optimistic toggles so a tap feels instant.
 - **Import.** URL field. Preview card, then save. Also registered as a PWA
@@ -692,7 +794,18 @@ same layout wider.
    client shows up on the other within a poll, clear-checked works from either,
    and the raw markdown editor round-trips through the derived columns.
    Optimistic toggles hold their state against a poll landing mid-flight.
-4. Plan screen and plan-to-list.
+4. **DONE.** Plan screen and plan-to-list. Week view Monday to Sunday with
+   previous and next, a picker that searches recipes or takes free text, and
+   the shopping list preview. Checked by hand against `wrangler dev`: a day
+   holds several meals, the same recipe planned twice doubles its amounts in
+   the preview, an ingredient two recipes share merges and carries both as its
+   source, unchecking a pantry item keeps it off the list and off any existing
+   row, and the confirm reports the same "N merged, M new" the plugin does.
+   The week is in the URL, so a reload comes back to the week you were on.
+   Edge cases checked too: a stale recipe id from the other phone is dropped
+   rather than 500ing the day, a second delete of the same entry is a 404 the
+   client swallows, a bad date is a 400, and `/api/plan` is 401 without the
+   cookie.
 5. Home screen last, once there's data to show on it.
 6. **DONE (out of order).** PWA manifest, icons, service worker, share
    target. Deployed. Verified: the manifest, `sw.js`, `registerSW.js` and all
@@ -703,10 +816,16 @@ same layout wider.
 ### 2f. Verification for step 2
 
 - Core tests cover the math. Worker route tests with Vitest and the Workers
-  pool are nice to have, not blocking. Routes are thin.
+  pool are nice to have, not blocking. Routes are thin. `apps/web` now has its
+  own vitest config and tests for the two things that are not thin: the week
+  maths (timezones, Sunday) and the shopping note's line edits.
 - Manual: import five recipes from the same sites the vault has. Plan a week.
   Generate a list. On phone A, check three items. Phone B shows them checked
   within a poll. Clear checked on B, A updates.
+- Vault round-trip for the list: write a line in `Shopping List.md` in Obsidian
+  that the parser cannot reproduce - "1 onion, diced" - let Remotely Save push
+  it, then tick it in the app. The note must come back with ", diced" intact.
+  That is the check that the app is editing lines rather than re-rendering.
 - Old phone check: open Recipes with 200 rows and scroll. If it stutters, the
   gallery needs virtualization before anything else.
 

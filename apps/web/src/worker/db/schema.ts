@@ -68,8 +68,13 @@ export const planEntries = sqliteTable(
 );
 
 /**
- * Rows map one to one onto core's `ShoppingItem`, so adding to the list is
- * load rows, `mergeShoppingItems`, upsert. No new math on this side.
+ * No longer the shopping list. The list lives in the vault note now
+ * (`src/worker/shopping-store.ts`), so the app and Obsidian share one list
+ * instead of two that drift.
+ *
+ * The table is left in place rather than dropped: the rows are somebody's
+ * groceries until they have been carried over, and a migration that deletes
+ * them is not undoable. Nothing reads or writes this.
  */
 export const shoppingItems = sqliteTable("shopping_items", {
   id: text("id").primaryKey(),
