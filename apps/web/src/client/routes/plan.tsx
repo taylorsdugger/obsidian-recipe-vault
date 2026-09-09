@@ -15,7 +15,14 @@ import {
   weekLabel,
 } from "../week";
 
-/** One planned meal. A recipe opens; a free-text note just sits there. */
+/**
+ * One planned meal. A recipe opens; a free-text note just sits there.
+ *
+ * Kept to a single 44px line so a seven-day week fits on a phone screen. The
+ * title wraps to two lines rather than truncating - "Roasted Beet Hummus
+ * Recipe" cut to "Roasted Beet Hummus Rec..." tells you less than the second
+ * line costs.
+ */
 function EntryRow({
   entry,
   onRemove,
@@ -28,48 +35,58 @@ function EntryRow({
   const recipe = entry.recipe;
 
   return (
-    <li class="flex items-center gap-2 pr-1">
+    <li class="flex items-center gap-1">
       {recipe ? (
         <button
           type="button"
-          class="flex min-w-0 flex-1 items-center gap-3 py-1.5 text-left"
+          class="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left"
           onClick={() => navigate(`/recipes/${recipe.id}`)}
         >
           {recipe.photoUrl ? (
             <img
-              class="size-11 shrink-0 rounded-xl object-cover"
+              class="size-10 shrink-0 rounded-lg object-cover"
               src={recipe.photoUrl}
               alt=""
               loading="lazy"
             />
           ) : (
-            <div class="size-11 shrink-0 rounded-xl bg-canvas" />
+            <div class="size-10 shrink-0 rounded-lg bg-canvas" />
           )}
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-[15px] font-medium">
+            <span class="line-clamp-2 text-[15px] leading-snug font-medium">
               {recipe.title}
             </span>
             {recipe.cookTime && (
-              <span class="block truncate text-xs text-muted">
+              <span class="mt-0.5 block text-xs text-faint">
                 {recipe.cookTime}
               </span>
             )}
           </span>
         </button>
       ) : (
-        <span class="min-w-0 flex-1 py-3 text-[15px] text-muted">
+        <span class="min-w-0 flex-1 py-2 text-[15px] leading-snug text-muted">
           {entry.note}
         </span>
       )}
 
+      {/* Quiet on purpose: removing is the rarest thing you do here, and a
+          heavy glyph next to every meal made the week look like a to-do list. */}
       <button
         type="button"
         aria-label="Remove"
-        class="grid size-11 shrink-0 place-items-center text-lg text-faint disabled:opacity-40"
+        class="grid size-8 shrink-0 place-items-center rounded-lg text-faint active:bg-canvas disabled:opacity-40"
         disabled={busy}
         onClick={() => onRemove(entry)}
       >
-        ×
+        <svg viewBox="0 0 16 16" class="size-3" aria-hidden="true">
+          <path
+            d="M3 3 L13 13 M13 3 L3 13"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            fill="none"
+          />
+        </svg>
       </button>
     </li>
   );
@@ -91,6 +108,7 @@ export function Plan() {
   const [busy, setBusy] = useState(false);
 
   const days = useMemo(() => weekDays(monday), [monday]);
+  const thisWeek = dateKey(monday) === dateKey(mondayOf(new Date()));
   const from = dateKey(monday);
   const to = dateKey(addDays(monday, 6));
 
@@ -174,110 +192,126 @@ export function Plan() {
 
   return (
     // Clears the tab bar plus the shopping-list bar sitting above it, so the
-    // last day's "Add a meal" is still tappable at the bottom of the scroll.
-    <div class="pb-32">
-      <header class="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-canvas/95 px-2 py-2 backdrop-blur">
-        <button
-          type="button"
-          aria-label="Previous week"
-          class="grid size-11 shrink-0 place-items-center rounded-xl text-muted active:bg-surface"
-          onClick={() => goto(addDays(monday, -7))}
-        >
-          ‹
-        </button>
-        <div class="min-w-0 flex-1 text-center">
-          <h1 class="truncate text-base font-semibold">{weekLabel(monday)}</h1>
-        </div>
-        <button
-          type="button"
-          aria-label="Next week"
-          class="grid size-11 shrink-0 place-items-center rounded-xl text-muted active:bg-surface"
-          onClick={() => goto(addDays(monday, 7))}
-        >
-          ›
-        </button>
-      </header>
-
-      {/* Only worth showing when it would do something. */}
-      {dateKey(monday) !== dateKey(mondayOf(new Date())) && (
-        <div class="px-4 pt-3">
+    // last day's "Add" is still tappable at the bottom of the scroll.
+    <div class="pb-24">
+      <header class="sticky top-0 z-10 border-b border-line bg-canvas/95 backdrop-blur">
+        <div class="mx-auto flex max-w-2xl items-center gap-1 px-1.5 py-1.5">
           <button
             type="button"
-            class="text-sm text-muted underline underline-offset-4"
-            onClick={() => goto(mondayOf(new Date()))}
+            aria-label="Previous week"
+            class="grid size-9 shrink-0 place-items-center rounded-lg text-muted active:bg-surface"
+            onClick={() => goto(addDays(monday, -7))}
           >
-            Back to this week
+            ‹
+          </button>
+          <div class="min-w-0 flex-1 text-center">
+            <h1 class="truncate text-[15px] font-semibold">
+              {weekLabel(monday)}
+            </h1>
+          </div>
+          {/* Sits where a second nav button would, so the header keeps its
+            symmetry whether or not the jump-back is showing. */}
+          {thisWeek ? (
+            <div class="size-9 shrink-0" />
+          ) : (
+            <button
+              type="button"
+              class="grid h-9 shrink-0 place-items-center rounded-lg px-2 text-xs font-medium text-accent-ink active:bg-surface"
+              onClick={() => goto(mondayOf(new Date()))}
+            >
+              Today
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label="Next week"
+            class="grid size-9 shrink-0 place-items-center rounded-lg text-muted active:bg-surface"
+            onClick={() => goto(addDays(monday, 7))}
+          >
+            ›
           </button>
         </div>
-      )}
+      </header>
 
       {error && <p class="px-4 pt-3 text-sm text-red-700">{error}</p>}
       {status && (
-        <p class="mx-4 mt-3 rounded-xl bg-surface px-3 py-2 text-sm text-muted">
+        <p class="mx-3 mt-3 rounded-xl bg-surface px-3 py-2 text-sm text-muted">
           {status}
         </p>
       )}
 
-      <div class="space-y-3 p-4">
-        {days.map((date) => {
-          const day = entriesOn(date);
-          const today = isToday(date);
-          return (
-            <section
-              key={dateKey(date)}
-              class={`card overflow-hidden ${today ? "border-accent" : ""}`}
-            >
-              <div class="flex items-baseline gap-2 px-4 pt-3">
-                <h2
-                  class={`text-sm font-semibold ${
-                    today ? "text-accent-ink" : ""
-                  }`}
-                >
-                  {dayName(date)}
-                </h2>
-                <span class="text-xs text-faint">{dayLabel(date)}</span>
-                {today && (
-                  <span class="ml-auto text-xs font-medium text-accent-ink">
-                    Today
-                  </span>
-                )}
-              </div>
-
-              {day.length > 0 && (
-                <ul class="divide-y divide-line px-3">
-                  {day.map((entry) => (
-                    <EntryRow
-                      key={entry.id}
-                      entry={entry}
-                      onRemove={remove}
-                      busy={busy}
-                    />
-                  ))}
-                </ul>
-              )}
-
-              <button
-                type="button"
-                class="w-full px-4 py-3 text-left text-sm text-muted active:bg-canvas"
-                onClick={() => setPicking(date)}
+      {/* One list, not seven cards. A week has to read as a week, and seven
+          separate cards cost 865px of scroll for 812px of screen. */}
+      {/* Capped and centred. Left full width, a 1100px row strands the remove
+          button half a screen from the meal it belongs to. */}
+      <div class="mx-auto max-w-2xl p-3">
+        <ul class="card divide-y divide-line overflow-hidden">
+          {days.map((date) => {
+            const day = entriesOn(date);
+            const today = isToday(date);
+            return (
+              <li
+                key={dateKey(date)}
+                class={`flex gap-3 px-3 py-1.5 ${today ? "bg-accent/6" : ""}`}
               >
-                {day.length > 0 ? "Add another" : "Add a meal"}
-              </button>
-            </section>
-          );
-        })}
+                {/* Fixed-width date gutter, so every day lines up down the
+                    left however many meals it holds. */}
+                <div class="w-9 shrink-0 pt-1.5 text-center">
+                  <div class="text-[10px] leading-none font-medium tracking-wide text-faint uppercase">
+                    {dayName(date)}
+                  </div>
+                  <div
+                    class={`mx-auto mt-1 grid size-6 place-items-center text-sm leading-none font-semibold ${
+                      today ? "rounded-full bg-accent text-white" : "text-ink"
+                    }`}
+                  >
+                    {date.getDate()}
+                  </div>
+                </div>
+
+                <div class="min-w-0 flex-1">
+                  {day.length > 0 && (
+                    <ul class="divide-y divide-line/70">
+                      {day.map((entry) => (
+                        <EntryRow
+                          key={entry.id}
+                          entry={entry}
+                          onRemove={remove}
+                          busy={busy}
+                        />
+                      ))}
+                    </ul>
+                  )}
+
+                  {/* An inline affordance rather than a full-width row. Seven
+                      of those were 308px, a third of the whole scroll. */}
+                  <button
+                    type="button"
+                    class="flex h-7 items-center gap-1 text-[13px] text-faint active:text-muted"
+                    onClick={() => setPicking(date)}
+                  >
+                    <span class="text-sm leading-none">+</span>
+                    <span>{day.length > 0 ? "Add" : "Add a meal"}</span>
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       </div>
 
       {/* Above the tab bar, same place the recipe screen puts its send button. */}
       {planned && (
         <div class="fixed inset-x-0 bottom-14 z-10 border-t border-line bg-surface/95 p-3 backdrop-blur">
-          <button
-            type="button"
-            class="btn-primary w-full"
-            onClick={() => setShopping(true)}
-          >
-            Shopping list for this week
-          </button>
+          <div class="mx-auto max-w-2xl">
+            <button
+              type="button"
+              class="btn-primary w-full"
+              onClick={() => setShopping(true)}
+            >
+              Shopping list for this week
+            </button>
+          </div>
         </div>
       )}
 
