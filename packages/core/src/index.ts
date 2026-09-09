@@ -63,6 +63,8 @@ export {
 } from "./parse/clean-name";
 export { stripHtml, decodeHtmlEntities } from "./parse/html";
 export { normalizeImages } from "./parse/images";
+export type { JsonLdParseOptions } from "./parse/json-ld";
+export { parseRecipesFromJsonLd } from "./parse/json-ld";
 export { extractMicrodataRecipes } from "./parse/microdata";
 export { extractWprmRecipeNotes, normalizeRecipeNotes } from "./parse/notes";
 export type { ParseOptions, FetchOptions } from "./parse/recipes";
