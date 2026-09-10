@@ -134,8 +134,13 @@ export function cleanRecipeName(
     cleaned = cleaned.replace(regex, "");
   }
 
-  // Remove empty or whitespace-only parentheses left after keyword stripping
-  cleaned = cleaned.replace(/\(\s*\)/g, "");
+  // Drop any bracketed group that stripping left with nothing meaningful in
+  // it. Matching only whitespace was not enough: "(Vegan, Gluten-Free)" leaves
+  // "(, )" and "(vegan + gluten-free)" leaves "( + )", and neither is empty.
+  // The test is "no letters or digits", so "(Instant Pot)" is kept.
+  cleaned = cleaned.replace(/[([{][^)\]}]*[)\]}]/g, (group) =>
+    /[\p{L}\p{N}]/u.test(group) ? group : "",
+  );
 
   // Tidy up leftover punctuation, symbols, and whitespace
   cleaned = cleaned.replace(/[\s,\-–—&|]+/g, " ").trim();
