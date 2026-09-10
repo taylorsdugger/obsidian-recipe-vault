@@ -50,7 +50,7 @@ export const recipes = sqliteTable(
   ],
 );
 
-/** One meal on one day. Either a recipe or free text ("leftovers"), not both. */
+/** One meal on one day. Either a recipe or free text, not both. */
 export const planEntries = sqliteTable(
   "plan_entries",
   {
@@ -63,6 +63,16 @@ export const planEntries = sqliteTable(
     }),
     note: text("note"),
     position: integer("position").notNull().default(0),
+    /**
+     * Reheating Thursday's curry, not cooking it again. The row keeps its
+     * `recipeId` so the week can still draw the photo and tap through, and
+     * `mergedPlanItems` skips it so the shop doesn't buy the ingredients a
+     * second time. Meaningless without a recipe; a free-text night is already
+     * whatever you typed.
+     */
+    leftovers: integer("leftovers", { mode: "boolean" })
+      .notNull()
+      .default(false),
   },
   (table) => [index("plan_entries_date_idx").on(table.date)],
 );

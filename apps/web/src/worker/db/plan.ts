@@ -14,6 +14,8 @@ export interface PlanEntryJson {
   slot: string;
   note: string | null;
   position: number;
+  /** Reheating this recipe rather than cooking it. Never true without one. */
+  leftovers: boolean;
   recipe: {
     id: string;
     title: string;
@@ -38,13 +40,17 @@ export async function planEntriesInRange(
       slot: schema.planEntries.slot,
       note: schema.planEntries.note,
       position: schema.planEntries.position,
+      leftovers: schema.planEntries.leftovers,
       recipeId: schema.recipes.id,
       title: schema.recipes.title,
       photoUrl: schema.recipes.photoUrl,
       cookTime: schema.recipes.cookTime,
     })
     .from(schema.planEntries)
-    .leftJoin(schema.recipes, eq(schema.planEntries.recipeId, schema.recipes.id))
+    .leftJoin(
+      schema.recipes,
+      eq(schema.planEntries.recipeId, schema.recipes.id),
+    )
     .where(
       and(gte(schema.planEntries.date, from), lte(schema.planEntries.date, to)),
     )
@@ -57,6 +63,9 @@ export async function planEntriesInRange(
     slot: row.slot,
     note: row.note,
     position: row.position,
+    // A row whose recipe was deleted falls back to a plain empty night; there
+    // is nothing left to be the leftovers of.
+    leftovers: row.leftovers && row.recipeId !== null,
     recipe: row.recipeId
       ? {
           id: row.recipeId,
@@ -75,6 +84,10 @@ export async function planEntriesInRange(
  *
  * A recipe planned twice in the week contributes its ingredients twice and
  * the amounts add up, which is right: you're cooking it twice.
+ *
+ * Leftovers nights are the exception and are skipped. They carry a `recipeId`
+ * so the week can draw them, but you already bought those ingredients for the
+ * night you cooked - counting them again would double every amount.
  */
 export async function mergedPlanItems(
   db: Db,
@@ -87,9 +100,16 @@ export async function mergedPlanItems(
       ingredients: schema.recipes.ingredients,
     })
     .from(schema.planEntries)
-    .innerJoin(schema.recipes, eq(schema.planEntries.recipeId, schema.recipes.id))
+    .innerJoin(
+      schema.recipes,
+      eq(schema.planEntries.recipeId, schema.recipes.id),
+    )
     .where(
-      and(gte(schema.planEntries.date, from), lte(schema.planEntries.date, to)),
+      and(
+        gte(schema.planEntries.date, from),
+        lte(schema.planEntries.date, to),
+        eq(schema.planEntries.leftovers, false),
+      ),
     )
     .orderBy(asc(schema.planEntries.date), asc(schema.planEntries.position))
     .limit(200);

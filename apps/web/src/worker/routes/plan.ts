@@ -15,6 +15,7 @@ interface IncomingEntry {
   recipeId: string | null;
   note: string | null;
   slot: string;
+  leftovers: boolean;
 }
 
 /**
@@ -26,9 +27,13 @@ function readEntries(raw: unknown): IncomingEntry[] {
 
   return raw.flatMap((entry): IncomingEntry[] => {
     if (typeof entry !== "object" || entry === null) return [];
-    const { recipeId, note, slot } = entry as Record<string, unknown>;
+    const { recipeId, note, slot, leftovers } = entry as Record<
+      string,
+      unknown
+    >;
 
-    const id = typeof recipeId === "string" && recipeId.trim() ? recipeId : null;
+    const id =
+      typeof recipeId === "string" && recipeId.trim() ? recipeId : null;
     const text = typeof note === "string" && note.trim() ? note.trim() : null;
     if (!id && !text) return [];
 
@@ -39,6 +44,9 @@ function readEntries(raw: unknown): IncomingEntry[] {
         recipeId: id,
         note: id ? null : text,
         slot: typeof slot === "string" && slot.trim() ? slot.trim() : "dinner",
+        // Only meaningful alongside a recipe. Flagging a free-text night would
+        // leave a row that reads as leftovers and has nothing to reheat.
+        leftovers: id !== null && leftovers === true,
       },
     ];
   });
@@ -56,7 +64,9 @@ export const planRoutes = new Hono<AppBindings>()
       return c.json({ error: "Give me `from` and `to` as YYYY-MM-DD." }, 400);
     }
 
-    return c.json({ entries: await planEntriesInRange(db(c.env.DB), from, to) });
+    return c.json({
+      entries: await planEntriesInRange(db(c.env.DB), from, to),
+    });
   })
 
   /**
@@ -109,6 +119,7 @@ export const planRoutes = new Hono<AppBindings>()
           slot: entry.slot,
           recipeId: entry.recipeId,
           note: entry.note,
+          leftovers: entry.leftovers,
           position,
         })),
       );
@@ -168,7 +179,9 @@ export const planRoutes = new Hono<AppBindings>()
 
     const exclude = new Set(
       Array.isArray(body.exclude)
-        ? body.exclude.filter((name): name is string => typeof name === "string")
+        ? body.exclude.filter(
+            (name): name is string => typeof name === "string",
+          )
         : [],
     );
 

@@ -8,6 +8,7 @@ import {
   type RecipeSummary,
 } from "../api";
 import { RecipePicker } from "../components/recipe-picker";
+import { addLeftoversNextDay } from "../leftovers";
 import { navigate } from "../router";
 import { SYNCED_EVENT } from "../sync";
 import {
@@ -62,10 +63,12 @@ function Tonight({
   entry,
   busy,
   onMade,
+  onLeftovers,
 }: {
   entry: PlanEntry;
   busy: boolean;
   onMade: (recipe: PlanRecipe) => void;
+  onLeftovers: (recipe: PlanRecipe) => void;
 }) {
   const recipe = entry.recipe;
 
@@ -95,23 +98,45 @@ function Tonight({
           <div class="h-2 w-full bg-linear-to-b from-canvas to-surface" />
         )}
         <div class="space-y-1 p-4 pb-3">
+          {entry.leftovers && (
+            <p class="text-[11px] font-medium tracking-wide text-accent-ink uppercase">
+              Leftovers
+            </p>
+          )}
           <h2 class="text-xl leading-tight font-semibold">{recipe.title}</h2>
-          {recipe.cookTime && (
+          {/* Cook time is about cooking it. On a reheat it's just wrong. */}
+          {recipe.cookTime && !entry.leftovers && (
             <p class="text-sm text-muted">{recipe.cookTime}</p>
           )}
         </div>
       </button>
 
-      <div class="px-4 pb-4">
-        <button
-          type="button"
-          class="btn-primary w-full"
-          disabled={busy}
-          onClick={() => onMade(recipe)}
-        >
-          Mark made
-        </button>
-      </div>
+      {/* Nothing to mark or carry forward on a reheat: it was counted the
+          night it was cooked, and leftovers of leftovers is a fridge problem. */}
+      {!entry.leftovers && (
+        <div class="px-4 pb-3">
+          <button
+            type="button"
+            class="btn-primary w-full"
+            disabled={busy}
+            onClick={() => onMade(recipe)}
+          >
+            Mark made
+          </button>
+
+          {/* The same quiet inline affordance the plan screen uses to add a
+              meal. It's a nudge, not a second primary action. */}
+          <button
+            type="button"
+            class="mt-1 flex h-8 items-center gap-1 text-[13px] text-faint active:text-muted disabled:opacity-40"
+            disabled={busy}
+            onClick={() => onLeftovers(recipe)}
+          >
+            <span class="text-sm leading-none">+</span>
+            <span>Leftovers tomorrow</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -146,6 +171,7 @@ function AlsoToday({ entry }: { entry: PlanEntry }) {
           <div class="size-10 shrink-0 rounded-lg bg-canvas" />
         )}
         <span class="line-clamp-2 text-[15px] leading-snug font-medium">
+          {entry.leftovers && <span class="text-faint">Leftovers · </span>}
           {recipe.title}
         </span>
       </button>
@@ -225,15 +251,37 @@ export function Home() {
     }
   };
 
+  const leftoversTomorrow = async (recipe: PlanRecipe) => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await addLeftoversNextDay(todayKey, recipe);
+      setStatus(
+        res.added
+          ? `Leftovers planned for tomorrow.`
+          : `Tomorrow already has those leftovers.`,
+      );
+      // Tomorrow is in this week unless today is Sunday, and the strip should
+      // gain its dot either way.
+      await load();
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** Same day-replace the plan screen does: send today as it is plus the new one. */
   const planTonight = async (added: { recipeId?: string; note?: string }) => {
     setBusy(true);
     setPicking(false);
     try {
       await api.setPlanDay(todayKey, [
+        // Carry `leftovers` through - the day is rewritten whole.
         ...todays.map((entry) => ({
           recipeId: entry.recipe?.id ?? null,
           note: entry.note,
+          leftovers: entry.leftovers,
         })),
         added,
       ]);
@@ -270,7 +318,12 @@ export function Home() {
       )}
 
       {hero ? (
-        <Tonight entry={hero} busy={busy} onMade={markMade} />
+        <Tonight
+          entry={hero}
+          busy={busy}
+          onMade={markMade}
+          onLeftovers={leftoversTomorrow}
+        />
       ) : (
         // `entries` is null until the first fetch lands. Drawing "nothing
         // planned" in that gap would be wrong half the time, so hold the space.

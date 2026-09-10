@@ -75,6 +75,8 @@ export interface PlanEntry {
   slot: string;
   note: string | null;
   position: number;
+  /** Reheating `recipe` rather than cooking it. Never true without one. */
+  leftovers: boolean;
   recipe: PlanRecipe | null;
 }
 
@@ -82,6 +84,7 @@ export interface PlanEntry {
 export interface PlanEntryInput {
   recipeId?: string | null;
   note?: string | null;
+  leftovers?: boolean;
 }
 
 /** A line in the "shopping list for this week" preview, already merged. */

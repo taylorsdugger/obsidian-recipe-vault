@@ -17,6 +17,11 @@
 > **Author of plan:** design session 2026-09-02.
 >
 > **Progress log:**
+> - 2026-09-10: leftovers nights. A planned meal can carry itself into the next
+>   day as a reheat: the row keeps its `recipeId` so the week still draws the
+>   photo and taps through, and a `leftovers` flag keeps it off the shop.
+>   Migration `0004`. Not in the original plan - it came out of using the home
+>   screen. Details in the deviations below.
 > - 2026-09-10: the home screen (2e.5), the last screen in step 2. Tonight's
 >   meal with its photo and a mark-made button, the seven-day strip, the
 >   unchecked count on the list, and an import button. It reads `/api/plan`
@@ -128,7 +133,27 @@
 >   fix is one throwaway `renderRecipe({})` at module scope. Anything else
 >   that compiles a template at request time will hit this — worth knowing
 >   before the plan screen renders anything.
-> - Home re-reads what day it is on `visibilitychange` rather than trusting the
+> - **Leftovers are a flag on a plan entry, not a free-text note.** A leftovers
+  night keeps its `recipeId`, so the week draws the photo and taps through to
+  what you're reheating, and `mergedPlanItems` filters the flagged rows out.
+  That filter is the whole feature: the query inner-joins on `recipe_id`, so
+  without it a curry cooked Thursday with leftovers Friday puts every
+  ingredient on the list twice. Checked both ways - cooked twice gives
+  "3 tbsp coconut oil", cooked once plus leftovers gives "1½ tbsp".
+- Adding leftovers fetches the target day rather than reading the week the
+  screen is already holding. Sunday's leftovers land on Monday, which is the
+  next week and not in those entries at all, and the write is a whole-day
+  replace - so reading local state would wipe whatever was already on that
+  Monday. `test/leftovers.test.ts` pins that, plus the month and year rollover
+  and the "don't stack a second helping" guard.
+- Every caller of `setPlanDay` has to send `leftovers` back. The day is
+  rewritten whole, so anything left off the map is silently cleared - adding a
+  second meal to a day would have un-flagged a reheat sitting on it.
+- No `makes_leftovers` field on the note. The button is on every planned meal
+  instead, which keeps this out of core, the template and the plugin. If it
+  turns out only a handful of recipes ever get it, that's the time to let the
+  note remember.
+- Home re-reads what day it is on `visibilitychange` rather than trusting the
   date it mounted with. It's an installed PWA that sits on a kitchen counter,
   so the mount routinely outlives the day it rendered, and every line on that
   screen is about today.

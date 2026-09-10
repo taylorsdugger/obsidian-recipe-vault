@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { api, type PlanEntry, type RecipeSummary } from "../api";
 import { PlanListPreview } from "../components/plan-list-preview";
 import { RecipePicker } from "../components/recipe-picker";
+import { addLeftoversNextDay } from "../leftovers";
 import { navigate } from "../router";
 import {
   addDays,
@@ -26,10 +27,12 @@ import {
 function EntryRow({
   entry,
   onRemove,
+  onLeftovers,
   busy,
 }: {
   entry: PlanEntry;
   onRemove: (entry: PlanEntry) => void;
+  onLeftovers: (entry: PlanEntry) => void;
   busy: boolean;
 }) {
   const recipe = entry.recipe;
@@ -54,9 +57,11 @@ function EntryRow({
           )}
           <span class="min-w-0 flex-1">
             <span class="line-clamp-2 text-[15px] leading-snug font-medium">
+              {entry.leftovers && <span class="text-faint">Leftovers · </span>}
               {recipe.title}
             </span>
-            {recipe.cookTime && (
+            {/* Cook time is about cooking it, so a reheat doesn't show one. */}
+            {recipe.cookTime && !entry.leftovers && (
               <span class="mt-0.5 block text-xs text-faint">
                 {recipe.cookTime}
               </span>
@@ -67,6 +72,31 @@ function EntryRow({
         <span class="min-w-0 flex-1 py-2 text-[15px] leading-snug text-muted">
           {entry.note}
         </span>
+      )}
+
+      {/* Carry it into tomorrow. Same weight as the remove x - both are quiet
+          row affordances, and this is the one you reach for more often. */}
+      {recipe && !entry.leftovers && (
+        <button
+          type="button"
+          aria-label="Leftovers tomorrow"
+          title="Leftovers tomorrow"
+          class="grid size-8 shrink-0 place-items-center rounded-lg text-faint active:bg-canvas disabled:opacity-40"
+          disabled={busy}
+          onClick={() => onLeftovers(entry)}
+        >
+          {/* An arrow into the next day. */}
+          <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true">
+            <path
+              d="M2.5 8 H11 M7.5 4.5 L11 8 L7.5 11.5 M13.5 3.5 V12.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              fill="none"
+            />
+          </svg>
+        </button>
       )}
 
       {/* Quiet on purpose: removing is the rarest thing you do here, and a
@@ -157,9 +187,12 @@ export function Plan() {
     setPicking(null);
     try {
       await api.setPlanDay(dateKey(date), [
+        // Carry `leftovers` through. The day is rewritten whole, so anything
+        // left off here is silently cleared on the way past.
         ...day.map((entry) => ({
           recipeId: entry.recipe?.id ?? null,
           note: entry.note,
+          leftovers: entry.leftovers,
         })),
         added,
       ]);
@@ -188,7 +221,30 @@ export function Plan() {
     }
   };
 
-  const planned = entries?.some((entry) => entry.recipe) ?? false;
+  const leftovers = async (entry: PlanEntry) => {
+    if (!entry.recipe) return;
+    setBusy(true);
+    try {
+      const res = await addLeftoversNextDay(entry.date, entry.recipe);
+      setStatus(
+        res.added
+          ? `Leftovers added to ${dayLabel(new Date(`${res.date}T00:00:00`))}.`
+          : `That day already has those leftovers.`,
+      );
+      // Tomorrow may be next week - Sunday's leftovers land on Monday - in
+      // which case this refetch won't show it and the status line is all you get.
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Leftovers don't buy anything, so a week holding only reheats would open a
+  // preview with nothing in it.
+  const planned =
+    entries?.some((entry) => entry.recipe && !entry.leftovers) ?? false;
 
   return (
     // Clears the tab bar plus the shopping-list bar sitting above it, so the
@@ -277,6 +333,7 @@ export function Plan() {
                           key={entry.id}
                           entry={entry}
                           onRemove={remove}
+                          onLeftovers={leftovers}
                           busy={busy}
                         />
                       ))}
