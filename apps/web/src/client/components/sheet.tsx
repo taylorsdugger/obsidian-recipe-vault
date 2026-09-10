@@ -11,11 +11,18 @@ export function Sheet({
   onClose,
   children,
   footer,
+  onNearEnd,
 }: {
   title: string;
   onClose: () => void;
   children: ComponentChildren;
   footer?: ComponentChildren;
+  /**
+   * Fired while the scroll is within a screenful of the bottom, for a list
+   * that reveals more as you go. The sheet owns the scrolling element, so the
+   * listener belongs here rather than in whatever is being scrolled.
+   */
+  onNearEnd?: () => void;
 }) {
   // Escape closes it on a desktop keyboard, and the page behind stops
   // scrolling so a flick on the backdrop doesn't move the week underneath.
@@ -51,7 +58,20 @@ export function Sheet({
             Close
           </button>
         </div>
-        <div class="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{children}</div>
+        <div
+          class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4"
+          onScroll={
+            onNearEnd &&
+            ((event) => {
+              const el = event.currentTarget as HTMLDivElement;
+              if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) {
+                onNearEnd();
+              }
+            })
+          }
+        >
+          {children}
+        </div>
         {footer && (
           <div class="shrink-0 border-t border-line bg-surface/95 p-3 backdrop-blur">
             {footer}

@@ -5,6 +5,13 @@ import { spaced } from "../format";
 import { Sheet } from "./sheet";
 
 /**
+ * How many rows to render at a time. The whole result set arrives in one
+ * request - the API already caps it - so this is only about how much DOM the
+ * sheet builds up front. More appears as you reach the end.
+ */
+const PAGE = 40;
+
+/**
  * Pick what's for dinner. Search is the same endpoint the gallery uses, so
  * an ingredient finds a recipe here too. The free-text box under it covers
  * the nights that aren't a recipe: leftovers, out, someone else is cooking.
@@ -23,6 +30,7 @@ export function RecipePicker({
   const [query, setQuery] = useState("");
   const [recipes, setRecipes] = useState<RecipeSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [shown, setShown] = useState(PAGE);
   const search = useRef<HTMLInputElement>(null);
 
   // Focus on open, but not on a phone: the keyboard would cover the results
@@ -35,23 +43,39 @@ export function RecipePicker({
 
   useEffect(() => {
     let cancelled = false;
-    const timer = setTimeout(() => {
+    const load = () => {
       api
         .recipes(query.trim(), "alpha")
         .then((res) => {
           if (cancelled) return;
-          setRecipes(res.recipes.slice(0, 40));
+          // Replacing the list wholesale is what resets the scroll, so a new
+          // result set starts from the top of the sheet on purpose.
+          setRecipes(res.recipes);
+          setShown(PAGE);
           setError(null);
         })
         .catch((err: Error) => {
           if (!cancelled) setError(err.message);
         });
-    }, 200);
+    };
 
+    // Wait out typing, but not the first open - the sheet shouldn't sit empty
+    // for a fifth of a second every time it appears.
+    if (recipes === null && !query) {
+      load();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const timer = setTimeout(load, 200);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
+    // `recipes` is deliberately not a dependency: it only decides whether this
+    // is the first load, and depending on it would refetch on every result.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   const addNote = (event: Event) => {
@@ -61,7 +85,13 @@ export function RecipePicker({
   };
 
   return (
-    <Sheet title={title} onClose={onClose}>
+    <Sheet
+      title={title}
+      onClose={onClose}
+      onNearEnd={() =>
+        setShown((n) => (recipes && n < recipes.length ? n + PAGE : n))
+      }
+    >
       <div class="space-y-3">
         <input
           ref={search}
@@ -92,7 +122,7 @@ export function RecipePicker({
 
         {recipes && recipes.length > 0 && (
           <ul class="card divide-y divide-line overflow-hidden">
-            {recipes.map((recipe) => {
+            {recipes.slice(0, shown).map((recipe) => {
               const meta = [spaced(recipe.mealType), recipe.cookTime]
                 .filter(Boolean)
                 .join(" · ");
@@ -128,6 +158,12 @@ export function RecipePicker({
               );
             })}
           </ul>
+        )}
+
+        {recipes && shown < recipes.length && (
+          <div class="py-3 text-center text-xs text-faint">
+            {recipes.length - shown} more
+          </div>
         )}
       </div>
     </Sheet>

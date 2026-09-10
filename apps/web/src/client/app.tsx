@@ -1,8 +1,9 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
 import { api } from "./api";
 import { TabBar } from "./components/tab-bar";
 import { usePath } from "./router";
+import { setScrollContainer } from "./scroll";
 import { startAutoSync } from "./sync";
 import { Import } from "./routes/import";
 import { List } from "./routes/list";
@@ -40,6 +41,7 @@ function Screen({ path }: { path: string }) {
 export function App() {
   const path = usePath();
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const scroller = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     api
@@ -61,7 +63,13 @@ export function App() {
 
   return (
     <div class="flex h-full flex-col">
-      <main class="flex-1 overflow-y-auto">
+      <main
+        class="flex-1 overflow-y-auto"
+        ref={(el) => {
+          scroller.current = el;
+          setScrollContainer(el);
+        }}
+      >
         <Screen path={path} />
       </main>
       <TabBar path={path} />

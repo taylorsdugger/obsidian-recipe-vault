@@ -1,9 +1,21 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import { api, type RecipeSort, type RecipeSummary } from "../api";
 import { RecipeCard } from "../components/recipe-card";
 import { navigate } from "../router";
+import { rememberScroll, restoreScroll, scrollToTop } from "../scroll";
 import { SYNCED_EVENT } from "../sync";
+
+const SCROLL_KEY = "recipes";
+
+/**
+ * The search box and sort live outside the component so they survive opening a
+ * recipe and coming back. Restoring the scroll position without these would
+ * put you at the same offset in a different list - you searched for "soup",
+ * scrolled, tapped one, and came back to the whole gallery at soup's offset.
+ */
+let lastQuery = "";
+let lastSort: RecipeSort = "alpha";
 
 const SORTS: { key: RecipeSort; label: string }[] = [
   { key: "alpha", label: "A-Z" },
@@ -17,12 +29,35 @@ const SORTS: { key: RecipeSort; label: string }[] = [
  * three fields the plugin filters on, except the matching happens in SQL.
  */
 export function Recipes() {
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<RecipeSort>("alpha");
+  const [query, setQuery] = useState(lastQuery);
+  const [sort, setSort] = useState<RecipeSort>(lastSort);
   const [recipes, setRecipes] = useState<RecipeSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /** Restore once, on the first render that actually has rows in it. */
+  const restored = useRef(false);
+
   const [syncTick, setSyncTick] = useState(0);
+
+  // Remember where we were on the way out - opening a recipe unmounts this.
+  useEffect(() => {
+    lastQuery = query;
+    lastSort = sort;
+  }, [query, sort]);
+
+  useEffect(() => () => rememberScroll(SCROLL_KEY), []);
+
+  /**
+   * Before the browser paints, not after, or the list flashes at the top for a
+   * frame. The guard means a new search starts at the top the way it should,
+   * and only coming back to the screen restores.
+   */
+  useLayoutEffect(() => {
+    if (!recipes) return;
+    if (restored.current) return;
+    restored.current = true;
+    if (!restoreScroll(SCROLL_KEY)) scrollToTop();
+  }, [recipes]);
 
   // A background sync that changed something means this list is stale.
   useEffect(() => {
@@ -54,6 +89,12 @@ export function Recipes() {
     };
   }, [query, sort, syncTick]);
 
+  // A different search is a different list; the old offset means nothing in it.
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    if (restored.current) scrollToTop();
+  };
+
   return (
     <div class="space-y-4 p-4">
       <div class="space-y-3">
@@ -63,7 +104,7 @@ export function Recipes() {
             type="search"
             placeholder="Search recipes, meal types, ingredients"
             value={query}
-            onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            onInput={(e) => changeQuery((e.target as HTMLInputElement).value)}
           />
           <button
             type="button"
@@ -83,7 +124,10 @@ export function Recipes() {
                   ? "border-ink bg-ink text-white"
                   : "border-line bg-surface text-muted"
               }`}
-              onClick={() => setSort(option.key)}
+              onClick={() => {
+                setSort(option.key);
+                scrollToTop();
+              }}
             >
               {option.label}
             </button>
