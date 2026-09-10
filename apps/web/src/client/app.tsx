@@ -5,15 +5,15 @@ import { TabBar } from "./components/tab-bar";
 import { usePath } from "./router";
 import { setScrollContainer } from "./scroll";
 import { startAutoSync } from "./sync";
+import { Home } from "./routes/home";
 import { Import } from "./routes/import";
 import { List } from "./routes/list";
 import { Login } from "./routes/login";
-import { Placeholder } from "./routes/placeholder";
 import { Plan } from "./routes/plan";
 import { Recipe } from "./routes/recipe";
 import { Recipes } from "./routes/recipes";
 
-/** Which screen a pathname maps to. Home is the last one still scaffolding. */
+/** Which screen a pathname maps to. Anything unmatched falls through to Home. */
 function Screen({ path }: { path: string }) {
   if (path.startsWith("/plan")) {
     return <Plan />;
@@ -30,12 +30,7 @@ function Screen({ path }: { path: string }) {
   if (path.startsWith("/import")) {
     return <Import />;
   }
-  return (
-    <Placeholder
-      title="Tonight"
-      note="Today's dinner, the week strip, and the unchecked count. Step 2e.5."
-    />
-  );
+  return <Home />;
 }
 
 export function App() {

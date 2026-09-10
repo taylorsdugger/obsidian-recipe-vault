@@ -1,22 +1,28 @@
 # Implementation Plan: shared core + household web app
 
-> **Status:** STEP 1 DONE, STEP 2 THROUGH 2e.4 PLUS 2e.6, DEPLOYED,
-> updated 2026-09-09.
+> **Status:** STEP 1 DONE, STEP 2 DONE, DEPLOYED,
+> updated 2026-09-10.
 > Step 1 passed the 1e dev vault check, so a patch release is all that's left
 > there. The web app is deployed to Cloudflare and in use: import, the
-> gallery, the recipe screen, the shared shopping list, the week plan, and the
-> PWA bits so it installs on a phone. 2e.5 (home) is what's left.
+> gallery, the recipe screen, the shared shopping list, the week plan, the
+> home screen, and the PWA bits so it installs on a phone. Every screen in 2d
+> is real now - the `Placeholder` component is gone.
 > The shopping list is now the vault's own `Shopping List.md` rather than a
 > D1 table, so the app and Obsidian share one list. Recipes sort A-Z.
-> Not yet committed as of this edit; `wrangler` is at 4.130.0 after the dev
-> server kept crashing on 4.129.0.
+> `wrangler` is at 4.130.0 after the dev server kept crashing on 4.129.0.
 > **Branch when written:** `docs/landing-page` (clean, at `8bbdfe1`).
-> **Branch now:** `core/note-template`, at `cb56af0`, with the plan screen, the
-> shopping-list move and the sort change uncommitted in the working tree.
+> **Branch now:** `core/note-template`, at `859a820`. The plan screen, the
+> shopping-list move and the sort change are all committed now.
 > Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green.
 > **Author of plan:** design session 2026-09-02.
 >
 > **Progress log:**
+> - 2026-09-10: the home screen (2e.5), the last screen in step 2. Tonight's
+>   meal with its photo and a mark-made button, the seven-day strip, the
+>   unchecked count on the list, and an import button. It reads `/api/plan`
+>   for the week and `/api/list` for the count and adds no routes of its own,
+>   so the whole screen is one file. Checked through the browser against
+>   `wrangler dev`, mobile width and desktop.
 > - 2026-09-09: shopping list moved into the vault note, recipes sort A-Z, and
 >   spelled-out units pluralise. Wrangler bumped 4.45 -> 4.130 (dragging
 >   `@cloudflare/workers-types` to v5) to stop `wrangler dev` dying mid-session.
@@ -122,7 +128,11 @@
 >   fix is one throwaway `renderRecipe({})` at module scope. Anything else
 >   that compiles a template at request time will hit this — worth knowing
 >   before the plan screen renders anything.
-> - The web app renders with `formatPhoto: (path) => path` so `photo:` is a
+> - Home re-reads what day it is on `visibilitychange` rather than trusting the
+  date it mounted with. It's an installed PWA that sits on a kitchen counter,
+  so the mount routinely outlives the day it rendered, and every line on that
+  screen is about today.
+- The web app renders with `formatPhoto: (path) => path` so `photo:` is a
 >   bare URL, not the plugin's `[[wikilink]]`. That's locked decision 7 in
 >   practice, and it's why `createRecipeRenderer` took the option in step 1.
 > - `POST /api/import` takes the `ParsedRecipe` the client was shown rather
@@ -806,7 +816,18 @@ same layout wider.
    rather than 500ing the day, a second delete of the same entry is a 404 the
    client swallows, a bad date is a 400, and `/api/plan` is 401 without the
    cookie.
-5. Home screen last, once there's data to show on it.
+5. **DONE.** Home screen, last, once there was data to show on it. Tonight's
+   meal, the week strip, the unchecked count, and an import button. The week
+   fetch covers today as well, so the hero and the strip come from one
+   request. An empty tonight opens the same `RecipePicker` the plan screen
+   uses and writes through the same day-replace, so there's one way a meal
+   gets planned. Checked by hand: an empty night offers the picker and picking
+   fills the hero, mark made reads "1 time" then "2 times" and the count lands
+   in the note's frontmatter in R2, a second meal drops under the hero and
+   opens its own recipe, a free-text night shows the words with no photo and
+   no button, the dots track how full each day is, and the hero, a strip day,
+   the list row and the import button each land on the right screen. The test
+   meals were cleared and the recipe put back to `times_made: 0` after.
 6. **DONE (out of order).** PWA manifest, icons, service worker, share
    target. Deployed. Verified: the manifest, `sw.js`, `registerSW.js` and all
    five icons serve from the Worker, and a share into `/import?text=Title+URL`
