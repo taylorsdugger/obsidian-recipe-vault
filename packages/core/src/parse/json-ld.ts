@@ -6,7 +6,7 @@ import {
   type ParsedRecipe,
 } from "../types";
 import { cleanRecipeName, type CleanNameOptions } from "./clean-name";
-import { stripHtml } from "./html";
+import { collapseDoubledParens, stripHtml } from "./html";
 import { normalizeImages } from "./images";
 import { normalizeRecipeNotes } from "./notes";
 
@@ -84,12 +84,18 @@ export function parseRecipesFromJsonLd(
    * Reduce an ingredient value (string | object | `@id` ref) to a clean
    * line, resolving references and stripping any inline HTML.
    */
+  // Both the JSON-LD and the microdata paths land here - microdata is fed back
+  // through this same walk - so it is the one place an ingredient string has
+  // to be tidied.
   const ingredientText = (value: unknown): string => {
     const resolved = resolveRef(value);
-    if (typeof resolved === "string") return stripHtml(resolved);
+    if (typeof resolved === "string")
+      return collapseDoubledParens(stripHtml(resolved));
     if (isJsonRecord(resolved)) {
       const text = resolved.name ?? resolved.text;
-      return typeof text === "string" ? stripHtml(text) : "";
+      return typeof text === "string"
+        ? collapseDoubledParens(stripHtml(text))
+        : "";
     }
     return "";
   };

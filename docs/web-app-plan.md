@@ -17,6 +17,14 @@
 > **Author of plan:** design session 2026-09-02.
 >
 > **Progress log:**
+> - 2026-09-11: two parser fixes, both from the same source quirk. WP Recipe
+>   Maker wraps its ingredient-notes field in parentheses, so a note that
+>   already carries its own is published doubled - minimalistbaker.com's own
+>   ld+json says "1 medium shallot ((minced))". Ingredients now collapse that
+>   on import, and the shopping line parser counts paren depth instead of
+>   stopping at the first ")", which is what had been putting "shallot)" on
+>   the list. 47 of the 174 notes already in the vault carry the doubled form;
+>   the parser fix only changes what future imports write.
 > - 2026-09-11: a design pass over the whole app. One page shell, a named type
 >   scale, and shared classes for the patterns that had been copied around
 >   (`screen`, `screen-head`, `icon-btn`, `add-inline`, `label`, `pill`,

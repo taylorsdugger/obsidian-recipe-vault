@@ -67,7 +67,11 @@ export {
   getCustomFillerWordPatterns,
   toLooseWordPattern,
 } from "./parse/clean-name";
-export { stripHtml, decodeHtmlEntities } from "./parse/html";
+export {
+  stripHtml,
+  decodeHtmlEntities,
+  collapseDoubledParens,
+} from "./parse/html";
 export { normalizeImages } from "./parse/images";
 export type { JsonLdParseOptions } from "./parse/json-ld";
 export { parseRecipesFromJsonLd } from "./parse/json-ld";

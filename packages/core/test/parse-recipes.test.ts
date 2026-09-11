@@ -52,7 +52,9 @@ describe("parseRecipesFromHtml", () => {
   });
 
   it("stamps the source url, fragment included", () => {
-    const hashed = new URL("https://example.com/recipe#wprm-recipe-container-1");
+    const hashed = new URL(
+      "https://example.com/recipe#wprm-recipe-container-1",
+    );
     const recipes = parseRecipesFromHtml(htmlWithJsonLd(RECIPE), hashed, OPTS);
 
     expect(recipes[0].url).toBe(hashed.href);
@@ -89,6 +91,45 @@ describe("parseRecipesFromHtml", () => {
     const recipes = parseRecipesFromHtml(html, url, OPTS);
 
     expect(recipes[0].recipeNotes).toEqual(["Keeps for three days."]);
+  });
+});
+
+describe("doubled parentheses from WP Recipe Maker", () => {
+  const url = new URL("https://example.com/recipe");
+
+  /*
+   * Not a hypothetical: these two strings are verbatim from
+   * minimalistbaker.com's own ld+json. WPRM wraps its ingredient-notes field
+   * in parentheses, so a note that already has its own comes out doubled.
+   */
+  it("collapses them on the way into an ingredient", () => {
+    const html = htmlWithJsonLd({
+      ...RECIPE,
+      recipeIngredient: [
+        "1 medium shallot ((minced))",
+        "1 \u00bd Tbsp coconut oil ((or avocado or grape seed oil // sub water if avoiding oil))",
+      ],
+    });
+
+    expect(parseRecipesFromHtml(html, url, OPTS)[0].recipeIngredient).toEqual([
+      "1 medium shallot (minced)",
+      "1 \u00bd Tbsp coconut oil (or avocado or grape seed oil // sub water if avoiding oil)",
+    ]);
+  });
+
+  it("leaves a single group and a real bracketed size alone", () => {
+    const html = htmlWithJsonLd({
+      ...RECIPE,
+      recipeIngredient: [
+        "2 (14-ounce) cans coconut milk",
+        "2 cloves garlic (minced)",
+      ],
+    });
+
+    expect(parseRecipesFromHtml(html, url, OPTS)[0].recipeIngredient).toEqual([
+      "2 (14-ounce) cans coconut milk",
+      "2 cloves garlic (minced)",
+    ]);
   });
 });
 

@@ -78,6 +78,44 @@ describe("parseShoppingLine", () => {
     });
   });
 
+  /*
+   * WP Recipe Maker publishes its ingredient-notes field already wrapped in
+   * parentheses, so a note that itself contains them comes out of the site's
+   * own JSON-LD as "((minced))". Real lines, from minimalistbaker.com.
+   */
+  it("strips a doubled parenthetical without leaving the closer behind", () => {
+    // "medium" is a size, not a unit, so it stays on the name - same as it
+    // does for "1 medium shallot" with no note at all. The point here is the
+    // stranded ")", which is what reached the shopping list.
+    expect(parseLine("1 medium shallot ((minced))")).toMatchObject({
+      amount: 1,
+      name: "medium shallot",
+    });
+    expect(
+      parseLine(
+        "1 ½ Tbsp coconut oil  ((or avocado or grape seed oil // sub water if avoiding oil))",
+      ),
+    ).toMatchObject({ amount: 1.5, unit: "tbsp", name: "coconut oil" });
+  });
+
+  it("survives a parenthesis that never closes", () => {
+    // A note truncated mid-way through by the source site.
+    expect(parseLine("2 cups flour (sifted")).toMatchObject({
+      amount: 2,
+      unit: "cup",
+      name: "flour",
+    });
+  });
+
+  it("keeps a bracketed amount that is part of the ingredient", () => {
+    // "2 (14-ounce) cans" - the parenthetical is the can size, and dropping it
+    // is right for the name, but the line must not lose the rest of it.
+    expect(parseLine("2 (14-ounce) cans light coconut milk")).toMatchObject({
+      amount: 2,
+      name: "cans light coconut milk",
+    });
+  });
+
   it("extracts a single *(source)* annotation", () => {
     expect(parseLine("2 cups flour *(Dumplings)*")).toMatchObject({
       name: "flour",
