@@ -76,7 +76,7 @@ export function Import() {
   };
 
   return (
-    <div class="space-y-4 p-4">
+    <div class="screen space-y-4">
       <h1 class="text-xl font-semibold">Import a recipe</h1>
 
       <form class="flex gap-2" onSubmit={lookUp}>
@@ -106,12 +106,13 @@ export function Import() {
         const image = asText(recipe.image);
         const ingredients = recipe.recipeIngredient ?? [];
         return (
-          <div
-            key={`${name}-${i}`}
-            class="card space-y-3 overflow-hidden"
-          >
+          <div key={`${name}-${i}`} class="card space-y-3 overflow-hidden">
             {image && (
-              <img class="aspect-video w-full object-cover" src={image} alt="" />
+              <img
+                class="aspect-video w-full object-cover"
+                src={image}
+                alt=""
+              />
             )}
             <div class="space-y-2 px-4">
               <h2 class="font-medium">{name}</h2>

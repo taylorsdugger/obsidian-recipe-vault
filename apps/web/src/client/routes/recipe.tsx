@@ -37,9 +37,10 @@ export function Recipe({ id }: { id: string }) {
     () => (recipe ? readFrontmatter(recipe.markdown) : {}),
     [recipe],
   );
-  const notes = useMemo(() => notesFromMarkdown(recipe?.markdown ?? ""), [
-    recipe,
-  ]);
+  const notes = useMemo(
+    () => notesFromMarkdown(recipe?.markdown ?? ""),
+    [recipe],
+  );
 
   if (error) return <p class="p-4 text-sm text-red-700">{error}</p>;
   if (!recipe) return null;
@@ -80,7 +81,11 @@ export function Recipe({ id }: { id: string }) {
     setStatus(null);
     try {
       const res = await api.markMade(recipe.id);
-      setRecipe({ ...recipe, timesMade: res.timesMade, lastMade: res.lastMade });
+      setRecipe({
+        ...recipe,
+        timesMade: res.timesMade,
+        lastMade: res.lastMade,
+      });
       setStatus("Marked as made.");
     } catch (err) {
       // A 409 means the note changed in the vault since this page loaded, and
@@ -107,7 +112,7 @@ export function Recipe({ id }: { id: string }) {
 
   if (editing) {
     return (
-      <div class="flex h-full flex-col gap-3 p-4">
+      <div class="mx-auto flex h-full w-full max-w-2xl flex-col gap-3 p-4">
         <p class="text-sm text-muted">
           The note itself. Saving writes it back to the vault.
         </p>
@@ -144,17 +149,17 @@ export function Recipe({ id }: { id: string }) {
       : null;
 
   return (
-    <div class="pb-28">
+    // Capped like every other screen. The hero still bleeds to the edges of
+    // the column - full window width it was a 1100px letterbox.
+    <div class="mx-auto max-w-2xl pb-28">
       {/* A fixed-height hero rather than the photo's own aspect ratio: these
           come from other people's sites and range from square to tall, and a
           tall one used to push everything below the fold. */}
-      <div class="relative">
+      {/* Full-bleed on a phone. Once the screen is a centred column the square
+          top corners read as unfinished against the canvas, so they round. */}
+      <div class="relative sm:overflow-hidden sm:rounded-t-2xl">
         {recipe.photoUrl ? (
-          <img
-            class="h-44 w-full object-cover"
-            src={recipe.photoUrl}
-            alt=""
-          />
+          <img class="h-44 w-full object-cover" src={recipe.photoUrl} alt="" />
         ) : (
           <div class="h-24 w-full bg-linear-to-b from-canvas to-surface" />
         )}
@@ -247,7 +252,7 @@ export function Recipe({ id }: { id: string }) {
                       onChange={() => toggle(i)}
                     />
                     <span
-                      class={`text-[15px] leading-snug ${
+                      class={`text-row leading-snug ${
                         checked.has(i) ? "text-faint" : ""
                       }`}
                     >
@@ -269,7 +274,7 @@ export function Recipe({ id }: { id: string }) {
                   <span class="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-accent/15 text-xs font-semibold text-accent-ink">
                     {i + 1}
                   </span>
-                  <span class="text-[15px] leading-relaxed">{step}</span>
+                  <span class="text-row leading-relaxed">{step}</span>
                 </li>
               ))}
             </ol>
@@ -279,7 +284,7 @@ export function Recipe({ id }: { id: string }) {
         {notes.length > 0 && (
           <section class="mt-6 space-y-2 px-4">
             <h2 class="text-lg font-semibold">Notes</h2>
-            <ul class="card space-y-2 p-4 text-[15px] leading-relaxed">
+            <ul class="card space-y-2 p-4 text-row leading-relaxed">
               {notes.map((note, i) => (
                 <li key={`${note}-${i}`}>{note}</li>
               ))}
@@ -322,15 +327,17 @@ export function Recipe({ id }: { id: string }) {
       {/* Sits above the tab bar so the button is reachable with a thumb no
           matter how far down the ingredient list you are. */}
       {checked.size > 0 && (
-        <div class="fixed inset-x-0 bottom-14 z-10 border-t border-line bg-surface/95 p-3 backdrop-blur">
-          <button
-            type="button"
-            class="btn-primary w-full"
-            disabled={busy}
-            onClick={sendToList}
-          >
-            Send {checked.size} to the list
-          </button>
+        <div class="action-bar">
+          <div class="mx-auto w-full max-w-2xl">
+            <button
+              type="button"
+              class="btn-primary w-full"
+              disabled={busy}
+              onClick={sendToList}
+            >
+              Send {checked.size} to the list
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -47,9 +47,7 @@ function Row({
               item.checked ? "text-faint line-through" : ""
             }`}
           >
-            {amount && (
-              <span class="text-muted tabular-nums">{amount} </span>
-            )}
+            {amount && <span class="text-muted tabular-nums">{amount} </span>}
             <span class="font-medium">{name}</span>
           </span>
           {item.sources.length > 0 && !item.checked && (
@@ -92,7 +90,8 @@ export function List() {
         );
         setError(null);
       } catch (err) {
-        if (!stopped) setError(err instanceof Error ? err.message : String(err));
+        if (!stopped)
+          setError(err instanceof Error ? err.message : String(err));
       }
     };
 
@@ -161,7 +160,7 @@ export function List() {
   const done = items?.filter((item) => item.checked) ?? [];
 
   return (
-    <div class="space-y-4 p-4 pb-8">
+    <div class="screen space-y-4 pb-8">
       <form class="flex gap-2" onSubmit={add}>
         <input
           class="field flex-1"
@@ -193,7 +192,7 @@ export function List() {
         <section class="space-y-2">
           <div class="flex items-baseline justify-between px-1">
             <h1 class="text-lg font-semibold">To get</h1>
-            <span class="text-sm text-faint">{todo.length}</span>
+            <span class="text-sm text-faint tabular-nums">{todo.length}</span>
           </div>
           <ul class="card divide-y divide-line overflow-hidden">
             {todo.map((item) => (

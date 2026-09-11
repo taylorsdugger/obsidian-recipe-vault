@@ -17,6 +17,11 @@
 > **Author of plan:** design session 2026-09-02.
 >
 > **Progress log:**
+> - 2026-09-11: a design pass over the whole app. One page shell, a named type
+>   scale, and shared classes for the patterns that had been copied around
+>   (`screen`, `screen-head`, `icon-btn`, `add-inline`, `label`, `pill`,
+>   `action-bar`). Every recipe photo falls back to the app icon's bowl instead
+>   of a blank box. Details in the deviations.
 > - 2026-09-10: leftovers nights. A planned meal can carry itself into the next
 >   day as a reheat: the row keeps its `recipeId` so the week still draws the
 >   photo and taps through, and a `leftovers` flag keeps it off the shop.
@@ -133,7 +138,27 @@
 >   fix is one throwaway `renderRecipe({})` at module scope. Anything else
 >   that compiles a template at request time will hit this — worth knowing
 >   before the plan screen renders anything.
-> - **Leftovers are a flag on a plan entry, not a free-text note.** A leftovers
+> - **The screens disagreed about width.** Home and the plan capped at
+  `max-w-2xl`; the gallery, the list, import and the recipe screen had no cap
+  at all, so on a desktop the plan sat in a neat column while the shopping list
+  ran the full width of the window. There is one `.screen` shell now, and a
+  `.screen-wide` for the gallery, which is the one screen that earns the extra
+  width because it is a grid.
+- The type scale gained three named sizes - `micro` (10px), `note` (13px) and
+  `row` (15px) - each replacing an arbitrary `text-[15px]`-style value that had
+  been written out in several places. Everything else uses Tailwind's own scale.
+- Patterns that had been copied around became classes: `.icon-btn` (size and
+  colour stay as utilities, since a header arrow and a row's x want different
+  weights), `.add-inline` for the quiet "+ something" line, `.label` for the
+  small uppercase one, `.pill` / `.pill-on` for the gallery's sort, and
+  `.action-bar` for the bar above the tab bar - whose contents now cap, or the
+  button ran the whole window on the recipe screen while the plan's did not.
+- A recipe with no photo drew a blank `bg-canvas` box in four different sizes,
+  which read as an image that had failed to load. There is one `RecipePhoto`
+  now, falling back to the app icon's own bowl. It also catches a dead URL with
+  `onError` - a few source sites have moved their images since, and the
+  browser's broken-image glyph makes the app look broken rather than the link.
+- **Leftovers are a flag on a plan entry, not a free-text note.** A leftovers
   night keeps its `recipeId`, so the week draws the photo and taps through to
   what you're reheating, and `mergedPlanItems` filters the flagged rows out.
   That filter is the whole feature: the query inner-joins on `recipe_id`, so

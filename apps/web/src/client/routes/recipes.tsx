@@ -96,7 +96,7 @@ export function Recipes() {
   };
 
   return (
-    <div class="space-y-4 p-4">
+    <div class="screen-wide space-y-4">
       <div class="space-y-3">
         <div class="flex gap-2">
           <input
@@ -119,11 +119,7 @@ export function Recipes() {
             <button
               key={option.key}
               type="button"
-              class={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                sort === option.key
-                  ? "border-ink bg-ink text-white"
-                  : "border-line bg-surface text-muted"
-              }`}
+              class={sort === option.key ? "pill-on" : "pill"}
               onClick={() => {
                 setSort(option.key);
                 scrollToTop();

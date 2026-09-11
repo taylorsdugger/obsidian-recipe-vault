@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import { api, type RecipeSummary } from "../api";
 import { spaced } from "../format";
+import { RecipePhoto } from "./recipe-photo";
 import { Sheet } from "./sheet";
 
 /**
@@ -133,18 +134,13 @@ export function RecipePicker({
                     class="flex w-full items-center gap-3 p-2.5 text-left"
                     onClick={() => onPick(recipe)}
                   >
-                    {recipe.photoUrl ? (
-                      <img
-                        class="size-12 shrink-0 rounded-xl object-cover"
-                        src={recipe.photoUrl}
-                        alt=""
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div class="size-12 shrink-0 rounded-xl bg-canvas" />
-                    )}
+                    <RecipePhoto
+                      src={recipe.photoUrl}
+                      box="size-12 shrink-0 rounded-xl"
+                      mark="size-6"
+                    />
                     <span class="min-w-0 flex-1">
-                      <span class="block truncate text-[15px] font-medium">
+                      <span class="block truncate text-row font-medium">
                         {recipe.title}
                       </span>
                       {meta && (

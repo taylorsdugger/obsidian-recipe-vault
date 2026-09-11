@@ -7,6 +7,7 @@ import {
   type PlanRecipe,
   type RecipeSummary,
 } from "../api";
+import { RecipePhoto } from "../components/recipe-photo";
 import { RecipePicker } from "../components/recipe-picker";
 import { addLeftoversNextDay } from "../leftovers";
 import { navigate } from "../router";
@@ -98,11 +99,7 @@ function Tonight({
           <div class="h-2 w-full bg-linear-to-b from-canvas to-surface" />
         )}
         <div class="space-y-1 p-4 pb-3">
-          {entry.leftovers && (
-            <p class="text-[11px] font-medium tracking-wide text-accent-ink uppercase">
-              Leftovers
-            </p>
-          )}
+          {entry.leftovers && <p class="label text-accent-ink">Leftovers</p>}
           <h2 class="text-xl leading-tight font-semibold">{recipe.title}</h2>
           {/* Cook time is about cooking it. On a reheat it's just wrong. */}
           {recipe.cookTime && !entry.leftovers && (
@@ -128,7 +125,7 @@ function Tonight({
               meal. It's a nudge, not a second primary action. */}
           <button
             type="button"
-            class="mt-1 flex h-8 items-center gap-1 text-[13px] text-faint active:text-muted disabled:opacity-40"
+            class="add-inline mt-1"
             disabled={busy}
             onClick={() => onLeftovers(recipe)}
           >
@@ -147,9 +144,7 @@ function AlsoToday({ entry }: { entry: PlanEntry }) {
 
   if (!recipe) {
     return (
-      <li class="px-3 py-3 text-[15px] leading-snug text-muted">
-        {entry.note}
-      </li>
+      <li class="px-3 py-3 text-row leading-snug text-muted">{entry.note}</li>
     );
   }
 
@@ -160,17 +155,12 @@ function AlsoToday({ entry }: { entry: PlanEntry }) {
         class="flex w-full items-center gap-3 px-3 py-2.5 text-left"
         onClick={() => navigate(`/recipes/${recipe.id}`)}
       >
-        {recipe.photoUrl ? (
-          <img
-            class="size-10 shrink-0 rounded-lg object-cover"
-            src={recipe.photoUrl}
-            alt=""
-            loading="lazy"
-          />
-        ) : (
-          <div class="size-10 shrink-0 rounded-lg bg-canvas" />
-        )}
-        <span class="line-clamp-2 text-[15px] leading-snug font-medium">
+        <RecipePhoto
+          src={recipe.photoUrl}
+          box="size-10 shrink-0 rounded-lg"
+          mark="size-5"
+        />
+        <span class="line-clamp-2 text-row leading-snug font-medium">
           {entry.leftovers && <span class="text-faint">Leftovers · </span>}
           {recipe.title}
         </span>
@@ -295,7 +285,7 @@ export function Home() {
   };
 
   return (
-    <div class="mx-auto max-w-2xl space-y-3 p-3 pb-8">
+    <div class="screen space-y-3 pb-8">
       <header class="flex items-start justify-between gap-3 px-1 pt-2">
         <div class="min-w-0">
           <h1 class="text-xl leading-tight font-semibold">Tonight</h1>
@@ -367,9 +357,7 @@ export function Home() {
                 class="flex-1 rounded-xl py-1.5 active:bg-canvas"
                 onClick={() => navigate("/plan")}
               >
-                <div class="text-[10px] leading-none font-medium tracking-wide text-faint uppercase">
-                  {dayName(date)}
-                </div>
+                <div class="label leading-none text-faint">{dayName(date)}</div>
                 <div
                   class={`mx-auto mt-1.5 grid size-7 place-items-center text-sm leading-none font-semibold ${
                     isToday ? "rounded-full bg-accent text-white" : "text-ink"
@@ -396,7 +384,7 @@ export function Home() {
         onClick={() => navigate("/list")}
       >
         <span class="min-w-0 flex-1">
-          <span class="block text-[15px] font-medium">Shopping list</span>
+          <span class="block text-row font-medium">Shopping list</span>
           <span class="mt-0.5 block text-sm text-muted">
             {items === null
               ? " "

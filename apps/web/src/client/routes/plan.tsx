@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 
 import { api, type PlanEntry, type RecipeSummary } from "../api";
 import { PlanListPreview } from "../components/plan-list-preview";
+import { RecipePhoto } from "../components/recipe-photo";
 import { RecipePicker } from "../components/recipe-picker";
 import { addLeftoversNextDay } from "../leftovers";
 import { navigate } from "../router";
@@ -45,18 +46,13 @@ function EntryRow({
           class="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left"
           onClick={() => navigate(`/recipes/${recipe.id}`)}
         >
-          {recipe.photoUrl ? (
-            <img
-              class="size-10 shrink-0 rounded-lg object-cover"
-              src={recipe.photoUrl}
-              alt=""
-              loading="lazy"
-            />
-          ) : (
-            <div class="size-10 shrink-0 rounded-lg bg-canvas" />
-          )}
+          <RecipePhoto
+            src={recipe.photoUrl}
+            box="size-10 shrink-0 rounded-lg"
+            mark="size-5"
+          />
           <span class="min-w-0 flex-1">
-            <span class="line-clamp-2 text-[15px] leading-snug font-medium">
+            <span class="line-clamp-2 text-row leading-snug font-medium">
               {entry.leftovers && <span class="text-faint">Leftovers · </span>}
               {recipe.title}
             </span>
@@ -69,7 +65,7 @@ function EntryRow({
           </span>
         </button>
       ) : (
-        <span class="min-w-0 flex-1 py-2 text-[15px] leading-snug text-muted">
+        <span class="min-w-0 flex-1 py-2 text-row leading-snug text-muted">
           {entry.note}
         </span>
       )}
@@ -81,7 +77,7 @@ function EntryRow({
           type="button"
           aria-label="Leftovers tomorrow"
           title="Leftovers tomorrow"
-          class="grid size-8 shrink-0 place-items-center rounded-lg text-faint active:bg-canvas disabled:opacity-40"
+          class="icon-btn size-8 text-faint active:bg-canvas"
           disabled={busy}
           onClick={() => onLeftovers(entry)}
         >
@@ -104,7 +100,7 @@ function EntryRow({
       <button
         type="button"
         aria-label="Remove"
-        class="grid size-8 shrink-0 place-items-center rounded-lg text-faint active:bg-canvas disabled:opacity-40"
+        class="icon-btn size-8 text-faint active:bg-canvas"
         disabled={busy}
         onClick={() => onRemove(entry)}
       >
@@ -250,20 +246,18 @@ export function Plan() {
     // Clears the tab bar plus the shopping-list bar sitting above it, so the
     // last day's "Add" is still tappable at the bottom of the scroll.
     <div class="pb-24">
-      <header class="sticky top-0 z-10 border-b border-line bg-canvas/95 backdrop-blur">
+      <header class="screen-head">
         <div class="mx-auto flex max-w-2xl items-center gap-1 px-1.5 py-1.5">
           <button
             type="button"
             aria-label="Previous week"
-            class="grid size-9 shrink-0 place-items-center rounded-lg text-muted active:bg-surface"
+            class="icon-btn size-9 text-muted active:bg-surface"
             onClick={() => goto(addDays(monday, -7))}
           >
             ‹
           </button>
           <div class="min-w-0 flex-1 text-center">
-            <h1 class="truncate text-[15px] font-semibold">
-              {weekLabel(monday)}
-            </h1>
+            <h1 class="truncate text-row font-semibold">{weekLabel(monday)}</h1>
           </div>
           {/* Sits where a second nav button would, so the header keeps its
             symmetry whether or not the jump-back is showing. */}
@@ -281,7 +275,7 @@ export function Plan() {
           <button
             type="button"
             aria-label="Next week"
-            class="grid size-9 shrink-0 place-items-center rounded-lg text-muted active:bg-surface"
+            class="icon-btn size-9 text-muted active:bg-surface"
             onClick={() => goto(addDays(monday, 7))}
           >
             ›
@@ -300,7 +294,7 @@ export function Plan() {
           separate cards cost 865px of scroll for 812px of screen. */}
       {/* Capped and centred. Left full width, a 1100px row strands the remove
           button half a screen from the meal it belongs to. */}
-      <div class="mx-auto max-w-2xl p-3">
+      <div class="screen">
         <ul class="card divide-y divide-line overflow-hidden">
           {days.map((date) => {
             const day = entriesOn(date);
@@ -313,7 +307,7 @@ export function Plan() {
                 {/* Fixed-width date gutter, so every day lines up down the
                     left however many meals it holds. */}
                 <div class="w-9 shrink-0 pt-1.5 text-center">
-                  <div class="text-[10px] leading-none font-medium tracking-wide text-faint uppercase">
+                  <div class="label leading-none text-faint">
                     {dayName(date)}
                   </div>
                   <div
@@ -344,7 +338,7 @@ export function Plan() {
                       of those were 308px, a third of the whole scroll. */}
                   <button
                     type="button"
-                    class="flex h-7 items-center gap-1 text-[13px] text-faint active:text-muted"
+                    class="add-inline"
                     onClick={() => setPicking(date)}
                   >
                     <span class="text-sm leading-none">+</span>
@@ -359,8 +353,8 @@ export function Plan() {
 
       {/* Above the tab bar, same place the recipe screen puts its send button. */}
       {planned && (
-        <div class="fixed inset-x-0 bottom-14 z-10 border-t border-line bg-surface/95 p-3 backdrop-blur">
-          <div class="mx-auto max-w-2xl">
+        <div class="action-bar">
+          <div class="mx-auto w-full max-w-2xl">
             <button
               type="button"
               class="btn-primary w-full"

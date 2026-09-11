@@ -14,6 +14,15 @@
   --color-faint: oklch(0.68 0.01 75);
   --color-accent: oklch(0.72 0.16 65);
   --color-accent-ink: oklch(0.42 0.12 60);
+
+  /*
+   * Three sizes Tailwind's scale doesn't have, each replacing a value that
+   * had been written as an arbitrary `text-[15px]` in a handful of places.
+   * Everything else uses xs / sm / base / lg / xl / 2xl as it comes.
+   */
+  --text-micro: 0.625rem; /* 10px - the uppercase labels over a day or a state */
+  --text-note: 0.8125rem; /* 13px - inline affordances, secondary to a row */
+  --text-row: 0.9375rem; /* 15px - the title of a row in a list */
 }
 
 @layer base {
@@ -38,6 +47,28 @@
 }
 
 @layer components {
+  /*
+   * One page shell. Screens used to disagree about this - two capped at
+   * max-w-2xl and four had no cap at all, so on a desktop the plan sat in a
+   * neat column while the shopping list ran the full width of the window.
+   */
+  .screen {
+    @apply mx-auto w-full max-w-2xl px-3 py-3;
+  }
+
+  /*
+   * The gallery is the one screen that earns more width: it's a grid, and at
+   * max-w-2xl its four columns are 150px each. Same shell otherwise.
+   */
+  .screen-wide {
+    @apply mx-auto w-full max-w-5xl px-3 py-3;
+  }
+
+  /* A screen's top bar. Sticky so it survives the scroll on a long list. */
+  .screen-head {
+    @apply sticky top-0 z-10 border-b border-line bg-canvas/95 backdrop-blur;
+  }
+
   .card {
     @apply rounded-2xl border border-line bg-surface;
   }
@@ -61,6 +92,47 @@
 
   .field {
     @apply min-h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-base placeholder:text-faint focus:border-accent focus:outline-none;
+  }
+
+  /*
+   * A square button holding one glyph. Size and colour stay as utilities -
+   * a header's nav arrow and a row's remove x want different weights, and
+   * two near-identical classes would be worse than one plus a size.
+   */
+  .icon-btn {
+    @apply grid shrink-0 place-items-center rounded-lg transition-colors disabled:opacity-40;
+  }
+
+  /*
+   * The quiet "+ something" line. Deliberately not a button-looking button:
+   * it repeats once per day on the plan, and seven real buttons read as a
+   * to-do list rather than a week.
+   */
+  .add-inline {
+    @apply flex h-8 items-center gap-1 text-note text-faint transition-colors active:text-muted disabled:opacity-40;
+  }
+
+  /* The small uppercase label over a day, or on a state like "leftovers". */
+  .label {
+    @apply text-micro font-medium tracking-wide uppercase;
+  }
+
+  /*
+   * The bar that sits above the tab bar holding a screen's one main action:
+   * send to list, shop for the week. Its contents cap like a screen does, or
+   * on a desktop the button runs the whole width of the window.
+   */
+  .action-bar {
+    @apply fixed inset-x-0 bottom-14 z-10 border-t border-line bg-surface/95 p-3 backdrop-blur;
+  }
+
+  /* A toggle in a row of them: the gallery's sort. */
+  .pill {
+    @apply rounded-full border border-line bg-surface px-3 py-1.5 text-sm text-muted transition-colors;
+  }
+
+  .pill-on {
+    @apply rounded-full border border-ink bg-ink px-3 py-1.5 text-sm text-white transition-colors;
   }
 
   /*
