@@ -891,7 +891,11 @@ same layout wider.
 - ~~Does `cheerio` run under Workers `nodejs_compat`?~~ Yes. `/api/health`
   parses a JSON-LD fixture through core on workerd and returns `parser: true`.
   The fallback to `htmlparser2` is not needed.
-- Vitest workspace at root, or a second `npm test -w`? Whichever CI likes.
+- ~~Vitest workspace at root, or a second `npm test -w`?~~ A second one. The
+  root vitest config roots at the repo and includes `test/**` and
+  `packages/core/test/**`, so it never saw `apps/web/test` - CI was green
+  without running a single web test, typecheck or build. CI now runs the three
+  `--workspace @recipe-vault/web` scripts after the plugin's.
 - ~~Does the plugin's `photoFrontmatter` behavior for vault-local images need
   a web equivalent?~~ No. The web app renders with `formatPhoto: (path) =>
   path` and `deriveRecipeFields` drops any non-`http` photo value, so a note
