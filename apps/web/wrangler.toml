@@ -1,0 +1,36 @@
+# One Worker serves everything: Hono handles /api/*, Workers static assets
+# serve the Vite build from dist/. `wrangler deploy` is the whole deploy.
+name = "recipe-vault-web"
+main = "src/worker/index.ts"
+compatibility_date = "2026-09-01"
+
+# cheerio pulls in Node built-ins, so the parser in @recipe-vault/core only
+# runs here with this on. See docs/web-app-plan.md 2a.
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+# The client is a single-page app: unknown paths fall through to index.html
+# instead of 404ing, so a deep link like /plan works on a cold load.
+not_found_handling = "single-page-application"
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "recipe-vault"
+# Filled in by `wrangler d1 create recipe-vault`. Local dev works without it.
+database_id = "862f52f9-0c2d-4f68-804c-e893388619df"
+migrations_dir = "migrations"
+
+# The Obsidian vault, synced here by the sync plugin. Read-only as far as this
+# app is concerned - the plugin owns what's in it. `remote = true` means
+# `wrangler dev` talks to the real bucket while D1 stays local, so an import
+# can be tried out without touching the deployed database. That only holds if
+# you run plain `wrangler dev`: the `--local` flag turns remote bindings off.
+[[r2_buckets]]
+binding = "VAULT"
+bucket_name = "obsidian"
+remote = true

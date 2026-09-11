@@ -11,8 +11,6 @@ import {
   TFile,
   Vault,
 } from "obsidian";
-import * as handlebars from "handlebars";
-import * as cheerio from "cheerio";
 
 import * as c from "./constants";
 import * as settings from "./settings";
@@ -25,6 +23,7 @@ import {
 import { RecipeGalleryView, resetGalleryUiState } from "./view-recipe-gallery";
 import { getRecipeFiles, thumbPathForImage } from "./utils/recipeLoader";
 import { PhotoRecipeModal } from "./modal-photo-recipe";
+import { PickJsonFileModal, isJsonLdFile } from "./modal-pick-json";
 import {
   requestRecipeEditSuggestion,
   requestRecipeChatResponse,
@@ -32,27 +31,29 @@ import {
 } from "./utils/openrouter";
 import type { ChatMessage } from "./utils/openrouter";
 import dateFormat from "dateformat";
+import * as core from "@recipe-vault/core";
 import {
+  createRecipeRenderer,
+  decodeHtmlEntities,
+  ensureRecipeNotesSection,
+  ensureRequiredRecipeFrontmatter,
+  ingredientsFromBody,
   itemFromLine,
   mergeShoppingItems,
+  normalizeRecipeNotes,
+  noteToJsonLd,
+  parseRecipeSections,
+  readRecipeVaultState,
+  replaceRecipeSections,
   parseShoppingListMarkdown,
   removeCheckedItems,
   renderShoppingListMarkdown,
 } from "@recipe-vault/core";
-import type { ShoppingItem } from "@recipe-vault/core";
-
-interface MarkdownSectionRange {
-  headingEnd: number;
-  bodyStart: number;
-  bodyEnd: number;
-}
-
-interface ParsedRecipeSections {
-  recipeIngredient: string[];
-  recipeInstructions: string[];
-  ingredientRange: MarkdownSectionRange;
-  instructionRange: MarkdownSectionRange;
-}
+import type {
+  JsonRecord,
+  ParsedRecipe,
+  ShoppingItem,
+} from "@recipe-vault/core";
 
 /** One note's entry in the persisted ingredient search index. */
 interface IngredientIndexEntry {
@@ -67,45 +68,6 @@ type CommandExecutorApp = App & {
     executeCommandById(commandId: string): boolean;
   };
 };
-
-/** A plain object node from parsed JSON-LD (values are still untyped JSON). */
-type JsonRecord = Record<string, unknown>;
-
-/** Narrow an unknown JSON value to a plain object (not null, not an array). */
-function isJsonRecord(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** One normalized instruction line: a step or an item within a HowToSection. */
-interface InstructionItem {
-  text: string;
-  image?: unknown;
-}
-
-/** A normalized recipe instruction — either a plain step or a HowToSection. */
-interface InstructionStep {
-  name?: string;
-  text?: string;
-  image?: unknown;
-  itemListElement?: InstructionItem[];
-}
-
-/**
- * A recipe parsed from a page's JSON-LD and normalized for templating. JSON-LD
- * is free-form, so unknown-typed index access is intentional; the fields the
- * importer reads or writes are declared explicitly so they stay type-safe.
- */
-interface ParsedRecipe {
-  [key: string]: unknown;
-  name?: unknown;
-  image?: unknown;
-  author?: unknown;
-  url?: string;
-  totalTime?: unknown;
-  recipeIngredient?: string[];
-  recipeInstructions?: InstructionStep[];
-  recipeNotes?: string[];
-}
 
 /** Vault augmented with the (untyped) attachment-path helper Obsidian exposes. */
 type VaultWithAttachments = Vault & {
@@ -134,36 +96,6 @@ export default class RecipeVault extends Plugin {
   /** Pending-write flag and debounce handle for {@link persistIngredientIndex}. */
   private ingredientIndexDirty = false;
   private persistIndexTimer: number | null = null;
-
-  private decodeHtmlEntities(value: string): string {
-    const namedEntities: Record<string, string> = {
-      amp: "&",
-      lt: "<",
-      gt: ">",
-      quot: '"',
-      apos: "'",
-      nbsp: " ",
-    };
-
-    return value.replace(
-      /&(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]+);/gi,
-      (match, entity) => {
-        const token = String(entity);
-
-        if (token.startsWith("#x") || token.startsWith("#X")) {
-          const code = Number.parseInt(token.slice(2), 16);
-          return Number.isFinite(code) ? String.fromCodePoint(code) : match;
-        }
-
-        if (token.startsWith("#")) {
-          const code = Number.parseInt(token.slice(1), 10);
-          return Number.isFinite(code) ? String.fromCodePoint(code) : match;
-        }
-
-        return namedEntities[token.toLowerCase()] ?? match;
-      },
-    );
-  }
 
   private executeCommand(commandId: string): boolean {
     return (
@@ -394,123 +326,6 @@ export default class RecipeVault extends Plugin {
     }
   }
 
-  private findMarkdownSection(
-    markdown: string,
-    sectionTitle: string,
-  ): MarkdownSectionRange | null {
-    const escapedTitle = sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const headingRegex = new RegExp(`^#{1,6}\\s+${escapedTitle}\\s*$`, "im");
-    const headingMatch = headingRegex.exec(markdown);
-    if (!headingMatch || headingMatch.index === undefined) {
-      return null;
-    }
-
-    const headingStart = headingMatch.index;
-    const headingEnd = headingStart + headingMatch[0].length;
-    const afterHeading = markdown.slice(headingEnd);
-    const nextHeadingMatch = /\n#{1,6}\s+/.exec(afterHeading);
-    const bodyEnd =
-      nextHeadingMatch && nextHeadingMatch.index !== undefined
-        ? headingEnd + nextHeadingMatch.index
-        : markdown.length;
-
-    return {
-      headingEnd,
-      bodyStart: headingEnd,
-      bodyEnd,
-    };
-  }
-
-  private parseSectionList(
-    sectionBody: string,
-    isIngredients: boolean,
-  ): string[] {
-    return sectionBody
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        if (isIngredients) {
-          return line
-            .replace(/^-\s*\[(?: |x|X)\]\s*/, "")
-            .replace(/^-\s*/, "")
-            .trim();
-        }
-        return line
-          .replace(/^[-*]\s*/, "")
-          .replace(/^\d+\.\s*/, "")
-          .trim();
-      })
-      .filter((line) => line.length > 0);
-  }
-
-  private parseRecipeSections(markdown: string): ParsedRecipeSections | null {
-    const ingredientRange = this.findMarkdownSection(markdown, "Ingredients");
-    const instructionRange = this.findMarkdownSection(markdown, "Instructions");
-    if (!ingredientRange || !instructionRange) {
-      return null;
-    }
-
-    const recipeIngredient = this.parseSectionList(
-      markdown.slice(ingredientRange.bodyStart, ingredientRange.bodyEnd),
-      true,
-    );
-    const recipeInstructions = this.parseSectionList(
-      markdown.slice(instructionRange.bodyStart, instructionRange.bodyEnd),
-      false,
-    );
-
-    return {
-      recipeIngredient,
-      recipeInstructions,
-      ingredientRange,
-      instructionRange,
-    };
-  }
-
-  private replaceRecipeSections(
-    markdown: string,
-    recipeIngredient: string[],
-    recipeInstructions: string[],
-  ): string {
-    const parsed = this.parseRecipeSections(markdown);
-    if (!parsed) {
-      throw new Error(
-        "Could not find both Ingredients and Instructions sections in this note.",
-      );
-    }
-
-    const ingredientBody = recipeIngredient
-      .map((line) => `- [ ] ${line}`)
-      .join("\n");
-    const instructionBody = recipeInstructions
-      .map((line) => `- ${line}`)
-      .join("\n");
-
-    const replacements: Array<{ start: number; end: number; value: string }> = [
-      {
-        start: parsed.ingredientRange.bodyStart,
-        end: parsed.ingredientRange.bodyEnd,
-        value: `\n\n${ingredientBody}\n`,
-      },
-      {
-        start: parsed.instructionRange.bodyStart,
-        end: parsed.instructionRange.bodyEnd,
-        value: `\n\n${instructionBody}\n`,
-      },
-    ].sort((a, b) => b.start - a.start);
-
-    let nextMarkdown = markdown;
-    for (const replacement of replacements) {
-      nextMarkdown =
-        nextMarkdown.slice(0, replacement.start) +
-        replacement.value +
-        nextMarkdown.slice(replacement.end);
-    }
-
-    return nextMarkdown;
-  }
-
   /** Ingredient lines for a note path, for the gallery search (loadRecipes). */
   getIngredients(path: string): string[] {
     return this.ingredientIndex.get(path)?.ingredients ?? [];
@@ -519,12 +334,7 @@ export default class RecipeVault extends Plugin {
   /** Parse a recipe's body `### Ingredients` section into searchable lines. */
   private async parseIngredientsFromBody(file: TFile): Promise<string[]> {
     const content = await this.app.vault.cachedRead(file);
-    const range = this.findMarkdownSection(content, "Ingredients");
-    if (!range) return [];
-    return this.parseSectionList(
-      content.slice(range.bodyStart, range.bodyEnd),
-      true,
-    );
+    return ingredientsFromBody(content);
   }
 
   /** Path of the sidecar index file, or null if the plugin dir is unknown. */
@@ -677,7 +487,7 @@ export default class RecipeVault extends Plugin {
     // edits stay in sync with any edits already applied this session.
     const readRecipe = async () => {
       const content = await this.app.vault.read(file);
-      const parsed = this.parseRecipeSections(content);
+      const parsed = parseRecipeSections(content);
       if (!parsed) {
         throw new Error(
           "Could not find Ingredients and Instructions sections in this note.",
@@ -756,7 +566,7 @@ export default class RecipeVault extends Plugin {
         }
 
         const latestContent = await this.app.vault.read(file);
-        const updated = this.replaceRecipeSections(
+        const updated = replaceRecipeSections(
           latestContent,
           result.recipeIngredient,
           result.recipeInstructions,
@@ -840,8 +650,6 @@ export default class RecipeVault extends Plugin {
       (leaf) => new RecipeGalleryView(leaf, this),
     );
 
-    this.registerHandlebarsHelpers();
-
     // Ribbon icon to open/reveal the gallery
     this.addRibbonIcon("utensils", "Open recipe gallery", () => {
       void this.activateRecipeGalleryView();
@@ -920,7 +728,10 @@ export default class RecipeVault extends Plugin {
               })),
             };
             if (result.recipeYield) recipe.recipeYield = result.recipeYield;
-            void this.saveParsedRecipe(recipe, { localImage: imageBlob });
+            void this.saveParsedRecipe(recipe, {
+              localImage: imageBlob,
+              source: "photo",
+            });
           },
         ).open();
       },
@@ -1128,6 +939,61 @@ export default class RecipeVault extends Plugin {
       },
     });
 
+    // Import a recipe from a JSON-LD file already in the vault. Obsidian can't
+    // open a .json file, so the command pops a picker; the file explorer's
+    // right-click menu (registered below) is the other way in.
+    this.addCommand({
+      id: c.CMD_IMPORT_JSONLD,
+      name: "Import recipe from JSON-LD file",
+      callback: () => {
+        new PickJsonFileModal(this.app, (file) => {
+          void this.importRecipeFromJsonLdFile(file);
+        }).open();
+      },
+    });
+
+    // Export the current recipe note as a portable JSON-LD file.
+    this.addCommand({
+      id: c.CMD_EXPORT_JSONLD,
+      name: "Export recipe as JSON-LD file",
+      callback: async () => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view?.file) {
+          new Notice("No active recipe file open.");
+          return;
+        }
+        await this.exportRecipeAsJsonLd(view.file);
+      },
+    });
+
+    // Both actions from the file explorer's right-click menu, which is the
+    // only place a .json file is reachable at all.
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, abstractFile) => {
+        if (!(abstractFile instanceof TFile)) return;
+        const target = abstractFile;
+
+        if (isJsonLdFile(target)) {
+          menu.addItem((item) =>
+            item
+              .setTitle("Import as recipe")
+              .setIcon("chef-hat")
+              .onClick(() => void this.importRecipeFromJsonLdFile(target)),
+          );
+          return;
+        }
+
+        if (target.extension === "md") {
+          menu.addItem((item) =>
+            item
+              .setTitle("Export recipe as JSON-LD")
+              .setIcon("braces")
+              .onClick(() => void this.exportRecipeAsJsonLd(target)),
+          );
+        }
+      }),
+    );
+
     // This adds a settings tab so the user can configure various aspects of the plugin
     this.addSettingTab(new settings.SettingsTab(this.app, this));
 
@@ -1286,412 +1152,44 @@ export default class RecipeVault extends Plugin {
   }
 
   /**
-   * Promise-based delay used to back off between fetch retries. Uses the
-   * global timer, not `window`, so the fetch path also runs under Node
-   * (tests) and later outside the renderer.
+   * Core's network capability, backed by Obsidian's `requestUrl` so imports
+   * are not subject to CORS and work the same on desktop and mobile.
    */
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
+  private httpPort: core.HttpPort = {
+    get: async (url, headers) => {
+      const res = await requestUrl({ url, method: "GET", headers });
+      return { status: res.status, text: res.text };
+    },
+  };
 
-  /**
-   * Fetch a page's HTML, retrying and falling back through public read proxies
-   * when the direct request is blocked.
-   *
-   * Obsidian desktop fetches through Chromium's network stack and slips past
-   * Cloudflare, but on mobile `requestUrl` uses the native HTTP client whose
-   * TLS/HTTP fingerprint Cloudflare flags as a bot — so direct fetches there
-   * 403 no matter what `User-Agent` we send. When the proxy fallback is enabled
-   * we retry through server-side readers that fetch the page for us: jina.ai
-   * first (reliable, returns raw HTML), then allorigins (free but flaky, so it
-   * gets retried). Each non-direct source must echo back the target host, so a
-   * proxy's own error/landing page is never mistaken for the recipe.
-   */
-  private async fetchPageHtml(fetchUrl: URL): Promise<string> {
-    new Notice(`Fetching: ${fetchUrl.href}`);
-
-    const reqHeaders = {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-    };
-
-    const target = fetchUrl.href;
-    const host = fetchUrl.hostname.replace(/^www\./, "");
-
-    type PageSource = {
-      label: string;
-      url: string;
-      headers: Record<string, string>;
-      /** How many times to try this source before moving to the next. */
-      tries: number;
-      /** Pull the page HTML out of the (possibly wrapped) response body. */
-      unwrap: (body: string) => string;
-      /** Direct origin hits are trusted; proxy output must mention the host. */
-      trusted: boolean;
-    };
-
-    const sources: PageSource[] = [
-      {
-        label: "direct",
-        url: target,
-        headers: reqHeaders,
-        tries: 1,
-        unwrap: (body) => body,
-        trusted: true,
+  /** Forward the plugin's settings to core as parse/fetch options. */
+  private fetchOptions(): core.FetchOptions {
+    const s = this.settings;
+    return {
+      fillerWordsMode: s.fillerWordsMode ?? "auto",
+      customFillerWords: s.customFillerWords,
+      filterVeganWords: s.filterVeganWords ?? true,
+      filterGlutenFreeWords: s.filterGlutenFreeWords ?? true,
+      proxyFallback: s.proxyFallback,
+      retryDelayMs: this.fetchRetryDelayMs,
+      onProgress: (message) => {
+        new Notice(message);
       },
-    ];
-
-    if (this.settings.proxyFallback) {
-      sources.push(
-        {
-          label: "jina.ai",
-          url: `https://r.jina.ai/${target}`,
-          headers: { ...reqHeaders, "X-Return-Format": "html" },
-          tries: 3,
-          unwrap: (body) => body,
-          trusted: false,
-        },
-        {
-          label: "allorigins",
-          url: `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`,
-          headers: reqHeaders,
-          tries: 2,
-          unwrap: (body) => {
-            const parsed = JSON.parse(body) as { contents?: unknown };
-            return typeof parsed.contents === "string" ? parsed.contents : "";
-          },
-          trusted: false,
-        },
-        {
-          label: "allorigins (raw)",
-          url: `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
-          headers: reqHeaders,
-          tries: 2,
-          unwrap: (body) => body,
-          trusted: false,
-        },
-      );
-    }
-
-    let lastError = "";
-
-    for (const source of sources) {
-      for (let attempt = 1; attempt <= source.tries; attempt++) {
-        if (source.label !== "direct") {
-          new Notice(
-            attempt === 1
-              ? `Direct fetch blocked — trying proxy (${source.label})…`
-              : `Retrying ${source.label} (${attempt}/${source.tries})…`,
-          );
-        }
-        try {
-          const res = await requestUrl({
-            url: source.url,
-            method: "GET",
-            headers: source.headers,
-          });
-          const html = source.unwrap(res.text);
-          if (!html) throw new Error("empty response");
-          if (!source.trusted && !html.includes(host)) {
-            throw new Error("proxy returned an unexpected page");
-          }
-          return html;
-        } catch (err) {
-          lastError = err instanceof Error ? err.message : String(err);
-          if (attempt < source.tries) {
-            await this.sleep(this.fetchRetryDelayMs * attempt);
-          }
-        }
-      }
-    }
-
-    const detail = lastError ? ` (${lastError})` : "";
-    if (!this.settings.proxyFallback) {
-      throw new Error(
-        `Could not fetch that page. The site may be blocking the import — turn on "Proxy fallback for blocked imports" in Recipe Vault settings and try again.${detail}`,
-      );
-    }
-    throw new Error(
-      `Could not fetch that page, even via the proxy fallbacks. The site or the proxies may be down right now — try again in a bit, or import on desktop and sync.${detail}`,
-    );
+    };
   }
 
   /**
    * The main function to go get the recipe, and format it for the template
    */
-  async fetchRecipes(_url: string): Promise<ParsedRecipe[]> {
-    let url: URL;
-    try {
-      url = new URL(_url);
-    } catch {
-      throw new Error("That doesn't look like a valid recipe URL.");
-    }
-
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new Error("Recipe URL must start with http:// or https://.");
-    }
-
-    // A URL fragment (`#wprm-recipe-container-…`) is client-side only and must
-    // never be sent to the server. Desktop's network stack strips it
-    // automatically, but Obsidian's mobile (Capacitor) `requestUrl` forwards
-    // the fragment to the native HTTP client, which hosts reject (403/404) —
-    // breaking "jump to recipe" imports on Android while they work on desktop.
-    // Keep `url` (with the hash) for extractWprmRecipeNotes below; fetch clean.
-    const fetchUrl = new URL(url.href);
-    fetchUrl.hash = "";
-
-    const html = await this.fetchPageHtml(fetchUrl);
-
-    const $ = cheerio.load(html, {});
-
-    /**
-     * the main recipes list, we'll use to render from
-     * its an array instead because a page can technically have multiple recipes on it
-     */
-    const recipes: ParsedRecipe[] = [];
-
-    /**
-     * Many sites (Yoast/WordPress, etc.) express the whole page as a single
-     * JSON-LD `@graph` where nodes reference each other by `@id` instead of
-     * inlining them — e.g. a Recipe's author is `{ "@id": ".../person/123" }`
-     * pointing at a separate Person node. Index every node that carries an
-     * `@id` so those references can be resolved back to the real object.
-     */
-    const nodesById = new Map<string, JsonRecord>();
-    const indexNodes = (value: unknown): void => {
-      if (Array.isArray(value)) {
-        value.forEach(indexNodes);
-        return;
-      }
-      if (!isJsonRecord(value)) return;
-      const id = value["@id"];
-      // Only index real nodes (more than just an "@id" pointer).
-      if (typeof id === "string" && Object.keys(value).length > 1) {
-        if (!nodesById.has(id)) nodesById.set(id, value);
-      }
-      for (const key of Object.keys(value)) {
-        indexNodes(value[key]);
-      }
-    };
-
-    /** Follow a bare `{ "@id": "..." }` pointer to its indexed node. */
-    const resolveRef = (value: unknown): unknown => {
-      if (isJsonRecord(value) && Object.keys(value).length === 1) {
-        const id = value["@id"];
-        if (typeof id === "string") return nodesById.get(id) ?? value;
-      }
-      return value;
-    };
-
-    /** Reduce an author value (string | object | ref | array) to a plain name. */
-    const authorName = (value: unknown): string => {
-      const resolved = resolveRef(value);
-      if (typeof resolved === "string") return resolved.trim();
-      if (isJsonRecord(resolved)) {
-        const name = resolved.name;
-        return typeof name === "string" ? name.trim() : "";
-      }
-      return "";
-    };
-
-    /**
-     * Reduce an ingredient value (string | object | `@id` ref) to a clean
-     * line, resolving references and stripping any inline HTML.
-     */
-    const ingredientText = (value: unknown): string => {
-      const resolved = resolveRef(value);
-      if (typeof resolved === "string") return this.stripHtml(resolved);
-      if (isJsonRecord(resolved)) {
-        const text = resolved.name ?? resolved.text;
-        return typeof text === "string" ? this.stripHtml(text) : "";
-      }
-      return "";
-    };
-
-    /**
-     * Normalize one instruction entry into the shape the template expects: a
-     * HowToSection `{ name, itemListElement: [{ text, image? }] }` or a plain
-     * step `{ text, image? }`. Coerces bare strings, resolves `@id` refs, and
-     * strips inline HTML from every text value. `image` is preserved verbatim
-     * so the downstream instruction-image download loop is unaffected.
-     */
-    const normalizeInstructionStep = (step: unknown): InstructionStep => {
-      const resolved = resolveRef(step);
-      if (typeof resolved === "string") {
-        return { text: this.stripHtml(resolved) };
-      }
-      if (!isJsonRecord(resolved)) {
-        return { text: "" };
-      }
-
-      const type = resolved["@type"];
-      const isSection = Array.isArray(type)
-        ? type.includes("HowToSection")
-        : type === "HowToSection";
-
-      const rawItems = resolved.itemListElement;
-      if (isSection || Array.isArray(rawItems)) {
-        const list: unknown[] = Array.isArray(rawItems) ? rawItems : [];
-        const itemListElement = list
-          .map((el): InstructionItem => {
-            const r = resolveRef(el);
-            if (typeof r === "string") return { text: this.stripHtml(r) };
-            if (isJsonRecord(r)) {
-              return { text: this.stripHtml(r.text ?? r.name), image: r.image };
-            }
-            return { text: "" };
-          })
-          .filter((s) => s.text);
-        return { name: this.stripHtml(resolved.name), itemListElement };
-      }
-
-      return {
-        text: this.stripHtml(resolved.text ?? resolved.name),
-        image: resolved.image,
-      };
-    };
-
-    /**
-     * Some details are in varying formats, for templating to be easier,
-     * lets attempt to normalize them
-     */
-    const normalizeSchema = (node: JsonRecord): void => {
-      const json = node as ParsedRecipe;
-      json.url = url.href;
-      this.normalizeImages(json);
-
-      if (typeof node.name === "string") {
-        json.name = this.cleanRecipeName(node.name);
-      }
-
-      // Ingredients may be a string, an array of strings, or objects — flatten
-      // to a clean string[] so the template renders consistently.
-      const rawIngredient = node.recipeIngredient;
-      if (rawIngredient != null) {
-        const list: unknown[] = Array.isArray(rawIngredient)
-          ? rawIngredient
-          : [rawIngredient];
-        json.recipeIngredient = list.map(ingredientText).filter(Boolean);
-      }
-
-      // Instructions may be a single string, a single object, or an array of
-      // strings / HowToStep / HowToSection. Coerce to an array of the shapes
-      // the template understands; without this a string or single object makes
-      // `{{#each recipeInstructions}}` iterate characters / object keys.
-      const rawInstructions = node.recipeInstructions;
-      if (rawInstructions != null) {
-        const list: unknown[] = Array.isArray(rawInstructions)
-          ? rawInstructions
-          : [rawInstructions];
-        json.recipeInstructions = list
-          .map(normalizeInstructionStep)
-          .filter((s) => (s.itemListElement?.length ?? 0) > 0 || s.text);
-      }
-
-      json.recipeNotes = this.normalizeRecipeNotes(node.recipeNotes);
-
-      // Normalize author to a plain string, resolving any `@id` references.
-      const rawAuthor = node.author;
-      if (rawAuthor != null) {
-        if (Array.isArray(rawAuthor)) {
-          json.author = (rawAuthor as unknown[])
-            .map((a) => authorName(a))
-            .filter(Boolean)
-            .join(", ");
-        } else {
-          json.author = authorName(rawAuthor);
-        }
-      }
-
-      recipes.push(json);
-    };
-
-    /**
-     * Schemas come in every arrangement: bare arrays, `@graph` wrappers, or a
-     * Recipe nested under `mainEntity` / `mainEntityOfPage` / some custom key.
-     * Walk the whole tree and normalize each real Recipe node. Dedupe by
-     * reference, and skip bare `@id` pointers (a Recipe ref with no content) so
-     * nested recipes are found without double-counting.
-     */
-    const seenRecipes = new Set<JsonRecord>();
-    const isRecipeNode = (value: JsonRecord): boolean => {
-      const type = value["@type"];
-      return Array.isArray(type) ? type.includes("Recipe") : type === "Recipe";
-    };
-    const collectRecipes = (value: unknown): void => {
-      if (Array.isArray(value)) {
-        value.forEach(collectRecipes);
-        return;
-      }
-      if (!isJsonRecord(value)) return;
-      const isRealRecipe =
-        isRecipeNode(value) &&
-        (value.name != null ||
-          value.recipeIngredient != null ||
-          value.recipeInstructions != null);
-      if (isRealRecipe) {
-        if (!seenRecipes.has(value)) {
-          seenRecipes.add(value);
-          normalizeSchema(value);
-        }
-        return;
-      }
-      for (const key of Object.keys(value)) collectRecipes(value[key]);
-    };
-
-    // parse the dom of the page and look for any schema.org/Recipe
-    const parsedBlocks: unknown[][] = [];
-    $('script[type="application/ld+json"]').each((i, el) => {
-      const content = $(el).text()?.trim();
-      let json: unknown;
-      try {
-        json = JSON.parse(content);
-      } catch {
-        // Skip malformed ld+json blocks; other scripts on the page may still
-        // contain a valid Recipe entry.
-        return;
-      }
-
-      // to make things consistent, we'll put all recipes into an array
-      const data = Array.isArray(json) ? (json as unknown[]) : [json];
-      parsedBlocks.push(data);
-    });
-
-    // Index every node by `@id` first so `@id` references (e.g. an author
-    // pointing at a Person node) resolve regardless of node ordering or which
-    // script block they live in. Then walk the blocks for Recipe entries.
-    parsedBlocks.forEach((data) => indexNodes(data));
-    parsedBlocks.forEach((data) => collectRecipes(data));
-
-    // Fallback for pages that carry the recipe as HTML microdata rather than
-    // JSON-LD (e.g. the legacy EasyRecipe card on loveandlemons.com). Only run
-    // it when JSON-LD yielded nothing so well-structured pages are unaffected.
-    if (recipes.length === 0) {
-      collectRecipes(this.extractMicrodataRecipes($, fetchUrl.href));
-    }
-
-    // Fallback for WordPress Recipe Maker pages where notes may not be in JSON-LD.
-    const fallbackNotes = this.extractWprmRecipeNotes($, url.hash);
-    if (fallbackNotes.length > 0) {
-      const hasNotesInSchema = recipes.some(
-        (recipe) => this.normalizeRecipeNotes(recipe.recipeNotes).length > 0,
-      );
-      if (!hasNotesInSchema && recipes[0]) {
-        recipes[0].recipeNotes = fallbackNotes;
-      }
-    }
-
-    return recipes;
+  async fetchRecipes(url: string): Promise<ParsedRecipe[]> {
+    return core.fetchRecipes(url, this.httpPort, this.fetchOptions());
   }
 
   /**
    * This function handles all the templating of the recipes
    */
   private addRecipeToMarkdown = async (url: string): Promise<void> => {
-    const markdown = handlebars.compile(this.settings.recipeTemplate);
+    const markdown = createRecipeRenderer(this.settings.recipeTemplate);
     try {
       const recipes = await this.fetchRecipes(url);
 
@@ -1836,17 +1334,17 @@ export default class RecipeVault extends Plugin {
         });
 
         if (this.settings.decodeEntities) {
-          md = this.decodeHtmlEntities(md);
+          md = decodeHtmlEntities(md);
         }
 
-        md = this.ensureRequiredRecipeFrontmatter(md, {
+        md = ensureRequiredRecipeFrontmatter(md, {
           cookTime:
             typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
           image: typeof recipe.image === "string" ? recipe.image : undefined,
         });
-        md = this.ensureRecipeNotesSection(
+        md = ensureRecipeNotesSection(
           md,
-          this.normalizeRecipeNotes(recipe.recipeNotes),
+          normalizeRecipeNotes(recipe.recipeNotes),
         );
 
         if (view.getMode() === "source") {
@@ -1871,15 +1369,15 @@ export default class RecipeVault extends Plugin {
     const name = recipeName.trim();
     if (!name) return;
 
-    const markdown = handlebars.compile(this.settings.recipeTemplate);
+    const markdown = createRecipeRenderer(this.settings.recipeTemplate);
     const stub = { name };
     let md = markdown(stub);
 
     if (this.settings.decodeEntities) {
-      md = this.decodeHtmlEntities(md);
+      md = decodeHtmlEntities(md);
     }
 
-    md = this.ensureRequiredRecipeFrontmatter(md, {});
+    md = ensureRequiredRecipeFrontmatter(md, {});
 
     const folder =
       this.settings.folder !== ""
@@ -1905,16 +1403,18 @@ export default class RecipeVault extends Plugin {
 
   /**
    * Renders a single already-parsed recipe to a brand-new note using the same
-   * template + frontmatter/notes helpers as the URL importer, and optionally
-   * attaches a local image Blob (e.g. the captured photo). Returns the created
-   * file, or null on failure.
+   * template + frontmatter/notes helpers as the URL importer. Returns the
+   * created file, or null on failure.
    *
-   * Used by the "Add recipe from photo" flow. Uses the Vault API throughout so
-   * it works on mobile; `recipe.url` is left empty (the template guards it).
+   * The photo flow hands it a local image Blob; the JSON-LD flow leaves that
+   * empty and lets the remote `recipe.image` URL be downloaded instead.
+   * `opts.source` is written to frontmatter so the note records where it came
+   * from. Uses the Vault API throughout so it works on mobile; `recipe.url` may
+   * be empty (the template guards it).
    */
   private async saveParsedRecipe(
     recipe: ParsedRecipe,
-    opts: { localImage?: Blob } = {},
+    opts: { localImage?: Blob; source?: string } = {},
   ): Promise<TFile | null> {
     try {
       const rawName = typeof recipe.name === "string" ? recipe.name.trim() : "";
@@ -1941,6 +1441,12 @@ export default class RecipeVault extends Plugin {
       // image next to it when no dedicated image folder is configured.
       const file = await this.app.vault.create(notePath, "");
 
+      if (!opts.localImage && this.settings.saveImg) {
+        // A JSON-LD file points at a remote photo. Pull it into the vault now,
+        // otherwise the note breaks the day that host goes away.
+        await this.saveRemoteMainImage(recipe, file);
+      }
+
       if (opts.localImage) {
         // Name the image from the note's final (de-duplicated) basename, not the
         // raw title: two recipes both titled "Pancakes" get notes "Pancakes.md"
@@ -1957,28 +1463,38 @@ export default class RecipeVault extends Plugin {
         }
       }
 
-      const markdown = handlebars.compile(this.settings.recipeTemplate);
+      const markdown = createRecipeRenderer(this.settings.recipeTemplate);
       let md = markdown({
         ...recipe,
         json: JSON.stringify(recipe, null, 2),
       });
 
       if (this.settings.decodeEntities) {
-        md = this.decodeHtmlEntities(md);
+        md = decodeHtmlEntities(md);
       }
-      md = this.ensureRequiredRecipeFrontmatter(md, {
+      md = ensureRequiredRecipeFrontmatter(md, {
         cookTime:
           typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
         image: typeof recipe.image === "string" ? recipe.image : undefined,
       });
-      md = this.ensureRecipeNotesSection(
+      md = ensureRecipeNotesSection(
         md,
-        this.normalizeRecipeNotes(recipe.recipeNotes),
+        normalizeRecipeNotes(recipe.recipeNotes),
       );
 
       await this.app.vault.modify(file, md);
+      const source = opts.source ?? "photo";
+      // The template always writes `times_made: 0`, so any history carried in
+      // by the import has to be put back afterwards.
+      const vaultState = readRecipeVaultState(recipe as JsonRecord);
       await this.app.fileManager.processFrontMatter(file, (fm: JsonRecord) => {
-        fm.source = "photo";
+        fm.source = source;
+        if (vaultState.timesMade !== undefined) {
+          fm.times_made = vaultState.timesMade;
+        }
+        if (vaultState.lastMade !== undefined) {
+          fm.last_made = vaultState.lastMade;
+        }
       });
 
       new Notice(`Recipe "${rawName || safeName}" created.`);
@@ -2042,355 +1558,6 @@ export default class RecipeVault extends Plugin {
   }
 
   /**
-   * Registers all Handlebars helpers used by recipe templates.
-   * Called once from onload() so helpers are available to all template paths.
-   */
-  private registerHandlebarsHelpers(): void {
-    handlebars.registerHelper("splitTags", function (tags) {
-      if (!tags || typeof tags != "string") {
-        return "";
-      }
-      const tagsArray = tags.split(",");
-      let tagString = "";
-      for (const tag of tagsArray) {
-        tagString += "- " + tag.trim() + "\n";
-      }
-      return tagString;
-    });
-
-    const formatPhotoValue = (imgPath: string): string =>
-      this.formatPhotoValue(imgPath);
-    handlebars.registerHelper("photoFrontmatter", function (imgPath) {
-      if (!imgPath) return "";
-      return formatPhotoValue(String(imgPath));
-    });
-
-    const formatIsoDuration = (duration: string): string =>
-      this.formatIsoDuration(duration);
-    handlebars.registerHelper(
-      "magicTime",
-      function (arg1: unknown, arg2: unknown) {
-        if (typeof arg1 === "undefined") {
-          return "";
-        }
-        if (arguments.length === 1) {
-          return dateFormat(new Date(), "yyyy-mm-dd HH:MM");
-        }
-        const value = typeof arg1 === "string" ? arg1 : String(arg1);
-        if (arguments.length === 2) {
-          if (!isNaN(Date.parse(value))) {
-            return dateFormat(new Date(value), "yyyy-mm-dd HH:MM");
-          }
-          if (value.trim().startsWith("PT")) {
-            return formatIsoDuration(value);
-          }
-          try {
-            return dateFormat(new Date(), value);
-          } catch {
-            return "";
-          }
-        } else if (arguments.length === 3) {
-          const mask = typeof arg2 === "string" ? arg2 : String(arg2);
-          if (!isNaN(Date.parse(value))) {
-            return dateFormat(new Date(value), mask);
-          }
-          return "Error in template or source";
-        } else {
-          return "Error in template";
-        }
-      },
-    );
-  }
-
-  /**
-   * Formats an image path/URL as a frontmatter photo value.
-   * Local paths are wrapped in [[...]] (Obsidian wikilink); remote URLs are returned as-is.
-   */
-  private formatPhotoValue(imgPath: string): string {
-    if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
-      return imgPath;
-    }
-    return `[[${imgPath}]]`;
-  }
-
-  /**
-   * Ensures required frontmatter keys exist even when users have customized/older templates.
-   */
-  private ensureRequiredRecipeFrontmatter(
-    markdown: string,
-    values: { cookTime?: string; image?: string },
-  ): string {
-    const cookTimeValue = this.normalizeCookTimeValue(values.cookTime);
-    const photoValue = this.normalizePhotoValue(values.image).replace(
-      /"/g,
-      '\\"',
-    );
-
-    const requiredLines = [
-      "cssclasses: recipe-note",
-      `cook_time: ${cookTimeValue}`,
-      `photo: "${photoValue}"`,
-    ];
-
-    if (markdown.startsWith("---\n")) {
-      const frontmatterStart = 4;
-      const frontmatterEnd = markdown.indexOf("\n---", frontmatterStart);
-      if (frontmatterEnd !== -1) {
-        let fmContent = markdown.slice(frontmatterStart, frontmatterEnd);
-        const remainder = markdown.slice(frontmatterEnd + 4);
-
-        const hasKey = (key: string): boolean =>
-          new RegExp(`^${key}\\s*:`, "m").test(fmContent);
-
-        const missingLines = requiredLines.filter((line) => {
-          const key = line.split(":", 1)[0];
-          return !hasKey(key);
-        });
-
-        if (missingLines.length === 0) {
-          return markdown;
-        }
-
-        if (fmContent.length > 0 && !fmContent.endsWith("\n")) {
-          fmContent += "\n";
-        }
-        fmContent += `${missingLines.join("\n")}\n`;
-
-        const remainderPrefix = remainder.startsWith("\n") ? "" : "\n";
-        return `---\n${fmContent}---${remainderPrefix}${remainder}`;
-      }
-    }
-
-    return `---\n${requiredLines.join("\n")}\n---\n\n${markdown}`;
-  }
-
-  private normalizeCookTimeValue(raw?: string): string {
-    if (!raw) return "";
-    return raw.trim().startsWith("PT") ? this.formatIsoDuration(raw) : raw;
-  }
-
-  private normalizePhotoValue(raw?: string): string {
-    if (!raw) return "";
-    return this.formatPhotoValue(raw);
-  }
-
-  private normalizeRecipeNotes(raw: unknown): string[] {
-    if (!raw) return [];
-
-    if (typeof raw === "string") {
-      const note = raw.trim();
-      return note ? [note] : [];
-    }
-
-    if (!Array.isArray(raw)) return [];
-
-    const notes = raw
-      .map((item) => {
-        if (typeof item === "string") return item.trim();
-        if (item && typeof item === "object" && "text" in item) {
-          const text = (item as { text?: unknown }).text;
-          return typeof text === "string" ? text.trim() : "";
-        }
-        return "";
-      })
-      .filter((item) => item.length > 0);
-
-    return [...new Set(notes)];
-  }
-
-  private extractWprmRecipeNotes(
-    $: ReturnType<typeof cheerio.load>,
-    urlHash: string,
-  ): string[] {
-    const selectorCandidates: string[] = [];
-    const hashId = urlHash?.replace(/^#/, "").trim();
-
-    if (hashId) {
-      selectorCandidates.push(
-        `#${hashId} .wprm-recipe-notes`,
-        `#${hashId} .wprm-recipe-notes-container`,
-      );
-    }
-
-    selectorCandidates.push(
-      ".wprm-recipe .wprm-recipe-notes",
-      ".wprm-recipe .wprm-recipe-notes-container",
-      ".wprm-recipe-notes",
-      ".wprm-recipe-notes-container",
-    );
-
-    for (const selector of selectorCandidates) {
-      const el = $(selector).first();
-      if (!el || el.length === 0) continue;
-
-      const text = el
-        .text()
-        .replace(/\r/g, "")
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .join("\n")
-        .trim();
-
-      if (!text) continue;
-
-      const cleaned = text.replace(/^notes\s*:?\s*/i, "").trim();
-      if (!cleaned) continue;
-
-      return [cleaned];
-    }
-
-    return [];
-  }
-
-  /**
-   * Fallback recipe parser for pages that express their recipe as HTML
-   * microdata (schema.org `itemscope`/`itemprop` attributes) instead of a
-   * JSON-LD `<script>` block — e.g. the legacy EasyRecipe card used by
-   * loveandlemons.com. Returns raw Recipe-shaped records so they flow through
-   * the same `collectRecipes`/`normalizeSchema` pipeline as JSON-LD nodes.
-   */
-  private extractMicrodataRecipes(
-    $: ReturnType<typeof cheerio.load>,
-    baseUrl: string,
-  ): JsonRecord[] {
-    const recipes: JsonRecord[] = [];
-
-    $('[itemscope][itemtype*="schema.org/Recipe"]').each((_i, root) => {
-      const node: JsonRecord = { "@type": "Recipe" };
-      const ingredients: string[] = [];
-      const instructions: string[] = [];
-
-      $(root)
-        .find("[itemprop]")
-        .each((_j, el) => {
-          // Microdata scoping: only keep itemprops whose nearest enclosing
-          // itemscope is THIS recipe. Skip properties owned by a nested item
-          // (an author Person's `name`, an aggregateRating's `ratingValue`)
-          // so they aren't misattributed to the recipe.
-          if ($(el).parent().closest("[itemscope]")[0] !== root) return;
-
-          const prop = ($(el).attr("itemprop") ?? "").trim();
-          if (!prop) return;
-
-          // Extract the property value the way the microdata spec prescribes:
-          // certain elements carry it in an attribute rather than their text.
-          const tag = String($(el).prop("tagName") ?? "").toLowerCase();
-          const resolveUrl = (raw: string): string => {
-            const v = raw.trim();
-            if (!v) return "";
-            try {
-              return new URL(v, baseUrl).href;
-            } catch {
-              return v;
-            }
-          };
-          let value: string;
-          if (tag === "meta") {
-            value = ($(el).attr("content") ?? "").trim();
-          } else if (
-            tag === "img" ||
-            tag === "audio" ||
-            tag === "video" ||
-            tag === "source" ||
-            tag === "iframe" ||
-            tag === "embed" ||
-            tag === "track"
-          ) {
-            value = resolveUrl($(el).attr("src") ?? "");
-          } else if (tag === "a" || tag === "area" || tag === "link") {
-            value = resolveUrl($(el).attr("href") ?? "");
-          } else if (tag === "object") {
-            value = resolveUrl($(el).attr("data") ?? "");
-          } else if (tag === "data" || tag === "meter") {
-            value =
-              ($(el).attr("value") ?? "").trim() ||
-              $(el).text().replace(/\s+/g, " ").trim();
-          } else if (tag === "time") {
-            value =
-              ($(el).attr("datetime") ?? "").trim() ||
-              $(el).text().replace(/\s+/g, " ").trim();
-          } else {
-            value = $(el).text().replace(/\s+/g, " ").trim();
-          }
-          if (!value) return;
-
-          switch (prop) {
-            case "recipeIngredient":
-            case "ingredients":
-              ingredients.push(value);
-              break;
-            case "recipeInstructions":
-              instructions.push(value);
-              break;
-            default:
-              // First value wins for scalar props (name, description, times).
-              if (node[prop] === undefined) node[prop] = value;
-          }
-        });
-
-      if (ingredients.length > 0) node.recipeIngredient = ingredients;
-      if (instructions.length > 0) node.recipeInstructions = instructions;
-
-      // Only keep it if it actually carries recipe content.
-      if (
-        node.name != null ||
-        node.recipeIngredient != null ||
-        node.recipeInstructions != null
-      ) {
-        recipes.push(node);
-      }
-    });
-
-    return recipes;
-  }
-
-  private isRecipeNotesSectionEmpty(markdown: string): boolean {
-    const headingMatch = markdown.match(/^##\s+Notes\s*$/m);
-    if (!headingMatch || headingMatch.index === undefined) return true;
-
-    const sectionStart = headingMatch.index + headingMatch[0].length;
-    const afterHeading = markdown.slice(sectionStart);
-    const nextHeadingMatch = afterHeading.match(/\n##\s+/);
-    const sectionBody =
-      nextHeadingMatch && nextHeadingMatch.index !== undefined
-        ? afterHeading.slice(0, nextHeadingMatch.index)
-        : afterHeading;
-
-    return sectionBody.trim().length === 0;
-  }
-
-  private ensureRecipeNotesSection(markdown: string, notes: string[]): string {
-    if (notes.length === 0) return markdown;
-
-    const headingMatch = markdown.match(/^##\s+Notes\s*$/m);
-    const notesBody = `${notes.map((note) => `- ${note}`).join("\n")}\n`;
-
-    if (!headingMatch || headingMatch.index === undefined) {
-      const separator = markdown.endsWith("\n") ? "" : "\n";
-      return `${markdown}${separator}\n## Notes\n\n${notesBody}`;
-    }
-
-    const sectionStart = headingMatch.index + headingMatch[0].length;
-    const beforeSection = markdown.slice(0, sectionStart);
-    const afterHeading = markdown.slice(sectionStart);
-    const nextHeadingMatch = afterHeading.match(/\n##\s+/);
-    const sectionBody =
-      nextHeadingMatch && nextHeadingMatch.index !== undefined
-        ? afterHeading.slice(0, nextHeadingMatch.index)
-        : afterHeading;
-
-    if (sectionBody.trim().length > 0) return markdown;
-
-    const tail =
-      nextHeadingMatch && nextHeadingMatch.index !== undefined
-        ? afterHeading.slice(nextHeadingMatch.index)
-        : "";
-
-    return `${beforeSection}\n\n${notesBody}${tail}`;
-  }
-
-  /**
    * This function checks for an existing folder (creates if it doesn't exist)
    */
   private async folderCheck(foldername: string) {
@@ -2402,199 +1569,6 @@ export default class RecipeVault extends Plugin {
     }
     await vault.createFolder(folderPath);
     return;
-  }
-
-  /**
-   * Strips common filler/marketing words and dietary labels from a recipe name.
-   * e.g. "Easy Vegan Gluten-Free Dumplings" => "Dumplings"
-   */
-  private cleanRecipeName(name: string): string {
-    if (!name) return name;
-
-    // Decode common HTML entities (e.g. &amp; → &, &amp;amp; → &)
-    const entityMap: Record<string, string> = {
-      "&amp;": "&",
-      "&lt;": "<",
-      "&gt;": ">",
-      "&quot;": '"',
-      "&#39;": "'",
-      "&apos;": "'",
-      "&nbsp;": " ",
-    };
-    let cleaned = name;
-    // Run twice to catch double-encoded entities like &amp;amp;
-    for (let pass = 0; pass < 2; pass++) {
-      for (const [entity, char] of Object.entries(entityMap)) {
-        cleaned = cleaned.split(entity).join(char);
-      }
-    }
-
-    const baseFillerWords = [
-      "the\\s+ultimate",
-      "the\\s+best",
-      "must[- ]?try",
-      "one[- ]?pot",
-      "one[- ]?pan",
-      "restaurant[- ]?style",
-      "crowd[- ]?pleasing",
-      "family[- ]?favorite",
-      "weeknight",
-      "ultimate",
-      "incredible",
-      "delicious",
-      "homemade",
-      "awesome",
-      "classic",
-      "perfect",
-      "amazing",
-      "lighter",
-      "light",
-      "skinny",
-      "simple",
-      "tasty",
-      "great",
-      "quick",
-      "super",
-      "easy",
-      "best",
-      "healthy",
-      "flavorful",
-      "favourite",
-      "favorite",
-      "famous",
-      "authentic",
-      "copycat",
-      "yummy",
-      "lazy",
-      "fresh",
-      "comfort",
-      "cozy",
-      "satisfying",
-      "crispy",
-      "juicy",
-      "sticky",
-      "tender",
-    ];
-    const veganWords = [
-      "plant[- ]?based",
-      "vegetarian",
-      "vegan",
-      "veggie",
-      "meatless",
-      "dairy[- ]?free",
-      "df",
-    ];
-    const glutenFreeWords = [
-      "gluten[- ]?free",
-      "wheat[- ]?free",
-      "flourless",
-      "gf",
-    ];
-
-    const customWordPatterns = this.getCustomFillerWordPatterns();
-    const mode = this.settings.fillerWordsMode ?? "auto";
-    const activePatterns = new Set<string>(
-      mode === "custom" ? customWordPatterns : baseFillerWords,
-    );
-
-    if (this.settings.filterVeganWords ?? true) {
-      veganWords.forEach((word) => activePatterns.add(word));
-    }
-    if (this.settings.filterGlutenFreeWords ?? true) {
-      glutenFreeWords.forEach((word) => activePatterns.add(word));
-    }
-
-    for (const word of activePatterns) {
-      const regex = new RegExp(`\\b${word}\\b`, "gi");
-      cleaned = cleaned.replace(regex, "");
-    }
-
-    // Remove empty or whitespace-only parentheses left after keyword stripping
-    cleaned = cleaned.replace(/\(\s*\)/g, "");
-
-    // Tidy up leftover punctuation, symbols, and whitespace
-    cleaned = cleaned.replace(/[\s,\-–—&|]+/g, " ").trim();
-
-    // If the result is ALL CAPS (or mostly), convert to Title Case
-    const upper = cleaned.replace(/\s/g, "");
-    if (upper.length > 0 && upper === upper.toUpperCase()) {
-      cleaned = cleaned.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-    }
-
-    // Fall back to the original name if stripping removed everything
-    return cleaned || name;
-  }
-
-  private getCustomFillerWordPatterns(): string[] {
-    const raw = this.settings.customFillerWords || "";
-    return raw
-      .split(/[\n,]+/)
-      .map((word) => word.trim())
-      .filter((word) => word.length > 0)
-      .map((word) => this.toLooseWordPattern(word));
-  }
-
-  private toLooseWordPattern(word: string): string {
-    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return escaped.replace(/\s+/g, "[-\\s]+");
-  }
-
-  /**
-   * Format an ISO 8601 duration string (e.g. "PT1H30M") into a human-readable
-   * string (e.g. "1h 30m "). Returns the original string if it doesn't start with "PT".
-   */
-  private formatIsoDuration(duration: string): string {
-    const raw = duration.trim();
-    if (!raw.startsWith("PT")) return raw;
-    return raw
-      .replace("PT", "")
-      .replace("H", "h ")
-      .replace("M", "m ")
-      .replace("S", "s ");
-  }
-
-  /**
-   * In order to make templating easier. Lets normalize the types of recipe images
-   * to a single string url
-   */
-  /**
-   * Strip inline HTML tags from a schema text value and collapse whitespace.
-   * Each tag becomes a space so adjacent words aren't joined. Entity decoding
-   * is intentionally left to the final, settings-gated decodeHtmlEntities pass.
-   */
-  private stripHtml(value: unknown): string {
-    if (typeof value !== "string") return "";
-    return value
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  private normalizeImages(recipe: ParsedRecipe): void {
-    const image = recipe.image;
-    if (typeof image === "string") {
-      return;
-    }
-
-    if (Array.isArray(image)) {
-      const first: unknown = image[0];
-      if (typeof first === "string") {
-        recipe.image = first;
-        return;
-      }
-      if (isJsonRecord(first) && typeof first.url === "string") {
-        recipe.image = first.url;
-        return;
-      }
-    }
-
-    /**
-     * Although the spec does not show ImageObject as a top level option, it is
-     * used in some big sites.
-     */
-    if (isJsonRecord(image) && typeof image.url === "string") {
-      recipe.image = image.url;
-    }
   }
 
   /**
@@ -2658,6 +1632,132 @@ export default class RecipeVault extends Plugin {
    * When `options.thumbnail` is set, a downscaled gallery thumbnail is also
    * generated alongside the saved image (see {@link createThumbnail}).
    */
+  /**
+   * Download a recipe's remote `image` into the vault and rewrite the field to
+   * the saved path. No-op when the image is missing or already a local path.
+   *
+   * The URL importer does the same thing inline, plus the per-step instruction
+   * images. Worth folding the two together, but that block returns out of the
+   * whole import on a missing filename, so it isn't a clean lift.
+   */
+  private async saveRemoteMainImage(
+    recipe: ParsedRecipe,
+    file: TFile,
+  ): Promise<void> {
+    const image = recipe.image;
+    if (typeof image !== "string" || !/^https?:\/\//i.test(image)) return;
+
+    const rawName = recipe.name;
+    const filename =
+      typeof rawName === "string"
+        ? rawName.replace(/\s+/g, "-").replace(/"|\*|\\|\/|<|>|:|\?/g, "")
+        : "";
+    if (!filename) return;
+
+    if (this.settings.imgFolder != "") {
+      await this.folderCheck(this.settings.imgFolder);
+      if (this.settings.saveImgSubdir) {
+        await this.folderCheck(this.settings.imgFolder + "/" + filename);
+      }
+    }
+
+    const imgFile = await this.fetchImage(filename, image, file, undefined, {
+      thumbnail: true,
+    });
+    if (imgFile) {
+      recipe.image = imgFile.path;
+    }
+  }
+
+  /**
+   * Create recipe notes from a `.json` / `.jsonld` file already in the vault.
+   *
+   * The file goes through the same normalize pass as a web page, so a Recipe
+   * nested in an `@graph`, a bare array, or a single object all work. No
+   * `sourceUrl` is passed: a standalone file has no page, so the recipe keeps
+   * whatever `url` it carries and gets none if it has none.
+   */
+  private importRecipeFromJsonLdFile = async (file: TFile): Promise<void> => {
+    try {
+      const raw = await this.app.vault.read(file);
+
+      let json: unknown;
+      try {
+        json = JSON.parse(raw);
+      } catch {
+        new Notice(`${file.name} isn't valid JSON.`);
+        return;
+      }
+
+      const recipes = core.parseRecipesFromJsonLd([json], this.fetchOptions());
+      if (recipes.length === 0) {
+        new Notice(
+          `No schema.org Recipe found in ${file.name}. It needs a node with "@type": "Recipe".`,
+        );
+        return;
+      }
+
+      let saved = 0;
+      for (const recipe of recipes) {
+        const note = await this.saveParsedRecipe(recipe, { source: "jsonld" });
+        if (note) saved += 1;
+      }
+
+      // saveParsedRecipe already notices each note it creates, so only say
+      // something here when one file turned into several.
+      if (saved > 1) {
+        new Notice(`Imported ${saved} recipes from ${file.name}.`);
+      }
+    } catch (error) {
+      console.error("Recipe Vault: JSON-LD import failed", file.path, error);
+      const msg = error instanceof Error ? error.message : String(error);
+      new Notice(`JSON-LD import failed: ${msg}`, 10000);
+    }
+  };
+
+  /**
+   * Write a recipe note back out as a `.json` JSON-LD file next to it, so it
+   * can be handed to someone using a different recipe app.
+   *
+   * The note is what gets read, not a stored copy of the original import, so
+   * any edits since come along. An existing export is overwritten: the note is
+   * the source of truth and a stale export next to it is worse than none.
+   */
+  private exportRecipeAsJsonLd = async (file: TFile): Promise<void> => {
+    try {
+      const markdown = await this.app.vault.read(file);
+      const recipe = noteToJsonLd(markdown, { name: file.basename });
+
+      if (!recipe.recipeIngredient && !recipe.recipeInstructions) {
+        new Notice(
+          `${file.basename} has no Ingredients or Instructions section to export.`,
+        );
+        return;
+      }
+
+      const folder = file.parent?.path ?? "";
+      const outPath = normalizePath(
+        folder === "" || folder === "/"
+          ? `${file.basename}.json`
+          : `${folder}/${file.basename}.json`,
+      );
+      const body = JSON.stringify(recipe, null, 2);
+
+      const existing = this.app.vault.getAbstractFileByPath(outPath);
+      if (existing instanceof TFile) {
+        await this.app.vault.modify(existing, body);
+      } else {
+        await this.app.vault.create(outPath, body);
+      }
+
+      new Notice(`Exported to ${outPath}`);
+    } catch (error) {
+      console.error("Recipe Vault: JSON-LD export failed", file.path, error);
+      const msg = error instanceof Error ? error.message : String(error);
+      new Notice(`JSON-LD export failed: ${msg}`, 10000);
+    }
+  };
+
   private async fetchImage(
     filename: string,
     imgUrl: unknown,

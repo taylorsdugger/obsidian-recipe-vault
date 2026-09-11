@@ -33,6 +33,19 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The web app has its own vitest config - the root one roots at the repo
+      # and would never see apps/web/test - and its own tsc and vite build.
+      # None of that runs above, so a broken worker or a failing week-maths
+      # test would have sailed through CI.
+      - name: Test web app
+        run: npm test --workspace @recipe-vault/web
+
+      - name: Typecheck web app
+        run: npm run typecheck --workspace @recipe-vault/web
+
+      - name: Build web app
+        run: npm run build --workspace @recipe-vault/web
+
       - name: Check release files are at repo root
         run: |
           for f in main.js manifest.json styles.css; do

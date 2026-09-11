@@ -77,11 +77,40 @@ export function parseShoppingLine(
   }
 
   // Strip parenthetical prep notes like "(, minced)" or "(packed)" or "(, finely diced)"
-  name = name.replace(/\s*\([^)]*\)/g, "").trim();
+  name = stripParentheticals(name);
   // Strip trailing comma-separated descriptors like ", minced" or ", or 2 pureed tomatoes"
   name = name.replace(/,.*$/, "").trim();
 
   return { amount, unit, name: name.toLowerCase().trim(), sources };
+}
+
+/**
+ * Remove parenthetical prep notes, counting depth rather than stopping at the
+ * first `)`.
+ *
+ * WP Recipe Maker publishes its ingredient-notes field already wrapped in
+ * parentheses, so a note that contains its own arrives in the source's JSON-LD
+ * doubled: "1 medium shallot ((minced))". A non-nesting `\([^)]*\)` matches
+ * "((minced)" and strands the final ")" on the name, which is how "shallot)"
+ * ended up on a shopping list.
+ *
+ * An unclosed "(" swallows the rest of the line. It is the start of a note the
+ * source truncated, and the alternative is "flour (sifted" on the list.
+ */
+function stripParentheticals(text: string): string {
+  let out = "";
+  let depth = 0;
+
+  for (const ch of text) {
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      // A closer with nothing open is stray punctuation, not an ingredient.
+      if (depth > 0) depth--;
+    } else if (depth === 0) out += ch;
+  }
+
+  // Removing a group from the middle leaves the spaces that surrounded it.
+  return out.replace(/\s{2,}/g, " ").trim();
 }
 
 /** Normalize raw unit strings to a canonical form. Returns "" if not recognised. */
@@ -142,6 +171,7 @@ export function normalizeIngredientUnit(raw: string): string {
     head: "head",
     heads: "head",
     handful: "handful",
+    handfuls: "handful",
     stalk: "stalk",
     stalks: "stalk",
   };

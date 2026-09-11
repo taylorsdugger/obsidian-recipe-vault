@@ -1,0 +1,14 @@
+# Copy to .dev.vars for local `wrangler dev`. That file is gitignored.
+#
+# Generate both values with:
+#   node scripts/hash-password.mjs
+#
+# For the deployed worker, set them as secrets instead:
+#   npx wrangler secret put AUTH_PASSWORD_HASH
+#   npx wrangler secret put AUTH_COOKIE_SECRET
+
+# PBKDF2 hash of the household password: pbkdf2$sha256$<iterations>$<salt>$<hash>
+AUTH_PASSWORD_HASH=""
+
+# Signs the session cookie. Rotating it signs every device out.
+AUTH_COOKIE_SECRET=""

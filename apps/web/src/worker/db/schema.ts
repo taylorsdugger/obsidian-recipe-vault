@@ -1,0 +1,104 @@
+import {
+  integer,
+  real,
+  sqliteTable,
+  text,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
+
+/**
+ * The rendered note is the source of truth (locked decision 2). Everything
+ * else on this table is derived from `markdown` on every write, so the later
+ * vault sync is a file copy rather than a migration.
+ */
+export const recipes = sqliteTable(
+  "recipes",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    author: text("author"),
+    sourceUrl: text("source_url"),
+    photoUrl: text("photo_url"),
+    /** Comma string, same shape as the note's frontmatter. */
+    mealType: text("meal_type"),
+    cookTime: text("cook_time"),
+    cookTimeMins: integer("cook_time_mins"),
+    /** JSON string[], derived from the body's `### Ingredients` section. */
+    ingredients: text("ingredients").notNull().default("[]"),
+    timesMade: integer("times_made").notNull().default(0),
+    lastMade: text("last_made"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    /**
+     * The object key this note came from in the synced vault. Unique, so a
+     * re-import updates its own row rather than adding a copy. Null for
+     * recipes imported from a URL in the app.
+     */
+    vaultKey: text("vault_key"),
+    /**
+     * The note's R2 etag when this row was last written from or to the vault.
+     * Writes are conditional on it, so a note Obsidian changed underneath the
+     * app is refused rather than overwritten.
+     */
+    vaultEtag: text("vault_etag"),
+  },
+  (table) => [
+    index("recipes_title_idx").on(table.title),
+    uniqueIndex("recipes_vault_key_idx").on(table.vaultKey),
+  ],
+);
+
+/** One meal on one day. Either a recipe or free text, not both. */
+export const planEntries = sqliteTable(
+  "plan_entries",
+  {
+    id: text("id").primaryKey(),
+    /** YYYY-MM-DD. */
+    date: text("date").notNull(),
+    slot: text("slot").notNull().default("dinner"),
+    recipeId: text("recipe_id").references(() => recipes.id, {
+      onDelete: "cascade",
+    }),
+    note: text("note"),
+    position: integer("position").notNull().default(0),
+    /**
+     * Reheating Thursday's curry, not cooking it again. The row keeps its
+     * `recipeId` so the week can still draw the photo and tap through, and
+     * `mergedPlanItems` skips it so the shop doesn't buy the ingredients a
+     * second time. Meaningless without a recipe; a free-text night is already
+     * whatever you typed.
+     */
+    leftovers: integer("leftovers", { mode: "boolean" })
+      .notNull()
+      .default(false),
+  },
+  (table) => [index("plan_entries_date_idx").on(table.date)],
+);
+
+/**
+ * No longer the shopping list. The list lives in the vault note now
+ * (`src/worker/shopping-store.ts`), so the app and Obsidian share one list
+ * instead of two that drift.
+ *
+ * The table is left in place rather than dropped: the rows are somebody's
+ * groceries until they have been carried over, and a migration that deletes
+ * them is not undoable. Nothing reads or writes this.
+ */
+export const shoppingItems = sqliteTable("shopping_items", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  amount: real("amount").notNull().default(0),
+  unit: text("unit").notNull().default(""),
+  checked: integer("checked").notNull().default(0),
+  /** JSON string[] of recipe names, rendered as the *(Source)* annotation. */
+  sources: text("sources").notNull().default("[]"),
+  original: text("original"),
+  position: integer("position").notNull().default(0),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export type RecipeRow = typeof recipes.$inferSelect;
+export type PlanEntryRow = typeof planEntries.$inferSelect;
+export type ShoppingItemRow = typeof shoppingItems.$inferSelect;
