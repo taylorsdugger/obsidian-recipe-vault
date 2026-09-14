@@ -74,7 +74,7 @@ export function PlanListPreview({
             type="button"
             class="btn-primary w-full"
             disabled={busy || wanted === 0}
-            onClick={confirm}
+            onClick={() => void confirm()}
           >
             {wanted === 0 ? "Nothing selected" : `Add ${wanted} to the list`}
           </button>

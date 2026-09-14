@@ -21,7 +21,7 @@
   "license": "MIT",
   "dependencies": {
     "@recipe-vault/core": "*",
-    "drizzle-orm": "^0.44.6",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.9.10",
     "nanoid": "^5.1.6",
     "preact": "^10.27.2"

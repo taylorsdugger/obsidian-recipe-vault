@@ -172,7 +172,7 @@ export class SettingsTab extends PluginSettingTab {
           });
       });
 
-    const saveImgDescription = activeDocument.createDocumentFragment();
+    const saveImgDescription = createFragment();
     saveImgDescription.append(
       "Save images imported by recipes. If empty, will follow: Files and links > new attachment location. See ",
       saveImgDescription.createEl("a", {
@@ -214,7 +214,7 @@ export class SettingsTab extends PluginSettingTab {
           });
       });
 
-    const saveImgSubdirDescription = activeDocument.createDocumentFragment();
+    const saveImgSubdirDescription = createFragment();
     saveImgSubdirDescription.append(
       "Create a subdirectory for each recipe to store images. A parent directory needs to be set above.",
     );
@@ -231,7 +231,7 @@ export class SettingsTab extends PluginSettingTab {
           });
       });
 
-    const templateDescription = activeDocument.createDocumentFragment();
+    const templateDescription = createFragment();
     templateDescription.append(
       "Here you can edit the Template for newly created files. See ",
       templateDescription.createEl("a", {

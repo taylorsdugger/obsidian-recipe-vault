@@ -1,4 +1,5 @@
 import { useEffect } from "preact/hooks";
+import { useScrollLock } from "../scroll";
 
 /**
  * A recipe's photo, filling the screen.
@@ -21,17 +22,13 @@ export function PhotoViewer({
 }) {
   // Escape closes it, and the page behind stops scrolling - the same two things
   // the bottom sheet does, for the same reason.
+  useScrollLock();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   return (

@@ -26,7 +26,9 @@ export function VaultImport() {
     api
       .vaultStatus()
       .then(setStatus)
-      .catch((err) => setError(err.message));
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : String(err)),
+      );
   }, [syncedAt]);
 
   const run = async () => {
@@ -64,7 +66,7 @@ export function VaultImport() {
         type="button"
         class="btn-quiet w-full"
         disabled={running}
-        onClick={run}
+        onClick={() => void run()}
       >
         {running ? "Syncing…" : "Sync now"}
       </button>

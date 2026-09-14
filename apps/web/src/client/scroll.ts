@@ -9,6 +9,8 @@
  * screen drives rather than something the router can do on its own.
  */
 
+import { useEffect } from "preact/hooks";
+
 let container: HTMLElement | null = null;
 
 /** Set once by `App`, which owns the scrolling element. */
@@ -48,4 +50,23 @@ export function restoreScroll(key: string): boolean {
 /** Back to the top, for when the content changed under the screen. */
 export function scrollToTop(): void {
   if (container) container.scrollTop = 0;
+}
+
+/**
+ * Hold the page still while something is open on top of it.
+ *
+ * Counted, because the photo viewer can open over a sheet and the one that
+ * closes first shouldn't hand scrolling back to the page underneath.
+ */
+let locks = 0;
+
+export function useScrollLock(): void {
+  useEffect(() => {
+    locks += 1;
+    document.body.classList.add("scroll-locked");
+    return () => {
+      locks -= 1;
+      if (locks === 0) document.body.classList.remove("scroll-locked");
+    };
+  }, []);
 }

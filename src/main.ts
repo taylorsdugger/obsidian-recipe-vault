@@ -613,7 +613,13 @@ export default class RecipeVault extends Plugin {
     }, 0);
   }
 
-  async onload() {
+  onload() {
+    // Obsidian types `onload` as returning void, and the setup here is async,
+    // so the body lives in `init` and this just kicks it off.
+    void this.init();
+  }
+
+  private async init() {
     await this.loadSettings();
     await this.loadIngredientIndex();
     // Reconcile the index against the vault once files are ready — re-reads only
@@ -1109,7 +1115,7 @@ export default class RecipeVault extends Plugin {
     );
     if (existing.length > 0) {
       this.app.workspace.setActiveLeaf(existing[0], { focus: true });
-      await this.app.workspace.revealLeaf(existing[0]);
+      this.app.workspace.revealLeaf(existing[0]);
       return;
     }
 
@@ -1122,7 +1128,7 @@ export default class RecipeVault extends Plugin {
       active: true,
     });
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
-    await this.app.workspace.revealLeaf(leaf);
+    this.app.workspace.revealLeaf(leaf);
   }
 
   async loadSettings() {
@@ -1246,8 +1252,8 @@ export default class RecipeVault extends Plugin {
       // pages can have multiple recipes, lets add them all
       for (const recipe of recipes) {
         if (this.settings.debug) {
-          console.log(recipe);
-          console.log(markdown(recipe));
+          console.debug(recipe);
+          console.debug(markdown(recipe));
         }
         // this will download the images and replace the json "recipe.image" value with the path of the image file.
         if (this.settings.saveImg && file) {
@@ -1486,7 +1492,7 @@ export default class RecipeVault extends Plugin {
       const source = opts.source ?? "photo";
       // The template always writes `times_made: 0`, so any history carried in
       // by the import has to be put back afterwards.
-      const vaultState = readRecipeVaultState(recipe as JsonRecord);
+      const vaultState = readRecipeVaultState(recipe);
       await this.app.fileManager.processFrontMatter(file, (fm: JsonRecord) => {
         fm.source = source;
         if (vaultState.timesMade !== undefined) {
@@ -1856,7 +1862,7 @@ export default class RecipeVault extends Plugin {
       const width = Math.max(1, Math.round(bitmap.width * scale));
       const height = Math.max(1, Math.round(bitmap.height * scale));
 
-      const canvas = activeDocument.createElement("canvas");
+      const canvas = createEl("canvas");
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d");

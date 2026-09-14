@@ -69,14 +69,13 @@ export function RecipePicker({
       };
     }
 
-    const timer = setTimeout(load, 200);
+    const timer = window.setTimeout(load, 200);
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      window.clearTimeout(timer);
     };
     // `recipes` is deliberately not a dependency: it only decides whether this
     // is the first load, and depending on it would refetch on every result.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   const addNote = (event: Event) => {

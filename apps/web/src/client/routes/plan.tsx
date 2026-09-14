@@ -68,7 +68,7 @@ function EntryRow({
 
   return (
     <li
-      ref={(el) => onRow(entry.id, el as HTMLElement | null)}
+      ref={(el) => onRow(entry.id, el)}
       class={`flex items-center gap-1 ${
         dragging ? "relative z-10 rounded-lg bg-surface shadow-md" : ""
       }`}
@@ -97,8 +97,8 @@ function EntryRow({
           aria-label={`Move ${recipe ? recipe.title : (entry.note ?? "this meal")}. Drag it to another slot or another day, or use the arrow keys to reorder the day.`}
           class="grid w-5 shrink-0 cursor-grab touch-none place-items-center self-stretch rounded text-faint transition-colors active:bg-canvas disabled:opacity-25"
           disabled={busy && !dragging}
-          onPointerDown={(event) => onGrab(entry, event as PointerEvent)}
-          onPointerMove={(event) => onDrag(event as PointerEvent)}
+          onPointerDown={(event) => onGrab(entry, event)}
+          onPointerMove={(event) => onDrag(event)}
           onPointerUp={onDrop}
           onPointerCancel={onDrop}
           onKeyDown={(event) => {
@@ -580,9 +580,9 @@ export function Plan() {
         scroller.scrollTop += by;
         applyPointer(pointerY.current);
       }
-      scrolling.current = requestAnimationFrame(step);
+      scrolling.current = window.requestAnimationFrame(step);
     };
-    scrolling.current = requestAnimationFrame(step);
+    scrolling.current = window.requestAnimationFrame(step);
   };
 
   /** Let go. A drop back where it started writes nothing. */
@@ -591,7 +591,7 @@ export function Plan() {
     dragRef.current = null;
     grabbed.current = null;
     if (scrolling.current) {
-      cancelAnimationFrame(scrolling.current);
+      window.cancelAnimationFrame(scrolling.current);
       scrolling.current = 0;
     }
     setDrag(null);
@@ -772,9 +772,7 @@ export function Plan() {
                   </li>
                 )}
                 <li
-                  ref={(el) =>
-                    registerDay(dateKey(date), el as HTMLElement | null)
-                  }
+                  ref={(el) => registerDay(dateKey(date), el)}
                   class={`flex gap-3 px-3 py-1.5 ${today ? "bg-accent/6" : ""} ${
                     // The day a held meal would land on. Worth saying out loud:
                     // an empty day has no rows to slide aside, so without this
@@ -804,8 +802,8 @@ export function Plan() {
                           <EntryRow
                             key={entry.id}
                             entry={entry}
-                            onRemove={remove}
-                            onLeftovers={leftovers}
+                            onRemove={(target) => void remove(target)}
+                            onLeftovers={(target) => void leftovers(target)}
                             onMove={(target, delta) => void move(target, delta)}
                             onGrab={grab}
                             onDrag={dragTo}

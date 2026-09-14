@@ -259,11 +259,11 @@ export function List() {
       }
     };
 
-    load();
-    const timer = setInterval(load, POLL_MS);
+    void load();
+    const timer = window.setInterval(() => void load(), POLL_MS);
     return () => {
       stopped = true;
-      clearInterval(timer);
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -377,7 +377,7 @@ export function List() {
         key={item.id}
         item={item}
         busy={busy}
-        onToggle={toggle}
+        onToggle={(target) => void toggle(target)}
         onCount={(target, count) => void setCount(target, count)}
         onEdit={(target) => setEditing(target.id)}
       />
@@ -390,7 +390,7 @@ export function List() {
 
   return (
     <div class="screen space-y-4 pb-8">
-      <form class="flex gap-2" onSubmit={add}>
+      <form class="flex gap-2" onSubmit={(event) => void add(event)}>
         <input
           class="field flex-1"
           placeholder="Add an item"
@@ -437,7 +437,7 @@ export function List() {
               type="button"
               class="text-sm text-muted underline underline-offset-4 disabled:opacity-40"
               disabled={busy}
-              onClick={clearChecked}
+              onClick={() => void clearChecked()}
             >
               Clear {done.length}
             </button>
