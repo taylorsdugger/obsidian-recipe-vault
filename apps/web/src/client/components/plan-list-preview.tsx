@@ -54,6 +54,14 @@ export function PlanListPreview({
   };
 
   const wanted = (items?.length ?? 0) - skip.size;
+  /**
+   * One control, not two. With everything ticked the only useful move is to
+   * clear it and pick the few you want; with anything unticked it's to start
+   * over. So the label says whichever of those you're one tap away from.
+   */
+  const allOn = skip.size === 0;
+  const toggleAll = () =>
+    setSkip(allOn ? new Set((items ?? []).map((item) => item.name)) : new Set());
 
   return (
     <Sheet
@@ -84,9 +92,20 @@ export function PlanListPreview({
 
         {items && items.length > 0 && (
           <>
-            <p class="text-sm text-muted">
-              Uncheck anything you already have.
-            </p>
+            <div class="flex items-baseline justify-between gap-3 px-1">
+              <p class="min-w-0 text-sm text-muted">
+                Uncheck anything you already have.
+              </p>
+              {/* Padded out to a real thumb target, then pulled back by the
+                  same amount so it still sits on the hint's baseline. */}
+              <button
+                type="button"
+                class="-my-2 shrink-0 px-1 py-2 text-sm text-muted underline underline-offset-4"
+                onClick={toggleAll}
+              >
+                {allOn ? "Uncheck all" : "Select all"}
+              </button>
+            </div>
             <ul class="card divide-y divide-line overflow-hidden">
               {items.map((item) => {
                 const off = skip.has(item.name);

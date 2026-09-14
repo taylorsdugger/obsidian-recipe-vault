@@ -37,6 +37,19 @@ export function weekDays(monday: Date): Date[] {
   return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
 }
 
+/**
+ * The eight rows the plan draws: Monday through Sunday, then the Monday after.
+ *
+ * That last day belongs to the next week and shows up there again as its first
+ * row. The duplicate is the point - on Saturday what you want to know is what
+ * Monday looks like, and paging forward to find out loses the week you were
+ * reading. The week itself is still the seven, which is what the header labels
+ * and what the shop buys for.
+ */
+export function weekDaysWithPeek(monday: Date): Date[] {
+  return Array.from({ length: 8 }, (_, i) => addDays(monday, i));
+}
+
 /** "Mon". */
 export function dayName(date: Date): string {
   return date.toLocaleDateString(undefined, { weekday: "short" });

@@ -14,7 +14,13 @@ vi.mock("../src/client/api", () => ({
 
 const { addLeftoversNextDay } = await import("../src/client/leftovers");
 
-const RECIPE = { id: "r1", title: "Curry", photoUrl: null, cookTime: "45m" };
+const RECIPE = {
+  id: "r1",
+  title: "Curry",
+  photoUrl: null,
+  cookTime: "45m",
+  lastMade: null,
+};
 
 /** A day's worth of entries, as `GET /api/plan` would answer. */
 function entry(over: Partial<PlanEntry> = {}): PlanEntry {
