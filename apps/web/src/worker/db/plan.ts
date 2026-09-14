@@ -21,6 +21,8 @@ export interface PlanEntryJson {
     title: string;
     photoUrl: string | null;
     cookTime: string | null;
+    /** So home can tell this was already marked made today. */
+    lastMade: string | null;
   } | null;
 }
 
@@ -45,6 +47,7 @@ export async function planEntriesInRange(
       title: schema.recipes.title,
       photoUrl: schema.recipes.photoUrl,
       cookTime: schema.recipes.cookTime,
+      lastMade: schema.recipes.lastMade,
     })
     .from(schema.planEntries)
     .leftJoin(
@@ -72,6 +75,7 @@ export async function planEntriesInRange(
           title: row.title ?? "Untitled recipe",
           photoUrl: row.photoUrl,
           cookTime: row.cookTime,
+          lastMade: row.lastMade,
         }
       : null,
   }));

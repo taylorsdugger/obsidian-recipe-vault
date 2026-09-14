@@ -4,9 +4,12 @@ import { removeCheckedItems } from "@recipe-vault/core/shopping/markdown";
 
 import {
   applyMerge,
+  bareText,
   linesOf,
   removeLine,
   setChecked,
+  setText,
+  withAmount,
   type ShoppingNote,
 } from "../src/worker/shopping-store";
 
@@ -120,5 +123,76 @@ describe("shopping note edits", () => {
     expect(flour?.item.amount).toBe(3);
     expect(flour?.item.unit).toBe("cup");
     expect(flour?.item.sources).toEqual(["Banana Bread", "Pancakes"]);
+  });
+});
+
+/**
+ * Editing a row and stepping its count are the same line edit, and both have
+ * the same way to go wrong: rewriting the line from the parse instead of from
+ * the text, which eats the prep note.
+ */
+describe("editing a line", () => {
+  const NOTE = [
+    "# Shopping List",
+    "",
+    "- [ ] 1 onion, diced",
+    "- [x] 2 cups flour *(Banana Bread)*",
+    "- [ ] eggs",
+    "",
+  ].join("\n");
+
+  it("opens the edit box on the cook's own words, not the parse", () => {
+    const lines = linesOf(NOTE);
+    // `formatItemText` would say "1 onion" here. The comma and what follows it
+    // are what the edit box has to show.
+    expect(bareText(lines[0].item.original)).toBe("1 onion, diced");
+    // The source annotation belongs to the app, so it isn't in the box.
+    expect(bareText(lines[1].item.original)).toBe("2 cups flour");
+  });
+
+  it("writes the new text verbatim and keeps the box and the source", () => {
+    const next = setText(NOTE, 3, "3 cups bread flour");
+    expect(next.split("\n")[3]).toBe(
+      "- [x] 3 cups bread flour *(Banana Bread)*",
+    );
+    // The header and the neighbours don't move.
+    expect(next.split("\n")[2]).toBe("- [ ] 1 onion, diced");
+    expect(next.split("\n").length).toBe(NOTE.split("\n").length);
+  });
+
+  it("doesn't give a line two source annotations", () => {
+    const next = setText(NOTE, 3, "3 cups flour *(Pancakes)*");
+    expect(next.split("\n")[3]).toBe("- [x] 3 cups flour *(Pancakes)*");
+  });
+
+  it("leaves a line index that isn't an item alone", () => {
+    expect(setText(NOTE, 0, "nope")).toBe(NOTE);
+    expect(setText(NOTE, 99, "nope")).toBe(NOTE);
+  });
+
+  it("steps a count without touching the rest of the line", () => {
+    expect(withAmount("1 onion, diced", 3)).toBe("3 onion, diced");
+    expect(withAmount("eggs", 2)).toBe("2 eggs");
+    expect(withAmount("2 eggs", 5)).toBe("5 eggs");
+  });
+
+  it("drops the number at one rather than writing '1 eggs'", () => {
+    expect(withAmount("2 eggs", 1)).toBe("eggs");
+    expect(withAmount("eggs", 1)).toBe("eggs");
+  });
+
+  it("writes a count that parses back out as an amount", () => {
+    const next = setText(NOTE, 4, withAmount("eggs", 3));
+    expect(next.split("\n")[4]).toBe("- [ ] 3 eggs");
+    const reread = linesOf(next).find((l) => l.item.name === "eggs");
+    expect(reread?.item.amount).toBe(3);
+    expect(reread?.item.unit).toBe("");
+  });
+
+  it("replaces a fraction rather than leaving it in front", () => {
+    // Unicode and ASCII both, or "1/2 lemon" would step to "2 1/2 lemon".
+    expect(withAmount("1/2 lemon", 2)).toBe("2 lemon");
+    expect(withAmount("\u00bd lemon", 2)).toBe("2 lemon");
+    expect(withAmount("1 1/2 onion", 2)).toBe("2 onion");
   });
 });

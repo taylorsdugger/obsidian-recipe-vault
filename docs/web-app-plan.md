@@ -1,7 +1,7 @@
 # Implementation Plan: shared core + household web app
 
 > **Status:** STEP 1 DONE, STEP 2 DONE, DEPLOYED,
-> updated 2026-09-10.
+> updated 2026-09-11.
 > Step 1 passed the 1e dev vault check, so a patch release is all that's left
 > there. The web app is deployed to Cloudflare and in use: import, the
 > gallery, the recipe screen, the shared shopping list, the week plan, the
@@ -11,12 +11,35 @@
 > D1 table, so the app and Obsidian share one list. Recipes sort A-Z.
 > `wrangler` is at 4.130.0 after the dev server kept crashing on 4.129.0.
 > **Branch when written:** `docs/landing-page` (clean, at `8bbdfe1`).
-> **Branch now:** `core/note-template`, at `859a820`. The plan screen, the
-> shopping-list move and the sort change are all committed now.
-> Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green.
+> **Branch now:** `main`. PR #14 merged `core/note-template` in at `bb46bea`,
+> carrying the whole core extraction and the web app. Migration `0004` has
+> been applied to the remote D1.
+> Plugin is at `1.2.5`, 1k marketplace downloads. Tests, lint, build all green:
+> 204 core and plugin tests, 18 web tests.
 > **Author of plan:** design session 2026-09-02.
 >
+> **Loose ends:**
+> - 47 of the 174 notes in the vault still carry doubled parentheses in their
+>   ingredients. New imports are fixed; these keep it until they are
+>   re-imported or edited. The shopping list is right either way.
+> - Prettier has drifted on six files in `apps/web` (`sync.ts`,
+>   `plan-list-preview.tsx`, `index.html` among them). It is not enforced in
+>   CI for the web app, which is why it drifted. Worth one sweep.
+> - No plugin release is tagged from this branch. `main.js`, `manifest.json`
+>   and `versions.json` are unchanged, and `main.js` is current with `src`.
+>
 > **Progress log:**
+> - 2026-09-11: the app icon redrawn. It was meant to be a bowl of something
+>   hot and was reading as an upside-down tray, for three reasons that were all
+>   geometry: the rim overhung the bowl by about 40% of its radius each side,
+>   which makes a lid; the steam floated a gap most of the bowl's radius above
+>   it, and detached marks don't read as coming off anything; and it was three
+>   straight strokes fanned symmetrically, which reads as rays. The bowl is now
+>   an ellipse cut at its centre - deeper, and its widest point is the rim line
+>   by construction. `make-icons.mjs` gained `sdEllipse`, `sdStroke` and a
+>   `wisp()` that samples a sine into a polyline; the wisps are built once at
+>   module scope, since `paint()` runs sixteen times a pixel. The same bowl is
+>   now the photo placeholder in the app.
 > - 2026-09-11: two parser fixes, both from the same source quirk. WP Recipe
 >   Maker wraps its ingredient-notes field in parentheses, so a note that
 >   already carries its own is published doubled - minimalistbaker.com's own
@@ -25,6 +48,9 @@
 >   stopping at the first ")", which is what had been putting "shallot)" on
 >   the list. 47 of the 174 notes already in the vault carry the doubled form;
 >   the parser fix only changes what future imports write.
+> - 2026-09-11: CI now runs the web app's tests, typecheck and build. It had
+>   been green without touching `apps/web` at all - see the open question
+>   below, which this settles.
 > - 2026-09-11: a design pass over the whole app. One page shell, a named type
 >   scale, and shared classes for the patterns that had been copied around
 >   (`screen`, `screen-head`, `icon-btn`, `add-inline`, `label`, `pill`,

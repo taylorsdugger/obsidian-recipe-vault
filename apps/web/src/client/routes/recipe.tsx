@@ -5,7 +5,8 @@ import { readFrontmatter } from "@recipe-vault/core/note/frontmatter";
 import { useEffect, useMemo, useState } from "preact/hooks";
 
 import { api, type RecipeDetail } from "../api";
-import { shortDate, spaced } from "../format";
+import { PhotoViewer } from "../components/photo-viewer";
+import { madeToday, shortDate, spaced } from "../format";
 import { navigate } from "../router";
 
 /**
@@ -21,6 +22,7 @@ export function Recipe({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
 
   useEffect(() => {
     api
@@ -143,6 +145,8 @@ export function Recipe({ id }: { id: string }) {
     );
   }
 
+  const alreadyMade = madeToday(recipe.lastMade);
+
   const madeLabel =
     recipe.timesMade > 0
       ? `Made ${recipe.timesMade}${recipe.timesMade === 1 ? " time" : " times"}`
@@ -159,12 +163,25 @@ export function Recipe({ id }: { id: string }) {
           top corners read as unfinished against the canvas, so they round. */}
       <div class="relative sm:overflow-hidden sm:rounded-t-2xl">
         {recipe.photoUrl ? (
-          <img class="h-44 w-full object-cover" src={recipe.photoUrl} alt="" />
+          // The crop here is deliberate, so tapping it opens the whole photo.
+          <button
+            type="button"
+            class="block w-full cursor-zoom-in"
+            aria-label={`View the photo of ${recipe.title}`}
+            onClick={() => setZoomed(true)}
+          >
+            <img
+              class="h-44 w-full object-cover"
+              src={recipe.photoUrl}
+              alt=""
+            />
+          </button>
         ) : (
           <div class="h-24 w-full bg-linear-to-b from-canvas to-surface" />
         )}
         {recipe.photoUrl && (
-          <div class="absolute inset-x-0 bottom-0 h-20 bg-linear-to-t from-black/45 to-transparent" />
+          // Under the sheet's lap, and not in the way of the tap above it.
+          <div class="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-linear-to-t from-black/45 to-transparent" />
         )}
       </div>
 
@@ -190,13 +207,16 @@ export function Recipe({ id }: { id: string }) {
           {recipe.author && <p class="text-sm text-muted">{recipe.author}</p>}
 
           <div class="flex gap-2 pt-1">
+            {/* Nobody cooks the same thing twice in one day, so once it's been
+                marked the only thing a second tap can be is a double tap. The
+                label says why it's off rather than leaving a dead button. */}
             <button
               type="button"
               class="btn-primary flex-1"
-              disabled={busy}
+              disabled={busy || alreadyMade}
               onClick={markMade}
             >
-              Mark made
+              {alreadyMade ? "Made today" : "Mark made"}
             </button>
             <button
               type="button"
@@ -323,6 +343,14 @@ export function Recipe({ id }: { id: string }) {
           </p>
         )}
       </div>
+
+      {zoomed && recipe.photoUrl && (
+        <PhotoViewer
+          src={recipe.photoUrl}
+          alt={recipe.title}
+          onClose={() => setZoomed(false)}
+        />
+      )}
 
       {/* Sits above the tab bar so the button is reachable with a thumb no
           matter how far down the ingredient list you are. */}

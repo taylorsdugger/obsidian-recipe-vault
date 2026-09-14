@@ -147,6 +147,11 @@ export const recipeRoutes = new Hono<AppBindings>()
    * "We made this tonight." The count lives in the note's frontmatter, the
    * same field Obsidian shows, so this rewrites the note rather than only
    * bumping a column.
+   *
+   * The date comes from the phone, the same way the plan's days do. A Worker
+   * has no idea what day it is where you are: `toISOString()` is UTC, so
+   * cooking something at 8pm in Chicago used to stamp it with tomorrow - and
+   * "made today" is now something the app has to be able to answer.
    */
   .post("/:id/made", async (c) => {
     const database = db(c.env.DB);
@@ -157,7 +162,16 @@ export const recipeRoutes = new Hono<AppBindings>()
       .limit(1);
     if (!row) return c.json({ error: "No such recipe." }, 404);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const sent = await c.req
+      .json<{ date?: unknown }>()
+      .catch((): { date?: unknown } => ({}));
+    // UTC is the fallback for an older client that sends nothing, which is
+    // what this did for every call before today.
+    const today =
+      typeof sent.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sent.date)
+        ? sent.date
+        : new Date().toISOString().slice(0, 10);
+
     const markdown = setFrontmatterValues(row.markdown, {
       times_made: row.timesMade + 1,
       last_made: today,

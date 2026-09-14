@@ -136,6 +136,70 @@ export function setChecked(
   return lines.join("\n");
 }
 
+/**
+ * The `*(A, B)*` annotation at the end of a line. Written by whoever sent the
+ * ingredients over, not by the cook, so an edit keeps it rather than making
+ * you retype it.
+ */
+const SOURCES_RE = /\s*\*\([^)]+\)\*\s*$/;
+
+/** The line as the cook would type it: no checkbox, no source annotation. */
+export function bareText(original: string): string {
+  return original.replace(SOURCES_RE, "").trim();
+}
+
+/**
+ * Rewrite one line's text with what the user typed, verbatim.
+ *
+ * Verbatim is the whole point. Re-rendering the item through
+ * `parseShoppingLine` would hand back "1 onion" for "1 onion, diced", so the
+ * edit box would quietly eat the prep note the first time you fixed a typo.
+ * The checkbox and the `*(Source)*` keep their place around the new text.
+ */
+export function setText(
+  markdown: string,
+  lineIndex: number,
+  text: string,
+): string {
+  const lines = markdown.split("\n");
+  const line = lines[lineIndex];
+  if (line === undefined) return markdown;
+
+  const box = line.match(ITEM_RE);
+  if (!box) return markdown;
+
+  const typed = text.trim();
+  // Someone editing a line that ends in *(Chili)* can retype it themselves;
+  // carrying the old one through as well would give the line two.
+  const sources = SOURCES_RE.test(typed)
+    ? ""
+    : (line.slice(box[0].length).match(SOURCES_RE)?.[0].trimEnd() ?? "");
+
+  lines[lineIndex] = `${box[0]} ${typed}${sources}`;
+  return lines.join("\n");
+}
+
+/**
+ * A leading count, in the shapes `parseShoppingLine` reads back: "2", "1/2",
+ * "1 1/2", or a unicode fraction. Anything this writes has to parse again or
+ * the number would stop being an amount the next time the note is read.
+ */
+const LEADING_AMOUNT =
+  /^(?:\d+\s+\d+\/\d+|\d+\/\d+|\d+|[\u00bd\u00bc\u00be\u2153\u2154\u215b\u215c\u215d\u215e])\s*/;
+
+/**
+ * Set the count on a countable line - the stepper on the list screen.
+ *
+ * One drops the number rather than writing it. An item with no number is one
+ * of it, which is how "eggs" reads on a list and how it parses back out;
+ * "1 eggs" is worse than either. Everything after the number is left alone, so
+ * "2 onions, diced" steps to "3 onions, diced".
+ */
+export function withAmount(text: string, count: number): string {
+  const rest = text.replace(LEADING_AMOUNT, "").trim();
+  return count > 1 ? `${count} ${rest}` : rest;
+}
+
 /** Drop one line outright, for a mistyped free-text row. */
 export function removeLine(markdown: string, lineIndex: number): string {
   const lines = markdown.split("\n");

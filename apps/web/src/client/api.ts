@@ -1,3 +1,5 @@
+import { dateKey } from "./week";
+
 /** Thin wrapper over fetch for the JSON API. Throws on a non-2xx body. */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -58,6 +60,15 @@ export interface ListItem {
   text: string;
   name: string;
   sources: string[];
+  /**
+   * The line as it's written in the note, without the checkbox or the
+   * `*(Source)*`. What the edit box opens on, and what a step rewrites.
+   */
+  raw: string;
+  /** 0 when the line carried no number, which the list reads as one. */
+  amount: number;
+  /** "" for a countable thing. Only countables get a stepper. */
+  unit: string;
 }
 
 /** Just enough of a recipe to draw the card on a plan day. */
@@ -66,6 +77,8 @@ export interface PlanRecipe {
   title: string;
   photoUrl: string | null;
   cookTime: string | null;
+  /** `YYYY-MM-DD`, so home can tell you've already marked it made today. */
+  lastMade: string | null;
 }
 
 /** One meal on one day. `recipe` is null for a free-text entry. */
@@ -162,10 +175,14 @@ export const api = {
   deleteRecipe: (id: string) =>
     request<{ deleted: string }>(`/recipes/${id}`, { method: "DELETE" }),
 
+  /**
+   * The date goes up with it. The Worker has no idea what day it is where the
+   * phone is, and "made today" has to mean the day you're standing in.
+   */
   markMade: (id: string) =>
     request<{ id: string; timesMade: number; lastMade: string }>(
       `/recipes/${id}/made`,
-      { method: "POST" },
+      { method: "POST", body: JSON.stringify({ date: dateKey(new Date()) }) },
     ),
 
   plan: (from: string, to: string) =>
@@ -207,6 +224,23 @@ export const api = {
     request<{ item: ListItem }>(`/list/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify({ checked }),
+    }),
+
+  /**
+   * Rewrite one item's line. The whole list comes back rather than the row:
+   * renaming an item changes its id, so there'd be nothing to match on.
+   */
+  editListItem: (id: string, text: string) =>
+    request<{ items: ListItem[] }>(`/list/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
+    }),
+
+  /** The − / + on a countable row. One drops the number off the line. */
+  setListAmount: (id: string, amount: number) =>
+    request<{ items: ListItem[] }>(`/list/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ amount }),
     }),
 
   clearChecked: () =>

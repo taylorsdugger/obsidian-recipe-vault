@@ -5,6 +5,7 @@ import {
   dateKey,
   mondayOf,
   weekDays,
+  weekDaysWithPeek,
   weekLabel,
 } from "../src/client/week";
 
@@ -33,6 +34,19 @@ describe("week", () => {
     expect(days).toHaveLength(7);
     expect(dateKey(days[0])).toBe("2026-09-07");
     expect(dateKey(days[6])).toBe("2026-09-13");
+  });
+
+  it("peeks at the Monday after Sunday without moving the week", () => {
+    const days = weekDaysWithPeek(mondayOf(new Date(2026, 8, 10)));
+    expect(days).toHaveLength(8);
+    // Same seven days, then next week's Monday - which is the row that turns
+    // up again as the first day of that week.
+    expect(dateKey(days[0])).toBe("2026-09-07");
+    expect(dateKey(days[6])).toBe("2026-09-13");
+    expect(dateKey(days[7])).toBe("2026-09-14");
+    expect(dateKey(mondayOf(days[7]))).toBe("2026-09-14");
+    // The header still labels a seven-day week.
+    expect(weekLabel(days[0])).toBe(weekLabel(mondayOf(new Date(2026, 8, 10))));
   });
 
   it("crosses a month and a year without drifting", () => {

@@ -16,6 +16,17 @@ export function setScrollContainer(el: HTMLElement | null): void {
   container = el;
 }
 
+/**
+ * The scrolling element itself, for the plan's drag.
+ *
+ * A drag across days has to survive the list scrolling underneath it, so it
+ * measures everything in this container's coordinates rather than the
+ * viewport's, and nudges it when a meal is held near an edge.
+ */
+export function scrollContainer(): HTMLElement | null {
+  return container;
+}
+
 const positions = new Map<string, number>();
 
 /** Save where this screen is now. Call it on the way out. */

@@ -8,6 +8,7 @@ import {
   type RecipeSummary,
 } from "../api";
 import { RecipePhoto } from "../components/recipe-photo";
+import { madeToday } from "../format";
 import { RecipePicker } from "../components/recipe-picker";
 import { addLeftoversNextDay } from "../leftovers";
 import { navigate } from "../router";
@@ -72,6 +73,7 @@ function Tonight({
   onLeftovers: (recipe: PlanRecipe) => void;
 }) {
   const recipe = entry.recipe;
+  const alreadyMade = madeToday(recipe?.lastMade ?? null);
 
   // A free-text night - leftovers, out, someone else is cooking. Nothing to
   // open and nothing to mark, so it's just the words.
@@ -112,13 +114,16 @@ function Tonight({
           night it was cooked, and leftovers of leftovers is a fridge problem. */}
       {!entry.leftovers && (
         <div class="px-4 pb-3">
+          {/* Off for the rest of the day once it's been marked. This is the
+              button you walk past all evening, so a second tap is always a
+              double tap rather than a second dinner. */}
           <button
             type="button"
             class="btn-primary w-full"
-            disabled={busy}
+            disabled={busy || alreadyMade}
             onClick={() => onMade(recipe)}
           >
-            Mark made
+            {alreadyMade ? "Made today" : "Mark made"}
           </button>
 
           {/* The same quiet inline affordance the plan screen uses to add a
@@ -227,6 +232,16 @@ export function Home() {
     setStatus(null);
     try {
       const res = await api.markMade(recipe.id);
+      // Every entry for this recipe, not just tonight's: the same dish can be
+      // on the plan twice, and it's been made whichever card you tapped.
+      setEntries(
+        (current) =>
+          current?.map((entry) =>
+            entry.recipe?.id === recipe.id
+              ? { ...entry, recipe: { ...entry.recipe, lastMade: res.lastMade } }
+              : entry,
+          ) ?? null,
+      );
       setStatus(
         `Marked made. That's ${res.timesMade} ${
           res.timesMade === 1 ? "time" : "times"

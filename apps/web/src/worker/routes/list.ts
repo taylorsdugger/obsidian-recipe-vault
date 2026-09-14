@@ -4,12 +4,15 @@ import { removeCheckedItems } from "@recipe-vault/core/shopping/markdown";
 import type { AppBindings } from "../env";
 import {
   applyMerge,
+  bareText,
   formatItemText,
   itemsFromLines,
   mutateList,
   readList,
   removeLine,
   setChecked,
+  setText,
+  withAmount,
   type ListLine,
   type ShoppingNote,
 } from "../shopping-store";
@@ -31,6 +34,15 @@ function toJson(line: ListLine) {
     text: formatItemText(item),
     name: item.name,
     sources: item.sources,
+    /**
+     * What the line actually says, so the edit box opens on the cook's own
+     * words. `text` is the parse rendered back out and has already lost
+     * ", diced"; prefilling an editor with that would make saving a typo fix
+     * delete the prep note.
+     */
+    raw: bareText(item.original),
+    amount: item.amount,
+    unit: item.unit,
   };
 }
 
@@ -86,36 +98,77 @@ export const listRoutes = new Hono<AppBindings>()
     return c.json({ merged, added, ...body(note) });
   })
 
-  /** Check or uncheck one item. The client toggles optimistically. */
+  /**
+   * Change one item: tick it, rewrite it, or step its count.
+   *
+   * All three are one line edit. They share a route because they share the
+   * lookup and the compare-and-swap, and only ever one of the three fields is
+   * sent.
+   */
   .patch("/:id", async (c) => {
-    const raw = await c.req
-      .json<{ checked?: unknown }>()
-      .catch((): { checked?: unknown } => ({}));
-    if (typeof raw.checked !== "boolean") {
-      return c.json({ error: "Send `checked` as true or false." }, 400);
-    }
+    type Change = { checked?: unknown; text?: unknown; amount?: unknown };
+    const raw = await c.req.json<Change>().catch((): Change => ({}));
 
     // Hono has already percent-decoded this. Decoding again would throw on a
     // name with a literal '%' in it - "50% cream" is a real thing to buy.
     const id = c.req.param("id");
-    const checked = raw.checked;
-    let missing = false;
 
+    if (typeof raw.checked === "boolean") {
+      const checked = raw.checked;
+      let missing = false;
+
+      const note = await mutateList(c.env, (current) => {
+        const line = findByName(current, id);
+        if (!line) {
+          missing = true;
+          return null;
+        }
+        // Already in the wanted state - the other phone tapped it too.
+        if (line.item.checked === checked) return null;
+        return setChecked(current.markdown, line.lineIndex, checked);
+      });
+
+      if (missing) return c.json({ error: "No such item." }, 404);
+
+      const line = findByName(note, id);
+      return c.json({ item: line ? toJson(line) : null, ...body(note) });
+    }
+
+    const text = typeof raw.text === "string" ? raw.text.trim() : null;
+    // Counts are whole things. One is the floor: below it the item isn't on
+    // the list any more, which is what the delete route is for.
+    const count =
+      typeof raw.amount === "number" && Number.isFinite(raw.amount)
+        ? Math.max(1, Math.round(raw.amount))
+        : null;
+
+    if (text === null && count === null) {
+      return c.json(
+        { error: "Send `checked`, `text` or `amount` to change." },
+        400,
+      );
+    }
+    if (text !== null && !text) {
+      return c.json({ error: "Give the item a name." }, 400);
+    }
+
+    let missing = false;
     const note = await mutateList(c.env, (current) => {
       const line = findByName(current, id);
       if (!line) {
         missing = true;
         return null;
       }
-      // Already in the wanted state - the other phone tapped it too.
-      if (line.item.checked === checked) return null;
-      return setChecked(current.markdown, line.lineIndex, checked);
+      const next = text ?? withAmount(bareText(line.item.original), count!);
+      if (next === bareText(line.item.original)) return null;
+      return setText(current.markdown, line.lineIndex, next);
     });
 
     if (missing) return c.json({ error: "No such item." }, 404);
 
-    const line = findByName(note, id);
-    return c.json({ item: line ? toJson(line) : null });
+    // The whole list, not the one row: an edit can rename the item, and the
+    // name is the id, so the client has nothing left to look the row up by.
+    return c.json(body(note));
   })
 
   /**
