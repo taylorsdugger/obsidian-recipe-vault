@@ -24,7 +24,10 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <div class="flex h-full items-center justify-center p-6">
-      <form class="w-full max-w-xs space-y-4" onSubmit={submit}>
+      <form
+        class="w-full max-w-xs space-y-4"
+        onSubmit={(event) => void submit(event)}
+      >
         <h1 class="text-center text-2xl font-semibold">Recipe Vault</h1>
         <input
           class="field min-h-12"

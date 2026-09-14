@@ -69,7 +69,7 @@ export function Recipes() {
   useEffect(() => {
     let cancelled = false;
     // Wait out the typing before hitting the API on every keystroke.
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       api
         .recipes(query.trim(), sort)
         .then((res) => {
@@ -78,14 +78,15 @@ export function Recipes() {
             setError(null);
           }
         })
-        .catch((err) => {
-          if (!cancelled) setError(err.message);
+        .catch((err: unknown) => {
+          if (!cancelled)
+            setError(err instanceof Error ? err.message : String(err));
         });
     }, 200);
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      window.clearTimeout(timer);
     };
   }, [query, sort, syncTick]);
 

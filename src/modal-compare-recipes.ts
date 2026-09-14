@@ -58,15 +58,15 @@ export class CompareRecipesModal extends Modal {
       if (recipe.meal_type.length > 0) {
         const tagsEl = card.createDiv({ cls: "compare-modal-tags" });
         for (const tag of recipe.meal_type) {
-          tagsEl.createEl("span", { text: tag, cls: "rg-tag" });
+          tagsEl.createSpan({ text: tag, cls: "rg-tag" });
         }
       }
 
       const meta = card.createDiv({ cls: "compare-modal-meta" });
       if (recipe.cook_time) {
-        meta.createEl("span", { text: `⏱ ${recipe.cook_time}` });
+        meta.createSpan({ text: `⏱ ${recipe.cook_time}` });
       }
-      meta.createEl("span", { text: `✓ ${recipe.times_made}×` });
+      meta.createSpan({ text: `✓ ${recipe.times_made}×` });
 
       const openBtn = card.createEl("button", {
         text: "Open →",

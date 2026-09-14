@@ -129,7 +129,7 @@ export function Import() {
                 type="button"
                 class="btn-primary w-full"
                 disabled={busy}
-                onClick={() => save(recipe)}
+                onClick={() => void save(recipe)}
               >
                 Save
               </button>

@@ -38,6 +38,14 @@
     -webkit-text-size-adjust: 100%;
   }
 
+  /*
+   * Set on the body while a sheet or the photo viewer is up, so the page
+   * behind doesn't scroll under a flick on the backdrop. See `useScrollLock`.
+   */
+  body.scroll-locked {
+    overflow: hidden;
+  }
+
   /* Kitchen use: never let a tap target be smaller than a fingertip. */
   button,
   a,

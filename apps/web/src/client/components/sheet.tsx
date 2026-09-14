@@ -1,4 +1,5 @@
 import { useEffect } from "preact/hooks";
+import { useScrollLock } from "../scroll";
 import type { ComponentChildren } from "preact";
 
 /**
@@ -26,17 +27,13 @@ export function Sheet({
 }) {
   // Escape closes it on a desktop keyboard, and the page behind stops
   // scrolling so a flick on the backdrop doesn't move the week underneath.
+  useScrollLock();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   return (
@@ -63,7 +60,7 @@ export function Sheet({
           onScroll={
             onNearEnd &&
             ((event) => {
-              const el = event.currentTarget as HTMLDivElement;
+              const el = event.currentTarget;
               if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) {
                 onNearEnd();
               }

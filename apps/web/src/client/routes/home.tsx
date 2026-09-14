@@ -326,8 +326,8 @@ export function Home() {
         <Tonight
           entry={hero}
           busy={busy}
-          onMade={markMade}
-          onLeftovers={leftoversTomorrow}
+          onMade={(recipe) => void markMade(recipe)}
+          onLeftovers={(recipe) => void leftoversTomorrow(recipe)}
         />
       ) : (
         // `entries` is null until the first fetch lands. Drawing "nothing

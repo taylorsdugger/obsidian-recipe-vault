@@ -23,12 +23,15 @@ export function Recipe({ id }: { id: string }) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     api
       .recipe(id)
       .then((res) => setRecipe(res.recipe))
-      .catch((err) => setError(err.message));
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : String(err)),
+      );
   }, [id]);
 
   const sections = useMemo(
@@ -112,6 +115,19 @@ export function Recipe({ id }: { id: string }) {
     }
   };
 
+  const deleteRecipe = async () => {
+    setBusy(true);
+    try {
+      await api.deleteRecipe(recipe.id);
+      navigate("/recipes");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err));
+      setConfirmingDelete(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (editing) {
     return (
       <div class="mx-auto flex h-full w-full max-w-2xl flex-col gap-3 p-4">
@@ -129,7 +145,7 @@ export function Recipe({ id }: { id: string }) {
             type="button"
             class="btn-primary flex-1"
             disabled={busy}
-            onClick={saveEdit}
+            onClick={() => void saveEdit()}
           >
             Save
           </button>
@@ -214,7 +230,7 @@ export function Recipe({ id }: { id: string }) {
               type="button"
               class="btn-primary flex-1"
               disabled={busy || alreadyMade}
-              onClick={markMade}
+              onClick={() => void markMade()}
             >
               {alreadyMade ? "Made today" : "Mark made"}
             </button>
@@ -312,29 +328,43 @@ export function Recipe({ id }: { id: string }) {
           </section>
         )}
 
+        {/* Asked in the page rather than with `confirm()`: a system dialog
+            looks out of place in a standalone PWA, and this removes the note
+            from the vault too, so the warning needs the room to say so. */}
         <div class="mt-8 px-4">
-          <button
-            type="button"
-            class="text-sm text-muted underline underline-offset-4"
-            onClick={async () => {
-              // This removes the note from the vault too, so it needs to say so.
-              if (
-                !confirm(
-                  `Delete "${recipe.title}"? This deletes the note from the vault as well.`,
-                )
-              ) {
-                return;
-              }
-              try {
-                await api.deleteRecipe(recipe.id);
-                navigate("/recipes");
-              } catch (err) {
-                setStatus(err instanceof Error ? err.message : String(err));
-              }
-            }}
-          >
-            Delete recipe
-          </button>
+          {confirmingDelete ? (
+            <div class="card space-y-3 p-4">
+              <p class="text-sm">
+                Delete “{recipe.title}”? This deletes the note from the vault as
+                well.
+              </p>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  class="btn-primary flex-1"
+                  disabled={busy}
+                  onClick={() => void deleteRecipe()}
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  class="btn-quiet"
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              class="text-sm text-muted underline underline-offset-4"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Delete recipe
+            </button>
+          )}
         </div>
 
         {frontmatter.created && (
@@ -361,7 +391,7 @@ export function Recipe({ id }: { id: string }) {
               type="button"
               class="btn-primary w-full"
               disabled={busy}
-              onClick={sendToList}
+              onClick={() => void sendToList()}
             >
               Send {checked.size} to the list
             </button>

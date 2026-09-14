@@ -29,13 +29,17 @@ const CONTENT_TYPES: Record<string, string> = {
   ".avif": "image/avif",
 };
 
+/** What `/import` accepts. Everything is checked before it's used. */
+interface ImportBody {
+  offset?: unknown;
+  dryRun?: unknown;
+  prefix?: unknown;
+}
+
 function extensionOf(key: string): string {
   const dot = key.lastIndexOf(".");
   return dot === -1 ? "" : key.slice(dot).toLowerCase();
 }
-
-/** What happened to one note. */
-type Outcome = "added" | "updated" | "skipped";
 
 /** Every `.md` under the prefix, with the etag the listing reports. */
 async function listNotes(
@@ -141,9 +145,7 @@ export const vaultRoutes = new Hono<AppBindings>()
    * Works in batches. Pass back `nextOffset` until it comes back null.
    */
   .post("/import", async (c) => {
-    const body = await c.req
-      .json<{ offset?: unknown; dryRun?: unknown; prefix?: unknown }>()
-      .catch(() => ({}) as Record<string, unknown>);
+    const body = await c.req.json<ImportBody>().catch((): ImportBody => ({}));
 
     const prefix = typeof body.prefix === "string" ? body.prefix : RECIPE_PREFIX;
     const offset = Number.isInteger(body.offset) ? (body.offset as number) : 0;

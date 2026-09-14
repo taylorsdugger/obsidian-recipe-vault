@@ -36,7 +36,7 @@
 .markdown-preview-view.recipe-note, .markdown-source-view.mod-cm6.recipe-note, .recipe-note {
   --recipe-surface: var(--background-secondary);
   @supports (color: color-mix(in lab, red, red)) {
-    --recipe-surface: color-mix(in srgb, var(--background-secondary) 92%, white 8%);
+    --recipe-surface: color-mix(in srgb, var(--background-secondary) 92%, #fff 8%);
   }
   --recipe-border: var(--background-modifier-border);
   @supports (color: color-mix(in lab, red, red)) {

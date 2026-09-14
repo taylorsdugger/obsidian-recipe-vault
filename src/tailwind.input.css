@@ -60,7 +60,7 @@
 .markdown-preview-view.recipe-note,
 .markdown-source-view.mod-cm6.recipe-note,
 .recipe-note {
-	--recipe-surface: color-mix(in srgb, var(--background-secondary) 92%, white 8%);
+	--recipe-surface: color-mix(in srgb, var(--background-secondary) 92%, #fff 8%);
 	--recipe-border: color-mix(in srgb, var(--background-modifier-border) 78%, var(--color-accent) 22%);
 	--recipe-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
 }

@@ -52,9 +52,7 @@ export function deriveRecipeFields(markdown: string): DerivedRecipeFields {
     sourceUrl: orNull(fm.url),
     // v1 stores remote URLs only (locked decision 7). A vault-local path from
     // an imported note would be meaningless here, so drop it.
-    photoUrl: orNull(fm.photo)?.startsWith("http")
-      ? (orNull(fm.photo) as string)
-      : null,
+    photoUrl: orNull(fm.photo)?.startsWith("http") ? orNull(fm.photo) : null,
     mealType: orNull(fm.meal_type),
     cookTime,
     cookTimeMins: cookTimeToMinutes(cookTime ?? undefined),
