@@ -65,11 +65,12 @@ const PLURAL_UNITS: Record<string, string> = {
   head: "heads",
   handful: "handfuls",
   stalk: "stalks",
+  stick: "sticks",
 };
 
 /** "cup" for one or less, "cups" past that. */
 export function pluraliseUnit(unit: string, amount: number): string {
-  return amount > 1 ? (PLURAL_UNITS[unit] ?? unit) : unit;
+  return amount > 1 ? PLURAL_UNITS[unit] ?? unit : unit;
 }
 
 /** Format a numeric amount as a readable string with unicode fractions. */

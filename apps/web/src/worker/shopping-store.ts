@@ -1,6 +1,18 @@
-import { itemFromLine, mergeShoppingItems, type ShoppingItem } from "@recipe-vault/core";
-import { parseShoppingListMarkdown } from "@recipe-vault/core/shopping/markdown";
-import { formatIngredientAmount } from "@recipe-vault/core/shopping/units";
+import {
+  itemFromLine,
+  mergeShoppingItems,
+  type ShoppingItem,
+} from "@recipe-vault/core";
+import {
+  aisleOrder,
+  categorizeIngredient,
+} from "@recipe-vault/core/shopping/aisles";
+import {
+  formatShoppingItemText,
+  parseShoppingListMarkdown,
+  shoppingItemDetail,
+  toShoppingLine,
+} from "@recipe-vault/core/shopping/markdown";
 
 import type { Env } from "./env";
 
@@ -129,10 +141,7 @@ export function setChecked(
   const line = lines[lineIndex];
   if (line === undefined || !ITEM_RE.test(line)) return markdown;
 
-  lines[lineIndex] = line.replace(
-    /^- \[[ xX]\]/,
-    checked ? "- [x]" : "- [ ]",
-  );
+  lines[lineIndex] = line.replace(/^- \[[ xX]\]/, checked ? "- [x]" : "- [ ]");
   return lines.join("\n");
 }
 
@@ -173,7 +182,7 @@ export function setText(
   // carrying the old one through as well would give the line two.
   const sources = SOURCES_RE.test(typed)
     ? ""
-    : (line.slice(box[0].length).match(SOURCES_RE)?.[0].trimEnd() ?? "");
+    : line.slice(box[0].length).match(SOURCES_RE)?.[0].trimEnd() ?? "";
 
   lines[lineIndex] = `${box[0]} ${typed}${sources}`;
   return lines.join("\n");
@@ -213,17 +222,17 @@ export function removeLine(markdown: string, lineIndex: number): string {
  * screen and the plan preview both render items this way.
  */
 export function formatItemText(item: ShoppingItem): string {
-  const amount = formatIngredientAmount(item.amount, item.unit);
-  return amount ? `${amount} ${item.name}` : item.name;
+  return formatShoppingItemText(item);
+}
+
+/** The aisle a row belongs to, which is how the list screen groups them. */
+export function aisleOf(item: ShoppingItem): string {
+  return categorizeIngredient(item.name);
 }
 
 /** Render one item as a note line. Only used for lines this app writes. */
 export function toLine(item: ShoppingItem): string {
-  const amount = formatIngredientAmount(item.amount, item.unit);
-  const display = amount ? `${amount} ${item.name}` : item.original;
-  const sources = item.sources.filter(Boolean);
-  const annotation = sources.length ? ` *(${sources.join(", ")})*` : "";
-  return `- [${item.checked ? "x" : " "}] ${display.trim()}${annotation}`;
+  return toShoppingLine(item);
 }
 
 /**
@@ -238,7 +247,11 @@ export function applyMerge(
   note: ShoppingNote,
   incoming: ShoppingItem[],
 ): { markdown: string; merged: number; added: number } {
-  const existing = note.lines.map((l) => ({ ...l.item, sources: [...l.item.sources] }));
+  const existing = note.lines.map((l) => ({
+    ...l.item,
+    sources: [...l.item.sources],
+    qualifiers: [...l.item.qualifiers],
+  }));
   const before = existing.length;
   const { items, mergedCount } = mergeShoppingItems(existing, incoming);
 
@@ -251,19 +264,138 @@ export function applyMerge(
     const unchanged =
       updated.amount === original.item.amount &&
       updated.unit === original.item.unit &&
-      updated.sources.length === original.item.sources.length;
+      updated.sources.length === original.item.sources.length &&
+      updated.qualifiers.length === original.item.qualifiers.length &&
+      updated.note === original.item.note;
     if (!unchanged) lines[original.lineIndex] = toLine(updated);
   }
 
-  const appended = items.slice(before);
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+
+  const appended = items.slice(before);
   for (const item of appended) lines.push(toLine(item));
 
+  // Then sort the whole block. A week's shop appended in recipe order is the
+  // thing that makes you walk the store three times - produce at the top, dry
+  // goods in the middle, more produce at the bottom. Sorting after the append
+  // rather than slotting each row in costs one pass and also tidies whatever
+  // was already on the list.
+  const merged = lines.join("\n") + "\n";
+
   return {
-    markdown: lines.join("\n") + "\n",
+    markdown: sortListLines(merged) ?? merged,
     merged: mergedCount,
     added: appended.length,
   };
+}
+
+/**
+ * Reorder the note's item lines by aisle, leaving every line's text alone.
+ *
+ * This is a permutation, not a re-render: each line moves as the string it
+ * already is, so a prep note the cook typed in Obsidian survives being
+ * sorted. Anything that isn't an item line - the header, a stray paragraph -
+ * stays at the index it was at.
+ *
+ * Returns null when the list is already in order, so the caller can skip the
+ * write.
+ */
+export function sortListLines(markdown: string): string | null {
+  const lines = markdown.split("\n");
+  const items = linesOf(markdown);
+  if (items.length < 2) return null;
+
+  const sorted = [...items].sort((a, b) => {
+    const byAisle = aisleOrder(aisleOf(a.item)) - aisleOrder(aisleOf(b.item));
+    return byAisle !== 0 ? byAisle : a.item.name.localeCompare(b.item.name);
+  });
+
+  // The slots the item lines already occupy. Sorting rewrites which line sits
+  // in which slot and touches nothing else in the file.
+  const slots = items.map((line) => line.lineIndex);
+  if (sorted.every((line, i) => line.lineIndex === slots[i])) return null;
+
+  const before = [...lines];
+  sorted.forEach((line, i) => {
+    lines[slots[i]] = before[line.lineIndex];
+  });
+  return lines.join("\n");
+}
+
+/**
+ * Combine the rows that are now the same row, then sort.
+ *
+ * A list built before the names were normalized has "1 onion" and "2 yellow
+ * onions" as two lines that both answer to "onion". Adding to the list can't
+ * fix those - the merge only looks at what is coming in - and they are a real
+ * problem, not just untidy: the row id *is* the name, so the second one's
+ * checkbox ticks the first one's line.
+ *
+ * Lines whose name is unique are left exactly as written. Only a name with
+ * more than one line gets re-rendered, into however many rows the merge says
+ * it is worth - incompatible units still come out as two. Non-item lines keep
+ * their place.
+ *
+ * Returns null when there was nothing to do.
+ */
+export function tidyList(
+  markdown: string,
+): { content: string; combined: number } | null {
+  const items = linesOf(markdown);
+
+  const groups = new Map<string, ListLine[]>();
+  for (const line of items) {
+    const group = groups.get(line.item.name);
+    if (group) group.push(line);
+    else groups.set(line.item.name, [line]);
+  }
+
+  /** lineIndex -> the text that line becomes. */
+  const rewritten = new Map<number, string>();
+  const dropped = new Set<number>();
+  let combined = 0;
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+
+    const parts = group.map((line) => ({
+      ...line.item,
+      sources: [...line.item.sources],
+      qualifiers: [...line.item.qualifiers],
+    }));
+    const merged = mergeShoppingItems([], parts);
+
+    // Still want it if any of the lines was still wanted.
+    const outstanding = group.some((line) => !line.item.checked);
+    const rows = merged.items.map((item) =>
+      toLine({ ...item, checked: outstanding ? false : item.checked }),
+    );
+
+    // The merged rows take the first lines of the group; the rest go.
+    group.forEach((line, i) => {
+      if (i < rows.length) rewritten.set(line.lineIndex, rows[i]);
+      else dropped.add(line.lineIndex);
+    });
+    combined += group.length - rows.length;
+  }
+
+  if (combined === 0) {
+    const sorted = sortListLines(markdown);
+    return sorted === null ? null : { content: sorted, combined: 0 };
+  }
+
+  const content = markdown
+    .split("\n")
+    .map((line, i) => (rewritten.has(i) ? rewritten.get(i)! : line))
+    .filter((_, i) => !dropped.has(i))
+    .join("\n");
+
+  return { content: sortListLines(content) ?? content, combined };
+}
+
+/** Every row's detail text: the qualifiers and prep notes on it. */
+export function detailOf(item: ShoppingItem): string {
+  return shoppingItemDetail(item);
 }
 
 /** Build items from free-text lines, the way the list screen's add box does. */

@@ -41,6 +41,46 @@ function countOf(item: ListItem): number {
   return item.amount > 0 ? item.amount : 1;
 }
 
+/**
+ * Rows grouped under one header per aisle.
+ *
+ * The server sends them in aisle order, so insertion order is store order.
+ * Grouping by aisle rather than by runs of the same aisle means a list that
+ * hasn't been sorted yet still gets one "Produce" header instead of three.
+ */
+function byAisle(items: ListItem[]): { label: string; items: ListItem[] }[] {
+  const groups = new Map<string, { label: string; items: ListItem[] }>();
+  for (const item of items) {
+    const group = groups.get(item.aisle);
+    if (group) group.items.push(item);
+    else groups.set(item.aisle, { label: item.aisleLabel, items: [item] });
+  }
+  return [...groups.values()];
+}
+
+/**
+ * Whether "Tidy up" has anything to do, which is the only time it's offered.
+ *
+ * Two things count. The lines have drifted out of aisle order - an aisle shows
+ * up, then another, then the first one again. Or two rows answer to the same
+ * name, which happens on a list built before the names were normalized and
+ * matters more than it looks: the row id *is* the name, so the second row's
+ * checkbox ticks the first row's line.
+ */
+function needsTidying(items: ListItem[]): boolean {
+  const seenAisle = new Set<string>();
+  const seenId = new Set<string>();
+  let last = "";
+  for (const item of items) {
+    if (seenId.has(item.id)) return true;
+    seenId.add(item.id);
+    if (item.aisle !== last && seenAisle.has(item.aisle)) return true;
+    seenAisle.add(item.aisle);
+    last = item.aisle;
+  }
+  return false;
+}
+
 /** A row being rewritten: one text box over the whole width, and a way out. */
 function EditRow({
   item,
@@ -150,9 +190,11 @@ function Row({
             )}
             <span class="font-medium">{name}</span>
           </span>
-          {item.sources.length > 0 && !item.checked && (
+          {/* What was lifted off the name to merge it, then where it came
+              from. One line: on a phone this is already the narrow part. */}
+          {!item.checked && (item.detail || item.sources.length > 0) && (
             <span class="mt-0.5 block truncate text-xs text-faint">
-              {item.sources.join(" · ")}
+              {[item.detail, ...item.sources].filter(Boolean).join(" · ")}
             </span>
           )}
         </span>
@@ -350,6 +392,19 @@ export function List() {
     }
   };
 
+  const tidy = async () => {
+    setBusy(true);
+    try {
+      const res = await api.tidyList();
+      setItems(res.items);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const clearChecked = async () => {
     setBusy(true);
     try {
@@ -418,14 +473,37 @@ export function List() {
       )}
 
       {todo.length > 0 && (
-        <section class="space-y-2">
-          <div class="flex items-baseline justify-between px-1">
+        <section class="space-y-4">
+          <div class="flex items-baseline justify-between gap-3 px-1">
             <h1 class="text-lg font-semibold">To get</h1>
-            <span class="text-sm text-faint tabular-nums">{todo.length}</span>
+            {/* Only when there is something to fix; a list that's already
+                combined and in order has nothing to offer here. */}
+            {needsTidying(items ?? []) ? (
+              <button
+                type="button"
+                class="shrink-0 text-sm text-muted underline underline-offset-4 disabled:opacity-40"
+                disabled={busy}
+                onClick={() => void tidy()}
+              >
+                Tidy up
+              </button>
+            ) : (
+              <span class="text-sm text-faint tabular-nums">{todo.length}</span>
+            )}
           </div>
-          <ul class="card divide-y divide-line overflow-hidden">
-            {todo.map(row)}
-          </ul>
+
+          {/* One card per aisle. The header is what stops you walking back
+              across the shop for the onion that came from the eighth recipe. */}
+          {byAisle(todo).map((group) => (
+            <div key={group.label} class="space-y-1.5">
+              <h2 class="px-1 text-xs font-medium uppercase tracking-wide text-faint">
+                {group.label}
+              </h2>
+              <ul class="card divide-y divide-line overflow-hidden">
+                {group.items.map(row)}
+              </ul>
+            </div>
+          ))}
         </section>
       )}
 

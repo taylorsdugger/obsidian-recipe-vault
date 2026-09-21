@@ -5,7 +5,9 @@ import type { PlanEntry } from "../src/client/api";
 const plan = vi.fn();
 const setPlanDay = vi.fn();
 
-vi.mock("../src/client/api", () => ({
+// Only the two requests are stubbed; `slotOf` and the rest are the real thing.
+vi.mock("../src/client/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/client/api")>()),
   api: {
     plan: (...args: unknown[]) => plan(...args),
     setPlanDay: (...args: unknown[]) => setPlanDay(...args),
@@ -79,12 +81,31 @@ describe("addLeftoversNextDay", () => {
 
     // The existing three come back untouched, with the new one appended.
     // Dropping `leftovers` on the way past would un-flag someone's reheat and
-    // put its ingredients back on the shop.
+    // put its ingredients back on the shop; dropping `slot` would move every
+    // breakfast on the day to dinner.
     expect(setPlanDay).toHaveBeenCalledWith("2026-09-11", [
-      { recipeId: "other", note: null, leftovers: false },
-      { recipeId: null, note: "Out", leftovers: false },
-      { recipeId: "soup", note: null, leftovers: true },
-      { recipeId: "r1", leftovers: true },
+      { recipeId: "other", note: null, slot: "dinner", leftovers: false },
+      { recipeId: null, note: "Out", slot: "dinner", leftovers: false },
+      { recipeId: "soup", note: null, slot: "dinner", leftovers: true },
+      { recipeId: "r1", slot: "dinner", leftovers: true },
+    ]);
+  });
+
+  it("keeps each meal in its own slot and puts the reheat in the cook's", async () => {
+    plan.mockResolvedValue({
+      entries: [
+        entry({ id: "a", slot: "breakfast", note: "Eggs" }),
+        // A row from before the plan had slots, or a value it doesn't know.
+        entry({ id: "b", slot: "brunch", note: "Out" }),
+      ],
+    });
+
+    await addLeftoversNextDay("2026-09-10", RECIPE, "lunch");
+
+    expect(setPlanDay).toHaveBeenCalledWith("2026-09-11", [
+      { recipeId: null, note: "Eggs", slot: "breakfast", leftovers: false },
+      { recipeId: null, note: "Out", slot: "dinner", leftovers: false },
+      { recipeId: "r1", slot: "lunch", leftovers: true },
     ]);
   });
 

@@ -3,12 +3,15 @@ import { itemFromLine } from "@recipe-vault/core";
 import { removeCheckedItems } from "@recipe-vault/core/shopping/markdown";
 
 import {
+  aisleOf,
   applyMerge,
   bareText,
   linesOf,
   removeLine,
   setChecked,
   setText,
+  sortListLines,
+  tidyList,
   withAmount,
   type ShoppingNote,
 } from "../src/worker/shopping-store";
@@ -37,9 +40,10 @@ describe("shopping note edits", () => {
 
   it("reads items in file order and finds their lines", () => {
     const lines = linesOf(HAND_WRITTEN);
+    // Names come back as the normalized merge key, so they are singular.
     expect(lines.map((l) => l.item.name)).toEqual([
       "onion",
-      "zucchini flowers",
+      "zucchini flower",
       "flour",
     ]);
     expect(lines.map((l) => l.lineIndex)).toEqual([4, 5, 6]);
@@ -70,7 +74,7 @@ describe("shopping note edits", () => {
     expect(setChecked(HAND_WRITTEN, 99, true)).toBe(HAND_WRITTEN);
   });
 
-  it("merges into the matching line and appends the rest", () => {
+  it("merges into the matching line and sorts the rest into their aisle", () => {
     const result = applyMerge(noteOf(HAND_WRITTEN), [
       itemFromLine("1 cup flour", "Pancakes"),
       itemFromLine("3 lemons", "Pancakes"),
@@ -80,14 +84,126 @@ describe("shopping note edits", () => {
     expect(result.added).toBe(1);
 
     const lines = result.markdown.split("\n");
-    // Flour went 2 cup + 1 cup = 3, and picked up the second source.
-    expect(lines[6]).toBe("- [ ] 3 cups flour *(Banana Bread, Pancakes)*");
-    // Lemons appended at the end.
-    expect(lines.at(-2)).toBe("- [ ] 3 lemons *(Pancakes)*");
-    // Header and the untouched lines survive verbatim.
+    // Produce first, then baking - the lemons land with the onion rather than
+    // on the end, and the flour drops below both.
+    expect(lines.slice(4, 8)).toEqual([
+      "- [ ] 3 lemons *(Pancakes)*",
+      "- [ ] 1 onion, diced",
+      "- [x] zucchini flowers",
+      "- [ ] 3 cups flour *(Banana Bread, Pancakes)*",
+    ]);
+    // The header stays where it was, above the items.
     expect(lines[2]).toBe("Costco run, not the corner shop.");
-    expect(lines[4]).toBe("- [ ] 1 onion, diced");
-    expect(lines[5]).toBe("- [x] zucchini flowers");
+  });
+
+  it("sorting moves lines without rewriting them", () => {
+    // The whole reason sorting is a permutation and not a re-render: ", diced"
+    // and "zucchini flowers" are the cook's words, and a parse-and-render
+    // round trip would hand back "1 onion" and "zucchini flower".
+    const sorted = sortListLines(
+      [
+        "# Shopping List",
+        "- [ ] 2 cups flour *(Banana Bread)*",
+        "- [ ] 1 onion, diced",
+        "- [x] zucchini flowers",
+        "",
+      ].join("\n"),
+    );
+
+    expect(sorted?.split("\n").slice(1, 4)).toEqual([
+      "- [ ] 1 onion, diced",
+      "- [x] zucchini flowers",
+      "- [ ] 2 cups flour *(Banana Bread)*",
+    ]);
+  });
+
+  it("says nothing to do when the list is already in order", () => {
+    expect(sortListLines(HAND_WRITTEN)).toBeNull();
+  });
+
+  /**
+   * A list built before the names were normalized has rows that now answer to
+   * the same name. That is worse than untidy: the row id *is* the name, so the
+   * second row's checkbox ticks the first row's line.
+   */
+  describe("tidying a list that already has the duplicates", () => {
+    const MESSY = [
+      "# Shopping List",
+      "",
+      "- [ ] 1 large onion",
+      "- [ ] 2 cups flour *(Bread)*",
+      "- [ ] 2 yellow onions, diced",
+      "- [x] 1 cup flour *(Cake)*",
+      "- [ ] 3 carrots",
+      "",
+    ].join("\n");
+
+    it("combines the rows that are the same row, then sorts", () => {
+      const result = tidyList(MESSY);
+      expect(result?.combined).toBe(2);
+
+      const lines = result!.content.split("\n");
+      expect(lines.slice(2, 5)).toEqual([
+        "- [ ] 3 carrots",
+        "- [ ] 3 onions (large, yellow, diced)",
+        "- [ ] 3 cups flour *(Bread, Cake)*",
+      ]);
+      // Two lines fewer, and the header didn't move.
+      expect(lines[0]).toBe("# Shopping List");
+      expect(
+        result!.content.split("\n").filter((l) => l.startsWith("- [")),
+      ).toHaveLength(3);
+    });
+
+    it("leaves a combined row wanted if any part of it still was", () => {
+      // One cup of flour was in the basket and two weren't. You still need flour.
+      const flour = tidyList(MESSY)!
+        .content.split("\n")
+        .find((line) => line.includes("flour"));
+      expect(flour?.startsWith("- [ ]")).toBe(true);
+    });
+
+    it("leaves a line whose name is unique exactly as written", () => {
+      // "3 carrots" had no duplicate, so it is the original string, not a
+      // re-render - which is what keeps a prep note typed in Obsidian.
+      const note = [
+        "- [ ] 1 onion, finely diced by hand",
+        "- [ ] 2 cups flour",
+        "- [ ] 1 cup flour",
+        "",
+      ].join("\n");
+      expect(tidyList(note)!.content).toContain(
+        "- [ ] 1 onion, finely diced by hand",
+      );
+    });
+
+    it("says nothing to do when the list is already tidy", () => {
+      expect(tidyList(HAND_WRITTEN)).toBeNull();
+    });
+
+    it("sorts without combining when there is nothing to combine", () => {
+      const result = tidyList(
+        ["- [ ] 2 cups flour", "- [ ] 1 onion", ""].join("\n"),
+      );
+      expect(result?.combined).toBe(0);
+      expect(result?.content.split("\n").slice(0, 2)).toEqual([
+        "- [ ] 1 onion",
+        "- [ ] 2 cups flour",
+      ]);
+    });
+  });
+
+  it("puts things in the aisle they are actually in", () => {
+    const aisle = (line: string) => aisleOf(itemFromLine(line, ""));
+    expect(aisle("2 yellow onions")).toBe("produce");
+    expect(aisle("1 lb ground beef")).toBe("meat");
+    // "chicken broth" is a can, not the meat counter, even though a meat
+    // names it.
+    expect(aisle("4 cups chicken broth")).toBe("canned");
+    expect(aisle("1 tsp kosher salt")).toBe("spices");
+    expect(aisle("2 tbsp extra-virgin olive oil")).toBe("condiments");
+    // Nothing in the dictionary. Sorts last rather than guessing.
+    expect(aisle("1 packet dinosaur-shaped whatsits")).toBe("other");
   });
 
   it("builds a note from nothing when the vault has no list yet", () => {
@@ -184,7 +300,7 @@ describe("editing a line", () => {
   it("writes a count that parses back out as an amount", () => {
     const next = setText(NOTE, 4, withAmount("eggs", 3));
     expect(next.split("\n")[4]).toBe("- [ ] 3 eggs");
-    const reread = linesOf(next).find((l) => l.item.name === "eggs");
+    const reread = linesOf(next).find((l) => l.item.name === "egg");
     expect(reread?.item.amount).toBe(3);
     expect(reread?.item.unit).toBe("");
   });

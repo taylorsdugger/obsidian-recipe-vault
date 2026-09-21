@@ -1,4 +1,6 @@
-export type { ShoppingItem } from "./shopping/types";
+export type { ShoppingItem, ParsedShoppingLine } from "./shopping/types";
+export type { NormalizedName } from "./shopping/normalize";
+export type { Aisle } from "./shopping/aisles";
 export {
   parseShoppingLine,
   normalizeIngredientUnit,
@@ -9,10 +11,35 @@ export {
   formatIngredientAmount,
   pluraliseUnit,
 } from "./shopping/units";
-export { itemFromLine, mergeShoppingItems } from "./shopping/merge";
+export {
+  normalizeShoppingName,
+  singulariseName,
+  pluraliseName,
+  displayName,
+  isPantryStaple,
+  splitPairedName,
+  liftEmbeddedUnit,
+  cleanPrepNote,
+} from "./shopping/normalize";
+export {
+  AISLES,
+  OTHER_AISLE,
+  categorizeIngredient,
+  aisleOrder,
+  aisleLabel,
+  compareByAisle,
+} from "./shopping/aisles";
+export {
+  itemFromLine,
+  itemsFromIngredientLine,
+  mergeShoppingItems,
+} from "./shopping/merge";
 export {
   parseShoppingListMarkdown,
   renderShoppingListMarkdown,
+  shoppingItemDetail,
+  formatShoppingItemText,
+  toShoppingLine,
   removeCheckedItems,
 } from "./shopping/markdown";
 

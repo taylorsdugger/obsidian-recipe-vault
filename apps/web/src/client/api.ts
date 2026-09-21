@@ -75,6 +75,16 @@ export interface ListItem {
   amount: number;
   /** "" for a countable thing. Only countables get a stepper. */
   unit: string;
+  /**
+   * "large, yellow, diced" - the size and prep words lifted off the name so
+   * three recipes' onions could merge into one row. Shown under the name, and
+   * "" for most rows.
+   */
+  detail: string;
+  /** Aisle id, for grouping. Rows arrive already sorted by it. */
+  aisle: string;
+  /** "Produce". The group header. */
+  aisleLabel: string;
 }
 
 /** Just enough of a recipe to draw the card on a plan day. */
@@ -87,10 +97,25 @@ export interface PlanRecipe {
   lastMade: string | null;
 }
 
+/** The three meals of a day, in the order the plan draws them. */
+export const SLOTS = ["breakfast", "lunch", "dinner"] as const;
+export type Slot = (typeof SLOTS)[number];
+
+/**
+ * The slot an entry sits in. Rows written before the plan had slots carry
+ * the column default, "dinner", and anything else unexpected lands there too.
+ */
+export function slotOf(entry: { slot: string }): Slot {
+  return (SLOTS as readonly string[]).includes(entry.slot)
+    ? (entry.slot as Slot)
+    : "dinner";
+}
+
 /** One meal on one day. `recipe` is null for a free-text entry. */
 export interface PlanEntry {
   id: string;
   date: string;
+  /** "breakfast", "lunch" or "dinner". Read it through `slotOf`. */
   slot: string;
   note: string | null;
   position: number;
@@ -99,10 +124,17 @@ export interface PlanEntry {
   recipe: PlanRecipe | null;
 }
 
-/** What a day replace sends back up. No id: the server writes the day fresh. */
+/**
+ * What a day replace sends back up. No id: the server writes the day fresh.
+ *
+ * `slot` has to be carried through like `leftovers`: the server defaults a
+ * missing one to dinner, so a write that leaves it off moves every breakfast
+ * on that day to the evening.
+ */
 export interface PlanEntryInput {
   recipeId?: string | null;
   note?: string | null;
+  slot?: Slot;
   leftovers?: boolean;
 }
 
@@ -112,6 +144,12 @@ export interface PlanListItem {
   name: string;
   /** "3 tbsp olive oil". */
   text: string;
+  /** "large, yellow, diced", or "". */
+  detail: string;
+  /** Aisle id. The preview arrives sorted by it. */
+  aisle: string;
+  /** "Produce". The group header. */
+  aisleLabel: string;
   sources: string[];
 }
 
@@ -248,6 +286,12 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ amount }),
     }),
+
+  tidyList: () =>
+    request<{ changed: boolean; combined: number; items: ListItem[] }>(
+      "/list/tidy",
+      { method: "POST" },
+    ),
 
   clearChecked: () =>
     request<{ removed: number }>("/list/checked", { method: "DELETE" }),

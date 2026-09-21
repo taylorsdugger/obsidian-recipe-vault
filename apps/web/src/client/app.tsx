@@ -56,10 +56,13 @@ export function App() {
   if (signedIn === null) return null;
   if (!signedIn) return <Login onSignedIn={() => setSignedIn(true)} />;
 
+  // Tab bar under the screen on a phone; from `md` up it sits to the left.
+  // `order-first` keeps the DOM order the same either way, so the screen's
+  // content is still what a screen reader lands on first.
   return (
-    <div class="flex h-full flex-col">
+    <div class="flex h-full flex-col md:flex-row">
       <main
-        class="flex-1 overflow-y-auto"
+        class="min-w-0 flex-1 overflow-y-auto"
         ref={(el) => {
           scroller.current = el;
           setScrollContainer(el);
