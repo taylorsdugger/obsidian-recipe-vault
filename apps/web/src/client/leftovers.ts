@@ -1,4 +1,4 @@
-import { api, type PlanRecipe } from "./api";
+import { api, slotOf, type PlanRecipe, type Slot } from "./api";
 import { addDays, dateKey } from "./week";
 
 /**
@@ -9,12 +9,17 @@ import { addDays, dateKey } from "./week";
  * to the next week and isn't in that week's entries at all - reading from
  * local state would drop every meal already on that Monday.
  *
+ * The reheat goes in the same `slot` it was cooked in. Dinner leftovers are as
+ * often tomorrow's lunch, but guessing that would be wrong as often as not,
+ * and a drag moves it in one motion.
+ *
  * Returns `added: false` when the day already has these leftovers, so a second
  * tap doesn't stack a third helping of the same thing.
  */
 export async function addLeftoversNextDay(
   date: string,
   recipe: PlanRecipe,
+  slot: Slot = "dinner",
 ): Promise<{ date: string; added: boolean }> {
   const next = dateKey(addDays(new Date(`${date}T00:00:00`), 1));
   const { entries } = await api.plan(next, next);
@@ -28,9 +33,10 @@ export async function addLeftoversNextDay(
     ...entries.map((entry) => ({
       recipeId: entry.recipe?.id ?? null,
       note: entry.note,
+      slot: slotOf(entry),
       leftovers: entry.leftovers,
     })),
-    { recipeId: recipe.id, leftovers: true },
+    { recipeId: recipe.id, slot, leftovers: true },
   ]);
 
   return { date: next, added: true };

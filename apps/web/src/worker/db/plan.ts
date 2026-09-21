@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import {
-  itemFromLine,
+  compareByAisle,
+  itemsFromIngredientLine,
   mergeShoppingItems,
   type ShoppingItem,
 } from "@recipe-vault/core";
@@ -121,14 +122,17 @@ export async function mergedPlanItems(
   const incoming: ShoppingItem[] = [];
   for (const row of rows) {
     for (const line of linesFrom(row.ingredients)) {
-      incoming.push(itemFromLine(line, row.title));
+      // One line can be no items (water) or two ("salt and pepper"), so this
+      // is the plural form rather than `itemFromLine`.
+      incoming.push(...itemsFromIngredientLine(line, row.title));
     }
   }
 
   // Merge into an empty list first. The result is exactly what the preview
   // renders, so unchecking a row there removes the same thing the confirm
-  // would have added.
-  return mergeShoppingItems([], incoming).items;
+  // would have added. Sorted by aisle for the same reason the list screen is:
+  // a week's worth of ingredients in recipe order is unreadable.
+  return mergeShoppingItems([], incoming).items.sort(compareByAisle);
 }
 
 /** The `ingredients` column is a JSON array; a hand-edited row shouldn't throw. */

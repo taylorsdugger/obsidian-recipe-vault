@@ -1,12 +1,15 @@
-import type { ShoppingItem } from "./types";
+import {
+  cleanPrepNote,
+  liftEmbeddedUnit,
+  normalizeShoppingName,
+} from "./normalize";
+import type { ParsedShoppingLine } from "./types";
 
 /**
  * Parse a shopping list line into its components.
  * e.g. "2 cups flour *(Dumplings)*" → { amount: 2, unit: "cup", name: "flour", sources: ["Dumplings"] }
  */
-export function parseShoppingLine(
-  text: string,
-): Omit<ShoppingItem, "checked" | "original"> | null {
+export function parseShoppingLine(text: string): ParsedShoppingLine | null {
   if (!text.trim()) return null;
 
   // Replace unicode fractions with ASCII `n/d` so the numeric regex below
@@ -53,14 +56,19 @@ export function parseShoppingLine(
     rest = s.slice(numMatch[0].length).trim();
   }
 
+  // "2 20-ounce cans young green jackfruit" counts cans, not ounces.
+  const sized = takePackageSize(rest);
+  let size = sized.size;
+  rest = sized.rest;
+
   // Try to extract a unit
   const unitMatch = rest.match(/^([a-zA-Z]+\.?)\s*/);
   let unit = "";
   let name = rest;
   if (unitMatch) {
-    const normalized = normalizeIngredientUnit(unitMatch[1]);
-    if (normalized) {
-      unit = normalized;
+    const canonical = normalizeIngredientUnit(unitMatch[1]);
+    if (canonical) {
+      unit = canonical;
       name = rest.slice(unitMatch[0].length).trim();
     }
   }
@@ -76,41 +84,138 @@ export function parseShoppingLine(
     name = name.slice(0, name.length - srcMatch[0].length).trim();
   }
 
-  // Strip parenthetical prep notes like "(, minced)" or "(packed)" or "(, finely diced)"
-  name = stripParentheticals(name);
-  // Strip trailing comma-separated descriptors like ", minced" or ", or 2 pureed tomatoes"
-  name = name.replace(/,.*$/, "").trim();
+  // Prep notes come in two shapes: parenthesised, or hung off a comma. Both
+  // are set aside rather than deleted - they are the cook's own words, and
+  // they used to vanish the first time a line was rewritten.
+  let parens = takeParentheticals(name);
 
-  return { amount, unit, name: name.toLowerCase().trim(), sources };
+  /*
+   * A parenthetical that swallowed the entire name isn't a note - the source
+   * put its closing bracket in the wrong place. Real line, from the vault:
+   * "1 can (15 oz. cannellini beans, drained and rinsed)", where the ")"
+   * belongs after "oz.". Read the inside as the name and the row comes out as
+   * "1 can cannellini beans" instead of the whole line verbatim.
+   */
+  if (!parens.text && parens.notes.length === 1) {
+    const inner = takePackageSize(parens.notes[0]);
+    if (inner.size) size = size || inner.size;
+    parens = { text: inner.rest, notes: [] };
+  }
+
+  name = parens.text;
+  const comma = name.match(/,\s*(.*)$/);
+  if (comma) name = name.slice(0, name.length - comma[0].length).trim();
+
+  const notes = [size, ...parens.notes, comma?.[1] ?? ""]
+    .map((n) => cleanPrepNote(n))
+    .filter(Boolean);
+
+  const normalized = normalizeShoppingName(name);
+
+  /*
+   * Nothing in there named a thing to buy. Hand back the line as written
+   * instead: "1/4 cup walnuts, chopped" beats a row that just says "chopped",
+   * and a row you can read is a row you can fix. Treated as free text, the
+   * same as a line that didn't parse at all - amount and unit go with the
+   * text they came from.
+   */
+  if (normalized.meaningless) {
+    const written = s.replace(/\s*\*\([^)]+\)\*\s*$/, "").trim();
+    return {
+      amount: 0,
+      unit: "",
+      name: written.toLowerCase(),
+      qualifiers: [],
+      note: "",
+      plural: false,
+      fragment: true,
+      sources,
+    };
+  }
+
+  name = normalized.key;
+
+  // "3 garlic cloves" counts cloves the same as "4 cloves garlic" does; the
+  // only difference is which side of the name the unit sat on. Same for the
+  // "can" left at the front of "1 (28 oz) can crushed tomatoes".
+  if (!unit) {
+    const lifted = liftEmbeddedUnit(name);
+    if (lifted) {
+      name = lifted.name;
+      unit = lifted.unit;
+    }
+  }
+
+  return {
+    amount,
+    unit,
+    name,
+    qualifiers: normalized.qualifiers,
+    note: notes.join(", "),
+    plural: normalized.plural,
+    fragment: false,
+    sources,
+  };
 }
 
 /**
- * Remove parenthetical prep notes, counting depth rather than stopping at the
- * first `)`.
+ * Pull a leading package size off a name: the "15 oz." in "15 oz. cannellini
+ * beans", or the "20-ounce" in "20-ounce cans young green jackfruit".
  *
- * WP Recipe Maker publishes its ingredient-notes field already wrapped in
- * parentheses, so a note that contains its own arrives in the source's JSON-LD
- * doubled: "1 medium shallot ((minced))". A non-nesting `\([^)]*\)` matches
+ * A number followed by a unit and then more words is the size of the thing,
+ * not the amount of it - the amount was the number before it. Reading it as
+ * the unit is what turned "2 20-ounce cans jackfruit" into a row measured in
+ * ounces.
+ */
+function takePackageSize(text: string): { size: string; rest: string } {
+  const match = text.match(/^(\d+(?:[.,]\d+)?)\s*-?\s*([a-zA-Z]+\.?)\s+(?=\S)/);
+  if (!match || !normalizeIngredientUnit(match[2]))
+    return { size: "", rest: text };
+  return {
+    size: `${match[1]} ${match[2]}`.replace(/\.$/, ""),
+    rest: text.slice(match[0].length).trim(),
+  };
+}
+
+/**
+ * Pull parenthetical prep notes off the name, handing back both halves.
+ *
+ * Depth is counted rather than stopping at the first `)`. WP Recipe Maker
+ * publishes its ingredient-notes field already wrapped in parentheses, so a
+ * note that contains its own arrives in the source's JSON-LD doubled:
+ * "1 medium shallot ((minced))". A non-nesting `\([^)]*\)` matches
  * "((minced)" and strands the final ")" on the name, which is how "shallot)"
  * ended up on a shopping list.
  *
  * An unclosed "(" swallows the rest of the line. It is the start of a note the
  * source truncated, and the alternative is "flour (sifted" on the list.
  */
-function stripParentheticals(text: string): string {
+function takeParentheticals(text: string): { text: string; notes: string[] } {
   let out = "";
+  let note = "";
+  const notes: string[] = [];
   let depth = 0;
 
   for (const ch of text) {
-    if (ch === "(") depth++;
-    else if (ch === ")") {
+    if (ch === "(") {
+      depth++;
+      // Only the outermost pair opens a note; "((minced))" is one note, not two.
+      if (depth === 1) note = "";
+    } else if (ch === ")") {
       // A closer with nothing open is stray punctuation, not an ingredient.
-      if (depth > 0) depth--;
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && note.trim()) notes.push(note.trim());
+      }
     } else if (depth === 0) out += ch;
+    else note += ch;
   }
 
+  // An unclosed note still counts as one; the "(" ate the rest of the line.
+  if (depth > 0 && note.trim()) notes.push(note.trim());
+
   // Removing a group from the middle leaves the spaces that surrounded it.
-  return out.replace(/\s{2,}/g, " ").trim();
+  return { text: out.replace(/\s{2,}/g, " ").trim(), notes };
 }
 
 /** Normalize raw unit strings to a canonical form. Returns "" if not recognised. */
@@ -174,6 +279,8 @@ export function normalizeIngredientUnit(raw: string): string {
     handfuls: "handful",
     stalk: "stalk",
     stalks: "stalk",
+    stick: "stick",
+    sticks: "stick",
   };
   return map[u] ?? "";
 }

@@ -8,6 +8,7 @@ import { api, type RecipeDetail } from "../api";
 import { PhotoViewer } from "../components/photo-viewer";
 import { madeToday, shortDate, spaced } from "../format";
 import { navigate } from "../router";
+import { useWakeLock } from "../wake-lock";
 
 /**
  * One recipe. The note is the source of truth, so the sections rendered here
@@ -24,6 +25,11 @@ export function Recipe({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [zoomed, setZoomed] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Nobody taps the phone between "brown the onions" and "add the stock", and
+  // a locked screen with wet hands is the whole reason this screen exists.
+  // Held for as long as the recipe is open, dropped on the way out.
+  const screenAwake = useWakeLock();
 
   useEffect(() => {
     api
@@ -212,6 +218,9 @@ export function Recipe({ id }: { id: string }) {
               <span class="chip">{spaced(recipe.mealType)}</span>
             )}
             {recipe.cookTime && <span class="chip">{recipe.cookTime}</span>}
+            {/* Only once the lock is actually held - saying the screen stays
+                on where it doesn't would be worse than saying nothing. */}
+            {screenAwake && <span class="chip">Screen stays on</span>}
             {madeLabel && (
               <span class="chip">
                 {madeLabel}

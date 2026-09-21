@@ -1,3 +1,4 @@
+import { displayName } from "./normalize";
 import { parseShoppingLine } from "./parse-line";
 import type { ShoppingItem } from "./types";
 import { formatIngredientAmount } from "./units";
@@ -35,6 +36,10 @@ export function parseShoppingListMarkdown(markdown: string): {
               amount: 0,
               unit: "",
               name: text.toLowerCase(),
+              qualifiers: [],
+              note: "",
+              plural: false,
+              fragment: true,
               sources: [],
               original: text,
             },
@@ -49,22 +54,58 @@ export function parseShoppingListMarkdown(markdown: string): {
   return { headerLines, items };
 }
 
+/**
+ * The words hanging off a row: what kind it was, and what to do with it.
+ * "large, yellow, red" under three merged onions, or "diced" on the one.
+ */
+export function shoppingItemDetail(item: ShoppingItem): string {
+  return [...item.qualifiers, item.note].filter(Boolean).join(", ");
+}
+
+/**
+ * How a row reads: "3 onions", "8 cups vegetable broth", "salt".
+ *
+ * The name is the normalized merge key, so it comes out of storage singular.
+ * `displayName` puts the plural back when the count calls for one.
+ */
+export function formatShoppingItemText(item: ShoppingItem): string {
+  const name = displayName(item.name, item.amount, item.unit, item.plural);
+  const amount = formatIngredientAmount(item.amount, item.unit);
+  return amount ? `${amount} ${name}` : name;
+}
+
 /** Render header + items back to the note format `parseShoppingListMarkdown` reads. */
 export function renderShoppingListMarkdown(
   headerLines: string[],
   items: ShoppingItem[],
 ): string {
   const header = headerLines.length ? headerLines.join("\n") + "\n\n" : "";
-  const itemLines = items.map((item) => {
-    const check = item.checked ? "[x]" : "[ ]";
-    const display =
-      item.amount > 0 || item.unit
-        ? `${formatIngredientAmount(item.amount, item.unit)} ${item.name}`
-        : item.original;
-    const src = item.sources.length ? ` *(${item.sources.join(", ")})*` : "";
-    return `- ${check} ${display.trim()}${src}`;
-  });
+  const itemLines = items.map((item) => toShoppingLine(item));
   return header + itemLines.join("\n") + "\n";
+}
+
+/**
+ * One item as a note line.
+ *
+ * The detail goes in plain parentheses and the sources in the `*(…)*` the
+ * parser already looks for, which keeps them apart on the way back in: a
+ * plain parenthetical reads as a prep note, the starred one as provenance.
+ */
+export function toShoppingLine(item: ShoppingItem): string {
+  const check = item.checked ? "[x]" : "[ ]";
+  // A line with no amount and no unit is something the cook typed - "salt to
+  // taste", "something for dessert". It goes back exactly as written, because
+  // rendering it would hand back the normalized name and quietly drop the
+  // rest of the sentence.
+  const body =
+    item.amount > 0 || item.unit ? formatShoppingItemText(item) : item.original;
+  const detail = shoppingItemDetail(item);
+  const src = item.sources.filter(Boolean);
+  return [
+    `- ${check} ${body.trim()}`,
+    detail ? ` (${detail})` : "",
+    src.length ? ` *(${src.join(", ")})*` : "",
+  ].join("");
 }
 
 /**

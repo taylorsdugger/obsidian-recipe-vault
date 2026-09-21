@@ -1,10 +1,13 @@
 import { Hono } from "hono";
+import { aisleLabel } from "@recipe-vault/core/shopping/aisles";
 import { removeCheckedItems } from "@recipe-vault/core/shopping/markdown";
 
 import type { AppBindings } from "../env";
 import {
+  aisleOf,
   applyMerge,
   bareText,
+  detailOf,
   formatItemText,
   itemsFromLines,
   mutateList,
@@ -12,6 +15,7 @@ import {
   removeLine,
   setChecked,
   setText,
+  tidyList,
   withAmount,
   type ListLine,
   type ShoppingNote,
@@ -43,6 +47,15 @@ function toJson(line: ListLine) {
     raw: bareText(item.original),
     amount: item.amount,
     unit: item.unit,
+    /**
+     * What got lifted off the name to make it mergeable, plus whatever the
+     * recipe said to do with it: "large, yellow, diced". Three onions on one
+     * row is only useful if the row still admits one of them was red.
+     */
+    detail: detailOf(item),
+    /** Which part of the shop, so the screen can group the rows. */
+    aisle: aisleOf(item),
+    aisleLabel: aisleLabel(aisleOf(item)),
   };
 }
 
@@ -169,6 +182,30 @@ export const listRoutes = new Hono<AppBindings>()
     // The whole list, not the one row: an edit can rename the item, and the
     // name is the id, so the client has nothing left to look the row up by.
     return c.json(body(note));
+  })
+
+  /**
+   * "Tidy up". Combines the rows that are the same row and puts everything in
+   * store order.
+   *
+   * Adding to the list already does both for what it adds. This is for a list
+   * that was built before the names were normalized, or one the cook has been
+   * adding to by hand.
+   *
+   * A line whose name is unique goes as the string it already is, so a prep
+   * note typed in Obsidian survives being tidied.
+   */
+  .post("/tidy", async (c) => {
+    let combined = 0;
+    let changed = false;
+    const note = await mutateList(c.env, (current) => {
+      const next = tidyList(current.markdown);
+      changed = next !== null;
+      combined = next?.combined ?? 0;
+      return next?.content ?? null;
+    });
+
+    return c.json({ changed, combined, ...body(note) });
   })
 
   /**

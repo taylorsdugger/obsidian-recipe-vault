@@ -26,6 +26,10 @@ describe("parseShoppingLine", () => {
       amount: 2,
       unit: "cup",
       name: "flour",
+      qualifiers: [],
+      note: "",
+      plural: false,
+      fragment: false,
       sources: [],
     });
   });
@@ -47,26 +51,34 @@ describe("parseShoppingLine", () => {
   });
 
   it("handles a count with no unit", () => {
+    // The name comes back singular - it is the merge key, and "3 eggs" has to
+    // find the row "1 egg" made. `plural` remembers how the line wrote it so
+    // the row can still read "5 eggs".
     expect(parseLine("3 eggs")).toMatchObject({
       amount: 3,
       unit: "",
-      name: "eggs",
+      name: "egg",
+      plural: true,
     });
   });
 
   it("handles a line with no amount or unit", () => {
+    // "to taste" is the recipe talking to the cook, not part of what you buy,
+    // so the merge key is plain "salt". The line itself is kept verbatim by
+    // `renderShoppingListMarkdown`, which uses `original` for amount-less rows.
     expect(parseLine("salt to taste")).toMatchObject({
       amount: 0,
       unit: "",
-      name: "salt to taste",
+      name: "salt",
     });
   });
 
-  it("strips a trailing comma descriptor from the name", () => {
+  it("moves a trailing comma descriptor off the name and into the note", () => {
     expect(parseLine("1 onion, chopped")).toMatchObject({
       amount: 1,
       unit: "",
       name: "onion",
+      note: "chopped",
     });
   });
 
@@ -84,12 +96,14 @@ describe("parseShoppingLine", () => {
    * own JSON-LD as "((minced))". Real lines, from minimalistbaker.com.
    */
   it("strips a doubled parenthetical without leaving the closer behind", () => {
-    // "medium" is a size, not a unit, so it stays on the name - same as it
-    // does for "1 medium shallot" with no note at all. The point here is the
-    // stranded ")", which is what reached the shopping list.
+    // "medium" is a size, so it comes off the name and onto the row as a
+    // qualifier. The point here is the stranded ")", which is what reached the
+    // shopping list.
     expect(parseLine("1 medium shallot ((minced))")).toMatchObject({
       amount: 1,
-      name: "medium shallot",
+      name: "shallot",
+      qualifiers: ["medium"],
+      note: "minced",
     });
     expect(
       parseLine(
@@ -108,11 +122,13 @@ describe("parseShoppingLine", () => {
   });
 
   it("keeps a bracketed amount that is part of the ingredient", () => {
-    // "2 (14-ounce) cans" - the parenthetical is the can size, and dropping it
-    // is right for the name, but the line must not lose the rest of it.
+    // "2 (14-ounce) cans" - the can size comes off the name and is kept as the
+    // note, and the "cans" the parenthetical was hiding becomes the unit.
     expect(parseLine("2 (14-ounce) cans light coconut milk")).toMatchObject({
       amount: 2,
-      name: "cans light coconut milk",
+      unit: "can",
+      name: "light coconut milk",
+      note: "14-ounce",
     });
   });
 

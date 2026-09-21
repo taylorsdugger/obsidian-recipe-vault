@@ -3,6 +3,19 @@ import { useEffect, useState } from "preact/hooks";
 import { api, type PlanListItem } from "../api";
 import { Sheet } from "./sheet";
 
+/** One header per aisle, in the order the server sent them (store order). */
+function byAisle(
+  items: PlanListItem[],
+): { label: string; items: PlanListItem[] }[] {
+  const groups = new Map<string, { label: string; items: PlanListItem[] }>();
+  for (const item of items) {
+    const group = groups.get(item.aisle);
+    if (group) group.items.push(item);
+    else groups.set(item.aisle, { label: item.aisleLabel, items: [item] });
+  }
+  return [...groups.values()];
+}
+
 /**
  * "Shopping list for this week." Everything the week's recipes call for,
  * already merged the way the list merges, with every line checked. You uncheck
@@ -61,7 +74,9 @@ export function PlanListPreview({
    */
   const allOn = skip.size === 0;
   const toggleAll = () =>
-    setSkip(allOn ? new Set((items ?? []).map((item) => item.name)) : new Set());
+    setSkip(
+      allOn ? new Set((items ?? []).map((item) => item.name)) : new Set(),
+    );
 
   return (
     <Sheet
@@ -106,38 +121,47 @@ export function PlanListPreview({
                 {allOn ? "Uncheck all" : "Select all"}
               </button>
             </div>
-            <ul class="card divide-y divide-line overflow-hidden">
-              {items.map((item) => {
-                const off = skip.has(item.name);
-                return (
-                  <li key={item.name}>
-                    {/* The row is the hit area, same as the list screen. */}
-                    <label class="flex min-h-14 cursor-pointer items-center gap-3 px-4 py-2.5">
-                      <input
-                        type="checkbox"
-                        class="check appearance-none"
-                        checked={!off}
-                        onChange={() => toggle(item.name)}
-                      />
-                      <span class="min-w-0 flex-1">
-                        <span
-                          class={`block leading-snug ${
-                            off ? "text-faint line-through" : ""
-                          }`}
-                        >
-                          {item.text}
-                        </span>
-                        {item.sources.length > 0 && (
-                          <span class="mt-0.5 block truncate text-xs text-faint">
-                            {item.sources.join(" · ")}
+            {byAisle(items).map((group) => (
+              <div key={group.label} class="space-y-1.5">
+                <h3 class="px-1 text-xs font-medium uppercase tracking-wide text-faint">
+                  {group.label}
+                </h3>
+                <ul class="card divide-y divide-line overflow-hidden">
+                  {group.items.map((item) => {
+                    const off = skip.has(item.name);
+                    return (
+                      <li key={item.name}>
+                        {/* The row is the hit area, same as the list screen. */}
+                        <label class="flex min-h-14 cursor-pointer items-center gap-3 px-4 py-2.5">
+                          <input
+                            type="checkbox"
+                            class="check appearance-none"
+                            checked={!off}
+                            onChange={() => toggle(item.name)}
+                          />
+                          <span class="min-w-0 flex-1">
+                            <span
+                              class={`block leading-snug ${
+                                off ? "text-faint line-through" : ""
+                              }`}
+                            >
+                              {item.text}
+                            </span>
+                            {(item.detail || item.sources.length > 0) && (
+                              <span class="mt-0.5 block truncate text-xs text-faint">
+                                {[item.detail, ...item.sources]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
           </>
         )}
       </div>

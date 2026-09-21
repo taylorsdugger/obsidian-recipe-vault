@@ -34,7 +34,7 @@ Screenshots and a walkthrough of every feature: **[recipes.taylordugger.com](htt
 - ✍️ **Add recipes manually:** create a recipe note from scratch using the same template.
 - 🖼️ **Recipe gallery:** browse your whole collection visually in a dedicated gallery view.
 - 🔍 **Search everything:** filter as you type across titles, meal types, _and_ ingredients, so you can find every recipe that uses what's already in the fridge.
-- ⚖️ **Shopping list:** check off ingredients in a note and send them to a single shopping list file, with automatic unit merging.
+- ⚖️ **Shopping list:** check off ingredients in a note and send them to a single shopping list file. Duplicates combine even when the recipes wrote them differently - "1 large onion" and "2 yellow onions, diced" come out as one row of three - and the list is sorted by aisle, so the produce is together.
 - 🔁 **Compare recipes:** select multiple recipes and view them side by side, with shared and unique ingredients highlighted.
 - 📅 **Mark as made:** track when you last made a recipe and how many times.
 - 🤖 **Ask AI for edits:** request changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter (API key required).

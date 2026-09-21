@@ -22,6 +22,10 @@ describe("itemFromLine", () => {
       amount: 2,
       unit: "cup",
       name: "flour",
+      qualifiers: [],
+      note: "",
+      plural: false,
+      fragment: false,
       sources: ["Bread"],
       original: "2 cups flour",
     });
@@ -39,6 +43,10 @@ describe("itemFromLine", () => {
       amount: 0,
       unit: "",
       name: "",
+      qualifiers: [],
+      note: "",
+      plural: false,
+      fragment: true,
       sources: ["Bread"],
       original: "",
     });
@@ -143,7 +151,8 @@ describe("parseShoppingListMarkdown / renderShoppingListMarkdown", () => {
     expect(items[1]).toMatchObject({
       checked: true,
       amount: 3,
-      name: "eggs",
+      name: "egg",
+      plural: true,
       sources: ["Cake", "Omelette"],
     });
     expect(items[2]).toMatchObject({

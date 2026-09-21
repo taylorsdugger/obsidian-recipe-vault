@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 
 import {
   api,
+  slotOf,
   type ListItem,
   type PlanEntry,
   type PlanRecipe,
@@ -282,13 +283,15 @@ export function Home() {
     setPicking(false);
     try {
       await api.setPlanDay(todayKey, [
-        // Carry `leftovers` through - the day is rewritten whole.
+        // Carry `slot` and `leftovers` through - the day is rewritten whole.
         ...todays.map((entry) => ({
           recipeId: entry.recipe?.id ?? null,
           note: entry.note,
+          slot: slotOf(entry),
           leftovers: entry.leftovers,
         })),
-        added,
+        // "Tonight" is dinner by name.
+        { ...added, slot: "dinner" as const },
       ]);
       await load();
       setStatus(null);

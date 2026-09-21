@@ -1,10 +1,17 @@
 import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { nanoid } from "nanoid";
+import { aisleLabel } from "@recipe-vault/core/shopping/aisles";
 
 import { db, schema } from "../db/client";
 import { mergedPlanItems, planEntriesInRange } from "../db/plan";
-import { applyMerge, formatItemText, mutateList } from "../shopping-store";
+import {
+  aisleOf,
+  applyMerge,
+  detailOf,
+  formatItemText,
+  mutateList,
+} from "../shopping-store";
 import type { AppBindings } from "../env";
 
 /** Dates are plain calendar days, written by the client in its own timezone. */
@@ -156,6 +163,9 @@ export const planRoutes = new Hono<AppBindings>()
       items: items.map((item) => ({
         name: item.name,
         text: formatItemText(item),
+        detail: detailOf(item),
+        aisle: aisleOf(item),
+        aisleLabel: aisleLabel(aisleOf(item)),
         sources: item.sources,
       })),
     });

@@ -33,12 +33,13 @@ import type { ChatMessage } from "./utils/openrouter";
 import dateFormat from "dateformat";
 import * as core from "@recipe-vault/core";
 import {
+  compareByAisle,
   createRecipeRenderer,
   decodeHtmlEntities,
   ensureRecipeNotesSection,
   ensureRequiredRecipeFrontmatter,
   ingredientsFromBody,
-  itemFromLine,
+  itemsFromIngredientLine,
   mergeShoppingItems,
   normalizeRecipeNotes,
   noteToJsonLd,
@@ -807,9 +808,10 @@ export default class RecipeVault extends Plugin {
         // Uncheck the items in the active recipe using the editor API.
         view.editor.setValue(newLines.join("\n"));
 
-        // Parse new items
-        const newItems: ShoppingItem[] = checked.map((text) =>
-          itemFromLine(text, recipeName),
+        // Parse new items. One line can make two ("salt and pepper") or none
+        // (water), so this flattens.
+        const newItems: ShoppingItem[] = checked.flatMap((text) =>
+          itemsFromIngredientLine(text, recipeName),
         );
 
         // Read and parse existing shopping list
@@ -830,8 +832,13 @@ export default class RecipeVault extends Plugin {
           newItems,
         );
 
-        // Rebuild and write the file
-        const newContent = renderShoppingListMarkdown(headerLines, items);
+        // Rebuild and write the file, in aisle order. This command already
+        // re-renders the whole note, so sorting it costs nothing extra and
+        // saves walking the shop twice.
+        const newContent = renderShoppingListMarkdown(
+          headerLines,
+          [...items].sort(compareByAisle),
+        );
 
         if (existingFile && existingFile instanceof TFile) {
           await this.app.vault.process(existingFile, () => newContent);

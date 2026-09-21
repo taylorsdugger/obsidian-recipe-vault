@@ -112,12 +112,26 @@
   }
 
   /*
+   * An icon button that has to be found, not just hit: the week's previous
+   * and next arrows. A full 44px square with a hairline and a surface, so it
+   * reads as a button at a glance rather than a stray glyph in the header.
+   */
+  .icon-btn-quiet {
+    @apply grid size-11 shrink-0 place-items-center rounded-xl border border-line bg-surface text-ink transition-colors active:bg-canvas disabled:opacity-40;
+  }
+
+  /*
    * The quiet "+ something" line. Deliberately not a button-looking button:
    * it repeats once per day on the plan, and seven real buttons read as a
-   * to-do list rather than a week.
+   * to-do list rather than a week. It's still a thumb-sized row, and the plus
+   * sits in a small ring so there's something to aim at.
    */
   .add-inline {
-    @apply flex h-8 items-center gap-1 text-note text-faint transition-colors active:text-muted disabled:opacity-40;
+    @apply flex min-h-10 items-center gap-2 text-sm text-muted transition-colors active:text-ink disabled:opacity-40;
+  }
+
+  .add-inline-mark {
+    @apply grid size-6 shrink-0 place-items-center rounded-full border border-dashed border-faint text-base leading-none;
   }
 
   /* The small uppercase label over a day, or on a state like "leftovers". */
@@ -129,9 +143,20 @@
    * The bar that sits above the tab bar holding a screen's one main action:
    * send to list, shop for the week. Its contents cap like a screen does, or
    * on a desktop the button runs the whole width of the window.
+   *
+   * The offset is the tab bar's height plus the phone's home-indicator inset,
+   * so on an iPhone it clears the bar rather than sitting half behind it. From
+   * `md` up the tab bar is a 14rem sidebar, and the bar starts to its right.
    */
   .action-bar {
-    @apply fixed inset-x-0 bottom-14 z-10 border-t border-line bg-surface/95 p-3 backdrop-blur;
+    @apply fixed inset-x-0 z-10 border-t border-line bg-surface/95 p-3 backdrop-blur md:left-56;
+    bottom: calc(3.5rem + env(safe-area-inset-bottom));
+  }
+
+  @media (width >= 48rem) {
+    .action-bar {
+      bottom: 0;
+    }
   }
 
   /* A toggle in a row of them: the gallery's sort. */

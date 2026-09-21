@@ -44,7 +44,10 @@ export function Sheet({
         class="absolute inset-0 bg-black/30"
         onClick={onClose}
       />
-      <div class="relative flex max-h-[85vh] flex-col rounded-t-3xl bg-canvas pb-[env(safe-area-inset-bottom)] shadow-xl">
+      {/* Full width on a phone. On a desktop it caps at the screen width and
+          rounds all the way round, so it reads as a dialog and not a drawer
+          stretched across a 1400px window. */}
+      <div class="relative flex max-h-[85vh] w-full flex-col rounded-t-3xl bg-canvas pb-[env(safe-area-inset-bottom)] shadow-xl md:mx-auto md:mb-8 md:max-w-2xl md:rounded-3xl">
         <div class="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
           <h2 class="text-lg font-semibold">{title}</h2>
           <button
