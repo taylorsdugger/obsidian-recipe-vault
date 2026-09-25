@@ -76,6 +76,8 @@ export {
   DEFAULT_TEMPLATE,
   TEMPLATE_VERSION,
   createRecipeRenderer,
+  formatImageLink,
+  migrateImageLink,
 } from "./note/template";
 
 export type {

@@ -27,7 +27,7 @@ last_made:
 # [{{{name}}}]({{url}})
 
 {{#if image}}
-![{{{name}}}]({{image}})
+![{{{name}}}]({{imageLink image}})
 
 {{/if}}
 
@@ -74,6 +74,37 @@ last_made:
 {{/if}}
 `;
 
+/**
+ * Templates saved before the body image went through `imageLink` still have
+ * the raw `({{image}})` destination. Swapping just that token fixes their
+ * links without clobbering anything else the user customized.
+ */
+export function migrateImageLink(template: string): string {
+  return template.split("]({{image}})").join("]({{imageLink image}})");
+}
+
+/**
+ * Formats an image path/URL as a Markdown link destination. A Markdown link
+ * ends at the first space, so a local path like `90 Anlagen/pie.jpg` has to be
+ * percent-encoded (Obsidian decodes it back). `(`, `)` and `'` are encoded
+ * too: the parens would close the link early, and Handlebars would otherwise
+ * HTML-escape the quote. Remote URLs pass through unchanged.
+ */
+export function formatImageLink(imgPath: string): string {
+  if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
+    return imgPath;
+  }
+  return imgPath
+    .split("/")
+    .map((segment) =>
+      encodeURIComponent(segment).replace(
+        /[()']/g,
+        (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`,
+      ),
+    )
+    .join("/");
+}
+
 export type RecipeRenderer = (data: object) => string;
 
 export interface RendererOptions {
@@ -108,7 +139,18 @@ export function createRecipeRenderer(
 
   hb.registerHelper("photoFrontmatter", function (imgPath: unknown) {
     if (!imgPath) return "";
-    return formatPhoto(String(imgPath));
+    // The template wraps this in a YAML double-quoted string, so escape for
+    // YAML instead of letting Handlebars HTML-escape it. Otherwise a saved
+    // `Mom's-Pie.jpg` lands as `[[Mom&#x27;s-Pie.jpg]]` and never resolves.
+    const yamlSafe = formatPhoto(String(imgPath))
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"');
+    return new hb.SafeString(yamlSafe);
+  });
+
+  hb.registerHelper("imageLink", function (imgPath: unknown) {
+    if (!imgPath) return "";
+    return formatImageLink(String(imgPath));
   });
 
   hb.registerHelper("magicTime", function (arg1: unknown, arg2: unknown) {

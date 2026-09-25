@@ -5,6 +5,7 @@ import {
   DEFAULT_TEMPLATE,
   TEMPLATE_VERSION,
   createRecipeRenderer,
+  migrateImageLink,
 } from "../src";
 
 const recipe = {
@@ -51,6 +52,33 @@ describe("createRecipeRenderer with DEFAULT_TEMPLATE", () => {
     expect(out).toContain('photo: "[[img/soup.jpg]]"');
   });
 
+  it("percent-encodes a local body image so spaces don't cut the link (#18)", () => {
+    const out = render({ ...recipe, image: "90 Anlagen/Chicken-Soup.jpg" });
+    expect(out).toContain("![Chicken Soup](90%20Anlagen/Chicken-Soup.jpg)");
+    // Frontmatter stays a wikilink, which handles spaces on its own.
+    expect(out).toContain('photo: "[[90 Anlagen/Chicken-Soup.jpg]]"');
+  });
+
+  it("encodes emoji, quotes and parens in a local body image", () => {
+    const out = render({ ...recipe, image: "🍳 Pics/Mom's-(Best)-Pie.jpg" });
+    expect(out).toContain(
+      "](%F0%9F%8D%B3%20Pics/Mom%27s-%28Best%29-Pie.jpg)",
+    );
+  });
+
+  it("does not HTML-escape the photo frontmatter", () => {
+    const local = render({ ...recipe, image: "Recipe Images/Mom's-Pie.jpg" });
+    expect(local).toContain('photo: "[[Recipe Images/Mom\'s-Pie.jpg]]"');
+
+    const remote = render({ ...recipe, image: "https://x.test/a.jpg?w=1&h=2" });
+    expect(remote).toContain('photo: "https://x.test/a.jpg?w=1&h=2"');
+  });
+
+  it("escapes quotes in the photo frontmatter for YAML", () => {
+    const out = render({ ...recipe, image: 'https://x.test/"a".jpg' });
+    expect(out).toContain('photo: "https://x.test/\\"a\\".jpg"');
+  });
+
   it("does not register helpers on the global Handlebars", () => {
     expect((Handlebars as any).helpers.magicTime).toBeUndefined();
     expect((Handlebars as any).helpers.photoFrontmatter).toBeUndefined();
@@ -89,4 +117,17 @@ describe("helpers", () => {
 
 it("exposes the template version", () => {
   expect(TEMPLATE_VERSION).toBe(2);
+});
+
+describe("migrateImageLink", () => {
+  it("routes an old raw body image through imageLink", () => {
+    const old = "# Hi\n\n![{{{name}}}]({{image}})\n\nmy custom bit\n";
+    expect(migrateImageLink(old)).toBe(
+      "# Hi\n\n![{{{name}}}]({{imageLink image}})\n\nmy custom bit\n",
+    );
+  });
+
+  it("leaves the current default template alone", () => {
+    expect(migrateImageLink(DEFAULT_TEMPLATE)).toBe(DEFAULT_TEMPLATE);
+  });
 });

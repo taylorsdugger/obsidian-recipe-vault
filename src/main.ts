@@ -41,6 +41,7 @@ import {
   ingredientsFromBody,
   itemsFromIngredientLine,
   mergeShoppingItems,
+  migrateImageLink,
   normalizeRecipeNotes,
   noteToJsonLd,
   parseRecipeSections,
@@ -1156,6 +1157,14 @@ export default class RecipeVault extends Plugin {
           "You can customise it again in Settings.",
         8000,
       );
+    }
+
+    // The body image used to be a raw `({{image}})` link, which breaks when the
+    // attachment folder has a space in it (#18). Patch just that token.
+    const migrated = migrateImageLink(this.settings.recipeTemplate);
+    if (migrated !== this.settings.recipeTemplate) {
+      this.settings.recipeTemplate = migrated;
+      await this.saveData(this.settings);
     }
   }
 
