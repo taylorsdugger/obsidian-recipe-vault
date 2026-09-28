@@ -2,16 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 
 import {
   api,
+  SLOTS,
   slotOf,
   type ListItem,
   type PlanEntry,
   type PlanRecipe,
   type RecipeSummary,
+  type Slot,
 } from "../api";
 import { RecipePhoto } from "../components/recipe-photo";
 import { madeToday } from "../format";
 import { RecipePicker } from "../components/recipe-picker";
 import { addLeftoversNextDay } from "../leftovers";
+import { mealTime, nextMeal, sameMealTime, type MealTime } from "../meal-time";
 import { navigate } from "../router";
 import { SYNCED_EVENT } from "../sync";
 import {
@@ -24,30 +27,46 @@ import {
 } from "../week";
 
 /**
- * Today, re-read whenever the app comes back to the front.
+ * Today and the meal that's up next, re-read whenever the app comes back to
+ * the front and once a minute while it's open.
  *
- * Every word on this screen is about what day it is, and an installed PWA left
- * on the kitchen counter overnight is still the same mount in the morning. The
- * identity check keeps the same `Date` object when the day hasn't turned, so
- * the fetch below doesn't re-run on every tab switch.
+ * Every word on this screen is about what day and what time it is, and an
+ * installed PWA left on the kitchen counter is still the same mount at dinner
+ * that it was at breakfast. The identity checks keep the same objects when
+ * nothing has turned over, so the fetch below doesn't re-run on every tick.
  */
-function useToday(): Date {
+function useMealTime(): { today: Date; meal: MealTime } {
   const [today, setToday] = useState(() => startOfDay(new Date()));
+  const [meal, setMeal] = useState(() => mealTime(new Date()));
 
   useEffect(() => {
     const check = () => {
       if (document.visibilityState !== "visible") return;
-      const now = startOfDay(new Date());
+      const now = new Date();
+      const day = startOfDay(now);
       setToday((current) =>
-        dateKey(current) === dateKey(now) ? current : now,
+        dateKey(current) === dateKey(day) ? current : day,
       );
+      const next = mealTime(now);
+      setMeal((current) => (sameMealTime(current, next) ? current : next));
     };
+    const timer = setInterval(check, 60_000);
     document.addEventListener("visibilitychange", check);
-    return () => document.removeEventListener("visibilitychange", check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+    };
   }, []);
 
-  return today;
+  return { today, meal };
 }
+
+/** What the header and the picker call a slot. */
+const SLOT_LABEL: Record<Slot, string> = {
+  breakfast: "Breakfast",
+  lunch: "Lunch",
+  dinner: "Dinner",
+};
 
 /** "Thursday, Sep 10", in whatever order the phone's locale puts the two. */
 function longDate(date: Date): string {
@@ -62,13 +81,16 @@ function longDate(date: Date): string {
  * The one meal the screen is built around. The photo and title open the
  * recipe; "Mark made" is the only other thing you do standing in the kitchen.
  */
-function Tonight({
+function UpNext({
   entry,
+  leftoversLabel,
   busy,
   onMade,
   onLeftovers,
 }: {
   entry: PlanEntry;
+  /** "Leftovers tomorrow", or the day's name when the meal is tomorrow's. */
+  leftoversLabel: string;
   busy: boolean;
   onMade: (recipe: PlanRecipe) => void;
   onLeftovers: (recipe: PlanRecipe) => void;
@@ -136,7 +158,7 @@ function Tonight({
             onClick={() => onLeftovers(recipe)}
           >
             <span class="text-sm leading-none">+</span>
-            <span>Leftovers tomorrow</span>
+            <span>{leftoversLabel}</span>
           </button>
         </div>
       )}
@@ -144,13 +166,24 @@ function Tonight({
   );
 }
 
-/** A second meal on the same day. One line, the same shape the plan uses. */
+/**
+ * Another meal on the same day. One row, the same shape the plan uses, with
+ * its slot over the title since the hero is no longer always dinner.
+ */
 function AlsoToday({ entry }: { entry: PlanEntry }) {
   const recipe = entry.recipe;
+  const slot = (
+    <span class="label block leading-none text-faint">
+      {SLOT_LABEL[slotOf(entry)]}
+    </span>
+  );
 
   if (!recipe) {
     return (
-      <li class="px-3 py-3 text-row leading-snug text-muted">{entry.note}</li>
+      <li class="space-y-1 px-3 py-3">
+        {slot}
+        <span class="block text-row leading-snug text-muted">{entry.note}</span>
+      </li>
     );
   }
 
@@ -166,9 +199,12 @@ function AlsoToday({ entry }: { entry: PlanEntry }) {
           box="size-10 shrink-0 rounded-lg"
           mark="size-5"
         />
-        <span class="line-clamp-2 text-row leading-snug font-medium">
-          {entry.leftovers && <span class="text-faint">Leftovers · </span>}
-          {recipe.title}
+        <span class="min-w-0 space-y-1">
+          {slot}
+          <span class="line-clamp-2 text-row leading-snug font-medium">
+            {entry.leftovers && <span class="text-faint">Leftovers · </span>}
+            {recipe.title}
+          </span>
         </span>
       </button>
     </li>
@@ -180,7 +216,7 @@ function AlsoToday({ entry }: { entry: PlanEntry }) {
  * and how much is still on the list - the three things you open the app for.
  */
 export function Home() {
-  const today = useToday();
+  const { today, meal } = useMealTime();
   const [entries, setEntries] = useState<PlanEntry[] | null>(null);
   const [items, setItems] = useState<ListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -191,8 +227,12 @@ export function Home() {
   const monday = useMemo(() => mondayOf(today), [today]);
   const days = useMemo(() => weekDays(monday), [monday]);
   const from = dateKey(monday);
-  const to = dateKey(addDays(monday, 6));
+  // One day past Sunday: late on a Sunday the next meal is Monday's breakfast,
+  // which belongs to next week.
+  const to = dateKey(addDays(monday, 7));
   const todayKey = dateKey(today);
+  const dayKey = dateKey(meal.day);
+  const isTomorrow = dayKey !== todayKey;
 
   // The week covers today, so the plan fetch answers both the hero and the
   // strip. Two screens' worth of data in two requests.
@@ -220,11 +260,18 @@ export function Home() {
     return () => window.removeEventListener(SYNCED_EVENT, onSynced);
   }, [load]);
 
-  const todays = (entries ?? []).filter((entry) => entry.date === todayKey);
-  // A recipe wins the hero slot over a free-text note, whatever order they
-  // were added in: the photo and the "mark made" are the point of the card.
-  const hero = todays.find((entry) => entry.recipe) ?? todays[0] ?? null;
-  const rest = todays.filter((entry) => entry !== hero);
+  // Everything on the day the next meal is on. Usually today, tomorrow once
+  // dinner's done.
+  const dayEntries = (entries ?? []).filter((entry) => entry.date === dayKey);
+  const hero = nextMeal(dayEntries, dayKey, meal.slot);
+  // The header names the meal on the card. With nothing planned it names the
+  // slot "Pick something" would fill.
+  const heroSlot = hero ? slotOf(hero) : meal.slot;
+  // In the order the day is eaten, so a morning shows lunch then dinner below.
+  // `sort` is stable, so the plan's own order holds within a slot.
+  const rest = dayEntries
+    .filter((entry) => entry !== hero)
+    .sort((a, b) => SLOTS.indexOf(slotOf(a)) - SLOTS.indexOf(slotOf(b)));
 
   const left = items?.filter((item) => !item.checked).length ?? 0;
 
@@ -233,8 +280,8 @@ export function Home() {
     setStatus(null);
     try {
       const res = await api.markMade(recipe.id);
-      // Every entry for this recipe, not just tonight's: the same dish can be
-      // on the plan twice, and it's been made whichever card you tapped.
+      // Every entry for this recipe, not just the one on the card: the same
+      // dish can be on the plan twice, and it's been made whichever you tapped.
       setEntries(
         (current) =>
           current?.map((entry) =>
@@ -257,15 +304,22 @@ export function Home() {
     }
   };
 
-  const leftoversTomorrow = async (recipe: PlanRecipe) => {
+  // The day after the hero's, which is the day after tomorrow once the hero
+  // is tomorrow's.
+  const leftoversDay = isTomorrow
+    ? addDays(meal.day, 1).toLocaleDateString(undefined, { weekday: "long" })
+    : "tomorrow";
+
+  const leftoversNextDay = async (recipe: PlanRecipe, slot: Slot) => {
     setBusy(true);
     setStatus(null);
     try {
-      const res = await addLeftoversNextDay(todayKey, recipe);
+      // Same slot it was cooked in, so lunch leftovers stay lunch.
+      const res = await addLeftoversNextDay(dayKey, recipe, slot);
       setStatus(
         res.added
-          ? `Leftovers planned for tomorrow.`
-          : `Tomorrow already has those leftovers.`,
+          ? `Leftovers planned for ${leftoversDay}.`
+          : `${leftoversDay[0].toUpperCase()}${leftoversDay.slice(1)} already has those leftovers.`,
       );
       // Tomorrow is in this week unless today is Sunday, and the strip should
       // gain its dot either way.
@@ -277,21 +331,20 @@ export function Home() {
     }
   };
 
-  /** Same day-replace the plan screen does: send today as it is plus the new one. */
-  const planTonight = async (added: { recipeId?: string; note?: string }) => {
+  /** Same day-replace the plan screen does: send the day as it is plus the new one. */
+  const planMeal = async (added: { recipeId?: string; note?: string }) => {
     setBusy(true);
     setPicking(false);
     try {
-      await api.setPlanDay(todayKey, [
+      await api.setPlanDay(dayKey, [
         // Carry `slot` and `leftovers` through - the day is rewritten whole.
-        ...todays.map((entry) => ({
+        ...dayEntries.map((entry) => ({
           recipeId: entry.recipe?.id ?? null,
           note: entry.note,
           slot: slotOf(entry),
           leftovers: entry.leftovers,
         })),
-        // "Tonight" is dinner by name.
-        { ...added, slot: "dinner" as const },
+        { ...added, slot: meal.slot },
       ]);
       await load();
       setStatus(null);
@@ -306,8 +359,13 @@ export function Home() {
     <div class="screen space-y-3 pb-8">
       <header class="flex items-start justify-between gap-3 px-1 pt-2">
         <div class="min-w-0">
-          <h1 class="text-xl leading-tight font-semibold">Tonight</h1>
-          <p class="truncate text-sm text-muted">{longDate(today)}</p>
+          <h1 class="text-xl leading-tight font-semibold">
+            {SLOT_LABEL[heroSlot]}
+          </h1>
+          <p class="truncate text-sm text-muted">
+            {isTomorrow && "Tomorrow · "}
+            {longDate(meal.day)}
+          </p>
         </div>
         <button
           type="button"
@@ -326,18 +384,22 @@ export function Home() {
       )}
 
       {hero ? (
-        <Tonight
+        <UpNext
           entry={hero}
+          leftoversLabel={`Leftovers ${leftoversDay}`}
           busy={busy}
           onMade={(recipe) => void markMade(recipe)}
-          onLeftovers={(recipe) => void leftoversTomorrow(recipe)}
+          onLeftovers={(recipe) => void leftoversNextDay(recipe, heroSlot)}
         />
       ) : (
         // `entries` is null until the first fetch lands. Drawing "nothing
         // planned" in that gap would be wrong half the time, so hold the space.
         entries !== null && (
           <div class="card space-y-3 p-4">
-            <p class="text-sm text-muted">Nothing planned for tonight.</p>
+            <p class="text-sm text-muted">
+              Nothing planned for {meal.slot}
+              {isTomorrow ? " tomorrow" : ""}.
+            </p>
             <button
               type="button"
               class="btn-primary w-full"
@@ -350,8 +412,8 @@ export function Home() {
         )
       )}
 
-      {/* Anything else on today, under the hero. Two dinners is rare; lunch
-          plus dinner is not. */}
+      {/* The rest of that day, under the hero: what's still to come and what's
+          already been eaten. */}
       {rest.length > 0 && (
         <ul class="card divide-y divide-line overflow-hidden">
           {rest.map((entry) => (
@@ -416,11 +478,11 @@ export function Home() {
 
       {picking && (
         <RecipePicker
-          title="Tonight"
+          title={SLOT_LABEL[meal.slot]}
           onPick={(recipe: RecipeSummary) =>
-            void planTonight({ recipeId: recipe.id })
+            void planMeal({ recipeId: recipe.id })
           }
-          onNote={(text) => void planTonight({ note: text })}
+          onNote={(text) => void planMeal({ note: text })}
           onClose={() => setPicking(false)}
         />
       )}
