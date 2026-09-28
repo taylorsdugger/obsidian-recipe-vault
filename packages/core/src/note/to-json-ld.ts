@@ -44,7 +44,7 @@ export interface NoteToJsonLdOptions {
 }
 
 /** Whole minutes back to an ISO 8601 duration: 90 → "PT1H30M". */
-function minutesToIsoDuration(mins: number): string {
+export function minutesToIsoDuration(mins: number): string {
   const hours = Math.floor(mins / 60);
   const minutes = mins % 60;
   if (hours === 0) return `PT${minutes}M`;

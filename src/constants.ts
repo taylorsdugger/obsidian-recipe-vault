@@ -11,6 +11,7 @@ export const CMD_BACKFILL_INGREDIENTS = "cmd-backfill-ingredients";
 export const CMD_RECIPE_FROM_PHOTO = "cmd-recipe-from-photo";
 export const CMD_IMPORT_JSONLD = "cmd-import-jsonld";
 export const CMD_EXPORT_JSONLD = "cmd-export-jsonld";
+export const CMD_EXPORT_COOKLANG = "cmd-export-cooklang";
 export const MANUAL_RECIPE_DEFAULT_FOLDER = "recipes";
 export const VIEW_TYPE_RECIPE_GALLERY = "recipe-gallery-view";
 export const CMD_OPEN_RECIPE_GALLERY = "cmd-open-recipe-gallery";

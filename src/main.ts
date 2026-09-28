@@ -23,7 +23,11 @@ import {
 import { RecipeGalleryView, resetGalleryUiState } from "./view-recipe-gallery";
 import { getRecipeFiles, thumbPathForImage } from "./utils/recipeLoader";
 import { PhotoRecipeModal } from "./modal-photo-recipe";
-import { PickJsonFileModal, isJsonLdFile } from "./modal-pick-json";
+import {
+  PickRecipeFileModal,
+  isCooklangFile,
+  isImportableRecipeFile,
+} from "./modal-pick-recipe-file";
 import {
   requestRecipeEditSuggestion,
   requestRecipeChatResponse,
@@ -43,6 +47,7 @@ import {
   mergeShoppingItems,
   migrateImageLink,
   normalizeRecipeNotes,
+  noteToCooklang,
   noteToJsonLd,
   parseRecipeSections,
   readRecipeVaultState,
@@ -953,15 +958,16 @@ export default class RecipeVault extends Plugin {
       },
     });
 
-    // Import a recipe from a JSON-LD file already in the vault. Obsidian can't
-    // open a .json file, so the command pops a picker; the file explorer's
-    // right-click menu (registered below) is the other way in.
+    // Import a recipe from a JSON-LD or Cooklang file already in the vault.
+    // Obsidian can't open either, so the command pops a picker; the file
+    // explorer's right-click menu (registered below) is the other way in. The
+    // id still says jsonld so hotkeys bound before Cooklang keep working.
     this.addCommand({
       id: c.CMD_IMPORT_JSONLD,
-      name: "Import recipe from JSON-LD file",
+      name: "Import recipe from JSON-LD or Cooklang file",
       callback: () => {
-        new PickJsonFileModal(this.app, (file) => {
-          void this.importRecipeFromJsonLdFile(file);
+        new PickRecipeFileModal(this.app, (file) => {
+          void this.importRecipeFromFile(file);
         }).open();
       },
     });
@@ -976,23 +982,38 @@ export default class RecipeVault extends Plugin {
           new Notice("No active recipe file open.");
           return;
         }
-        await this.exportRecipeAsJsonLd(view.file);
+        await this.exportRecipe(view.file, "jsonld");
       },
     });
 
-    // Both actions from the file explorer's right-click menu, which is the
-    // only place a .json file is reachable at all.
+    // Export the current recipe note as a Cooklang (.cook) file.
+    this.addCommand({
+      id: c.CMD_EXPORT_COOKLANG,
+      name: "Export recipe as Cooklang file",
+      callback: async () => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view?.file) {
+          new Notice("No active recipe file open.");
+          return;
+        }
+        await this.exportRecipe(view.file, "cooklang");
+      },
+    });
+
+    // The same actions from the file explorer's right-click menu, which is
+    // the only place a .json or .cook file is reachable at all. A .cook file
+    // only shows in the explorer with "Detect all file extensions" on.
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, abstractFile) => {
         if (!(abstractFile instanceof TFile)) return;
         const target = abstractFile;
 
-        if (isJsonLdFile(target)) {
+        if (isImportableRecipeFile(target)) {
           menu.addItem((item) =>
             item
               .setTitle("Import as recipe")
               .setIcon("chef-hat")
-              .onClick(() => void this.importRecipeFromJsonLdFile(target)),
+              .onClick(() => void this.importRecipeFromFile(target)),
           );
           return;
         }
@@ -1002,7 +1023,13 @@ export default class RecipeVault extends Plugin {
             item
               .setTitle("Export recipe as JSON-LD")
               .setIcon("braces")
-              .onClick(() => void this.exportRecipeAsJsonLd(target)),
+              .onClick(() => void this.exportRecipe(target, "jsonld")),
+          );
+          menu.addItem((item) =>
+            item
+              .setTitle("Export recipe as Cooklang")
+              .setIcon("file-text")
+              .onClick(() => void this.exportRecipe(target, "cooklang")),
           );
         }
       }),
@@ -1692,23 +1719,38 @@ export default class RecipeVault extends Plugin {
   }
 
   /**
-   * Create recipe notes from a `.json` / `.jsonld` file already in the vault.
+   * Create recipe notes from a `.json` / `.jsonld` or `.cook` file already in
+   * the vault.
    *
-   * The file goes through the same normalize pass as a web page, so a Recipe
-   * nested in an `@graph`, a bare array, or a single object all work. No
-   * `sourceUrl` is passed: a standalone file has no page, so the recipe keeps
-   * whatever `url` it carries and gets none if it has none.
+   * Both go through the same normalize pass as a web page. A Cooklang file is
+   * built into a schema.org Recipe first, so from there on it's the same
+   * import, and a JSON file with a Recipe nested in an `@graph`, a bare array,
+   * or a single object all work. No `sourceUrl` is passed: a standalone file
+   * has no page, so the recipe keeps whatever `url` it carries and gets none
+   * if it has none.
    */
-  private importRecipeFromJsonLdFile = async (file: TFile): Promise<void> => {
+  private importRecipeFromFile = async (file: TFile): Promise<void> => {
+    const cooklang = isCooklangFile(file);
+    const format = cooklang ? "Cooklang" : "JSON-LD";
     try {
       const raw = await this.app.vault.read(file);
 
       let json: unknown;
-      try {
-        json = JSON.parse(raw);
-      } catch {
-        new Notice(`${file.name} isn't valid JSON.`);
-        return;
+      if (cooklang) {
+        const recipe = core.cooklangToJsonLd(raw, { name: file.basename });
+        // The file name alone always makes a "recipe", so check for a body.
+        if (!recipe.recipeIngredient && !recipe.recipeInstructions) {
+          new Notice(`${file.name} has no ingredients or steps in it.`);
+          return;
+        }
+        json = recipe;
+      } else {
+        try {
+          json = JSON.parse(raw);
+        } catch {
+          new Notice(`${file.name} isn't valid JSON.`);
+          return;
+        }
       }
 
       const recipes = core.parseRecipesFromJsonLd([json], this.fetchOptions());
@@ -1721,7 +1763,9 @@ export default class RecipeVault extends Plugin {
 
       let saved = 0;
       for (const recipe of recipes) {
-        const note = await this.saveParsedRecipe(recipe, { source: "jsonld" });
+        const note = await this.saveParsedRecipe(recipe, {
+          source: cooklang ? "cooklang" : "jsonld",
+        });
         if (note) saved += 1;
       }
 
@@ -1731,21 +1775,26 @@ export default class RecipeVault extends Plugin {
         new Notice(`Imported ${saved} recipes from ${file.name}.`);
       }
     } catch (error) {
-      console.error("Recipe Vault: JSON-LD import failed", file.path, error);
+      console.error(`Recipe Vault: ${format} import failed`, file.path, error);
       const msg = error instanceof Error ? error.message : String(error);
-      new Notice(`JSON-LD import failed: ${msg}`, 10000);
+      new Notice(`${format} import failed: ${msg}`, 10000);
     }
   };
 
   /**
-   * Write a recipe note back out as a `.json` JSON-LD file next to it, so it
-   * can be handed to someone using a different recipe app.
+   * Write a recipe note back out as a JSON-LD (`.json`) or Cooklang (`.cook`)
+   * file next to it, so it can be handed to someone using a different recipe
+   * app.
    *
    * The note is what gets read, not a stored copy of the original import, so
    * any edits since come along. An existing export is overwritten: the note is
    * the source of truth and a stale export next to it is worse than none.
    */
-  private exportRecipeAsJsonLd = async (file: TFile): Promise<void> => {
+  private async exportRecipe(
+    file: TFile,
+    format: "jsonld" | "cooklang",
+  ): Promise<void> {
+    const label = format === "jsonld" ? "JSON-LD" : "Cooklang";
     try {
       const markdown = await this.app.vault.read(file);
       const recipe = noteToJsonLd(markdown, { name: file.basename });
@@ -1757,13 +1806,18 @@ export default class RecipeVault extends Plugin {
         return;
       }
 
+      const ext = format === "jsonld" ? "json" : "cook";
+      const body =
+        format === "jsonld"
+          ? JSON.stringify(recipe, null, 2)
+          : noteToCooklang(markdown, { name: file.basename });
+
       const folder = file.parent?.path ?? "";
       const outPath = normalizePath(
         folder === "" || folder === "/"
-          ? `${file.basename}.json`
-          : `${folder}/${file.basename}.json`,
+          ? `${file.basename}.${ext}`
+          : `${folder}/${file.basename}.${ext}`,
       );
-      const body = JSON.stringify(recipe, null, 2);
 
       const existing = this.app.vault.getAbstractFileByPath(outPath);
       if (existing instanceof TFile) {
@@ -1774,11 +1828,11 @@ export default class RecipeVault extends Plugin {
 
       new Notice(`Exported to ${outPath}`);
     } catch (error) {
-      console.error("Recipe Vault: JSON-LD export failed", file.path, error);
+      console.error(`Recipe Vault: ${label} export failed`, file.path, error);
       const msg = error instanceof Error ? error.message : String(error);
-      new Notice(`JSON-LD export failed: ${msg}`, 10000);
+      new Notice(`${label} export failed: ${msg}`, 10000);
     }
-  };
+  }
 
   private async fetchImage(
     filename: string,
