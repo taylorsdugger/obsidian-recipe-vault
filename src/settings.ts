@@ -68,7 +68,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   filterGlutenFreeWords: false,
 };
 
-class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
+export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
   private readonly onChoose: (path: string) => void;
 
   constructor(app: App, onChoose: (path: string) => void) {

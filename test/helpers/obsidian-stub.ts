@@ -184,16 +184,29 @@ export class WorkspaceLeaf {}
 export class App {}
 export class MarkdownView {}
 export class MarkdownPostProcessorContext {}
-export class Vault {}
+export class Vault {
+  static recurseChildren(root: TFolder, cb: (file: any) => void): void {
+    for (const child of root.children) {
+      cb(child);
+      if (child instanceof TFolder) Vault.recurseChildren(child, cb);
+    }
+  }
+}
 export class MetadataCache {}
 export class TFile {
   path = "";
   name = "";
   basename = "";
   extension = "";
+  parent: TFolder | null = null;
+  stat = { mtime: 0, ctime: 0, size: 0 };
 }
 export class TFolder {
   path = "";
   name = "";
   children: any[] = [];
+  parent: TFolder | null = null;
+  isRoot(): boolean {
+    return this.path === "/";
+  }
 }

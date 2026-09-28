@@ -23,6 +23,7 @@ import {
 import { RecipeGalleryView, resetGalleryUiState } from "./view-recipe-gallery";
 import { getRecipeFiles, thumbPathForImage } from "./utils/recipeLoader";
 import { PhotoRecipeModal } from "./modal-photo-recipe";
+import { ConfirmModal } from "./modal-confirm";
 import {
   PickRecipeFileModal,
   isCooklangFile,
@@ -85,6 +86,15 @@ type VaultWithAttachments = Vault & {
   ): Promise<string>;
 };
 
+/**
+ * What a note imported from `file` records as its `source_file`. A JSON file
+ * can hold several recipes, and each needs its own key or every one after the
+ * first would look already imported.
+ */
+function sourceFileKey(file: TFile, index: number, count: number): string {
+  return count > 1 ? `${file.path}#${index + 1}` : file.path;
+}
+
 export default class RecipeVault extends Plugin {
   settings!: settings.PluginSettings;
 
@@ -103,6 +113,9 @@ export default class RecipeVault extends Plugin {
   /** Pending-write flag and debounce handle for {@link persistIngredientIndex}. */
   private ingredientIndexDirty = false;
   private persistIndexTimer: number | null = null;
+
+  /** Set while a folder import runs, so a second one can't start on top. */
+  private folderImportRunning = false;
 
   private executeCommand(commandId: string): boolean {
     return (
@@ -972,6 +985,21 @@ export default class RecipeVault extends Plugin {
       },
     });
 
+    // Import every recipe file under a folder. The file explorer's folder
+    // right-click menu (registered below) is the other way in.
+    this.addCommand({
+      id: c.CMD_IMPORT_FOLDER,
+      name: "Import recipes from folder",
+      callback: () => {
+        new settings.FolderSuggestModal(this.app, (path) => {
+          const folder = this.app.vault.getAbstractFileByPath(path);
+          if (folder instanceof TFolder) {
+            void this.importRecipesFromFolder(folder);
+          }
+        }).open();
+      },
+    });
+
     // Export the current recipe note as a portable JSON-LD file.
     this.addCommand({
       id: c.CMD_EXPORT_JSONLD,
@@ -1005,6 +1033,16 @@ export default class RecipeVault extends Plugin {
     // only shows in the explorer with "Detect all file extensions" on.
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, abstractFile) => {
+        if (abstractFile instanceof TFolder) {
+          const folder = abstractFile;
+          menu.addItem((item) =>
+            item
+              .setTitle("Import recipes from folder")
+              .setIcon("chef-hat")
+              .onClick(() => void this.importRecipesFromFolder(folder)),
+          );
+          return;
+        }
         if (!(abstractFile instanceof TFile)) return;
         const target = abstractFile;
 
@@ -1463,7 +1501,22 @@ export default class RecipeVault extends Plugin {
    */
   private async saveParsedRecipe(
     recipe: ParsedRecipe,
-    opts: { localImage?: Blob; source?: string } = {},
+    opts: {
+      localImage?: Blob;
+      source?: string;
+      /** Save here instead of the recipe save folder. */
+      folder?: string;
+      /**
+       * The vault file the recipe was imported from, kept as `source_file`
+       * so a folder import can tell it was already imported.
+       */
+      sourceFile?: string;
+      /**
+       * For bulk imports: don't open the note or notice it, and throw on
+       * failure so the caller can collect the error instead.
+       */
+      quiet?: boolean;
+    } = {},
   ): Promise<TFile | null> {
     try {
       const rawName = typeof recipe.name === "string" ? recipe.name.trim() : "";
@@ -1473,10 +1526,7 @@ export default class RecipeVault extends Plugin {
         rawName.replace(/"|\*|\\|\/|<|>|:|\?/g, "").trim() ||
         String(new Date().getTime());
 
-      const folder =
-        this.settings.folder !== ""
-          ? this.settings.folder
-          : c.MANUAL_RECIPE_DEFAULT_FOLDER;
+      const folder = opts.folder ?? this.recipeSaveFolder();
       await this.folderCheck(folder);
 
       let notePath = `${normalizePath(folder)}/${safeName}.md`;
@@ -1538,6 +1588,9 @@ export default class RecipeVault extends Plugin {
       const vaultState = readRecipeVaultState(recipe);
       await this.app.fileManager.processFrontMatter(file, (fm: JsonRecord) => {
         fm.source = source;
+        if (opts.sourceFile) {
+          fm.source_file = opts.sourceFile;
+        }
         if (vaultState.timesMade !== undefined) {
           fm.times_made = vaultState.timesMade;
         }
@@ -1546,10 +1599,13 @@ export default class RecipeVault extends Plugin {
         }
       });
 
-      new Notice(`Recipe "${rawName || safeName}" created.`);
-      await this.app.workspace.openLinkText(file.path, "", true);
+      if (!opts.quiet) {
+        new Notice(`Recipe "${rawName || safeName}" created.`);
+        await this.app.workspace.openLinkText(file.path, "", true);
+      }
       return file;
     } catch (error) {
+      if (opts.quiet) throw error;
       console.error("Recipe Vault: photo save failed", error);
       const msg = error instanceof Error ? error.message : String(error);
       new Notice(`Recipe save failed: ${msg}`, 10000);
@@ -1611,13 +1667,23 @@ export default class RecipeVault extends Plugin {
    */
   private async folderCheck(foldername: string) {
     const vault = this.app.vault;
-    const folderPath = normalizePath(foldername);
-    const folder = vault.getAbstractFileByPath(folderPath);
-    if (folder && folder instanceof TFolder) {
-      return;
+    // Walk down one level at a time. A folder import can ask for a path
+    // several folders deep that doesn't exist yet.
+    let path = "";
+    for (const part of normalizePath(foldername).split("/")) {
+      path = path ? `${path}/${part}` : part;
+      if (vault.getAbstractFileByPath(path) instanceof TFolder) continue;
+      await vault.createFolder(path);
     }
-    await vault.createFolder(folderPath);
-    return;
+  }
+
+  /** Where new recipe notes go: the save folder setting, or the default. */
+  private recipeSaveFolder(): string {
+    return normalizePath(
+      this.settings.folder !== ""
+        ? this.settings.folder
+        : c.MANUAL_RECIPE_DEFAULT_FOLDER,
+    );
   }
 
   /**
@@ -1719,8 +1785,8 @@ export default class RecipeVault extends Plugin {
   }
 
   /**
-   * Create recipe notes from a `.json` / `.jsonld` or `.cook` file already in
-   * the vault.
+   * Read a `.json` / `.jsonld` or `.cook` file into normalized recipes, or
+   * say why it couldn't be.
    *
    * Both go through the same normalize pass as a web page. A Cooklang file is
    * built into a schema.org Recipe first, so from there on it's the same
@@ -1729,42 +1795,53 @@ export default class RecipeVault extends Plugin {
    * has no page, so the recipe keeps whatever `url` it carries and gets none
    * if it has none.
    */
-  private importRecipeFromFile = async (file: TFile): Promise<void> => {
-    const cooklang = isCooklangFile(file);
-    const format = cooklang ? "Cooklang" : "JSON-LD";
-    try {
-      const raw = await this.app.vault.read(file);
+  private async readRecipesFromFile(
+    file: TFile,
+  ): Promise<{ recipes: ParsedRecipe[]; source: string } | { error: string }> {
+    const raw = await this.app.vault.read(file);
 
-      let json: unknown;
-      if (cooklang) {
-        const recipe = core.cooklangToJsonLd(raw, { name: file.basename });
-        // The file name alone always makes a "recipe", so check for a body.
-        if (!recipe.recipeIngredient && !recipe.recipeInstructions) {
-          new Notice(`${file.name} has no ingredients or steps in it.`);
-          return;
-        }
-        json = recipe;
-      } else {
-        try {
-          json = JSON.parse(raw);
-        } catch {
-          new Notice(`${file.name} isn't valid JSON.`);
-          return;
-        }
+    if (isCooklangFile(file)) {
+      const recipe = core.cooklangToJsonLd(raw, { name: file.basename });
+      // The file name alone always makes a "recipe", so check for a body.
+      if (!recipe.recipeIngredient && !recipe.recipeInstructions) {
+        return { error: `${file.name} has no ingredients or steps in it.` };
       }
+      return {
+        recipes: core.parseRecipesFromJsonLd([recipe], this.fetchOptions()),
+        source: "cooklang",
+      };
+    }
 
-      const recipes = core.parseRecipesFromJsonLd([json], this.fetchOptions());
-      if (recipes.length === 0) {
-        new Notice(
-          `No schema.org Recipe found in ${file.name}. It needs a node with "@type": "Recipe".`,
-        );
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      return { error: `${file.name} isn't valid JSON.` };
+    }
+    const recipes = core.parseRecipesFromJsonLd([json], this.fetchOptions());
+    if (recipes.length === 0) {
+      return {
+        error: `No schema.org Recipe found in ${file.name}. It needs a node with "@type": "Recipe".`,
+      };
+    }
+    return { recipes, source: "jsonld" };
+  }
+
+  /** Create recipe notes from one `.json` / `.jsonld` or `.cook` file. */
+  private importRecipeFromFile = async (file: TFile): Promise<void> => {
+    const format = isCooklangFile(file) ? "Cooklang" : "JSON-LD";
+    try {
+      const read = await this.readRecipesFromFile(file);
+      if ("error" in read) {
+        new Notice(read.error);
         return;
       }
 
       let saved = 0;
-      for (const recipe of recipes) {
+      for (const [i, recipe] of read.recipes.entries()) {
         const note = await this.saveParsedRecipe(recipe, {
-          source: cooklang ? "cooklang" : "jsonld",
+          source: read.source,
+          sourceFile: sourceFileKey(file, i, read.recipes.length),
         });
         if (note) saved += 1;
       }
@@ -1780,6 +1857,178 @@ export default class RecipeVault extends Plugin {
       new Notice(`${format} import failed: ${msg}`, 10000);
     }
   };
+
+  /**
+   * Import every JSON-LD and Cooklang file under a folder. A folder this big
+   * asks first, since the gallery gets slow with thousands of notes.
+   */
+  private async importRecipesFromFolder(folder: TFolder): Promise<void> {
+    if (this.folderImportRunning) {
+      new Notice("A folder import is already running.");
+      return;
+    }
+
+    const files: TFile[] = [];
+    Vault.recurseChildren(folder, (child) => {
+      if (child instanceof TFile && isImportableRecipeFile(child)) {
+        files.push(child);
+      }
+    });
+    files.sort((a, b) => a.path.localeCompare(b.path));
+
+    const name = folder.isRoot() ? "the vault" : folder.path;
+    if (files.length === 0) {
+      new Notice(`No .json or .cook recipe files in ${name}.`);
+      return;
+    }
+
+    if (files.length >= c.BULK_IMPORT_WARN_AT) {
+      new ConfirmModal(this.app, {
+        title: "Import a lot of recipes?",
+        message:
+          `${name} has ${files.length.toLocaleString()} recipe files. ` +
+          "Recipe Vault is meant for a personal collection, and the gallery " +
+          "gets slow with thousands of notes. You could import the folders " +
+          "you actually cook from instead.",
+        confirmText: `Import all ${files.length.toLocaleString()}`,
+        onConfirm: () => void this.runFolderImport(folder, files),
+      }).open();
+      return;
+    }
+
+    await this.runFolderImport(folder, files);
+  }
+
+  /**
+   * Make a note for every recipe in `files`, keeping their folder structure
+   * inside the recipe save folder: `Imports/Desserts/pie.json` picked from
+   * `Imports` lands in `Recipes/Desserts/`.
+   *
+   * Safe to run again on the same folder. A recipe is skipped when a note
+   * already has its url, or was made from the same file (`source_file`), so a
+   * run that stops halfway picks up where it left off instead of making
+   * doubles.
+   *
+   * Notes are made without opening each one or noticing it. One notice keeps
+   * a running count, and files that fail are listed in an "Import errors"
+   * note in the imported folder, so they can be fixed and the import run
+   * again.
+   */
+  private async runFolderImport(
+    folder: TFolder,
+    files: TFile[],
+  ): Promise<void> {
+    this.folderImportRunning = true;
+    const saveFolder = this.recipeSaveFolder();
+    const base = folder.isRoot() ? "" : folder.path;
+    const seen = this.importedRecipeKeys();
+    const progress = new Notice("", 0);
+    const failures: string[] = [];
+    let imported = 0;
+    let skipped = 0;
+
+    try {
+      for (const [n, file] of files.entries()) {
+        progress.setMessage(
+          `Importing recipes: ${n + 1} of ${files.length.toLocaleString()}`,
+        );
+        try {
+          const read = await this.readRecipesFromFile(file);
+          if ("error" in read) {
+            failures.push(`${file.path}: ${read.error}`);
+            continue;
+          }
+
+          const dir =
+            file.parent && !file.parent.isRoot() ? file.parent.path : "";
+          const sub =
+            base && dir.startsWith(`${base}/`)
+              ? dir.slice(base.length + 1)
+              : "";
+          const target = sub
+            ? normalizePath(`${saveFolder}/${sub}`)
+            : saveFolder;
+
+          for (const [i, recipe] of read.recipes.entries()) {
+            const sourceFile = sourceFileKey(file, i, read.recipes.length);
+            if ((recipe.url && seen.has(recipe.url)) || seen.has(sourceFile)) {
+              skipped += 1;
+              continue;
+            }
+            await this.saveParsedRecipe(recipe, {
+              source: read.source,
+              folder: target,
+              sourceFile,
+              quiet: true,
+            });
+            seen.add(sourceFile);
+            if (recipe.url) seen.add(recipe.url);
+            imported += 1;
+          }
+        } catch (error) {
+          console.error("Recipe Vault: folder import failed", file.path, error);
+          const msg = error instanceof Error ? error.message : String(error);
+          failures.push(`${file.path}: ${msg}`);
+        }
+      }
+    } finally {
+      progress.hide();
+      this.folderImportRunning = false;
+    }
+
+    const summary = [
+      `Imported ${imported.toLocaleString()} recipe${imported === 1 ? "" : "s"}`,
+    ];
+    if (skipped > 0) {
+      summary.push(`skipped ${skipped.toLocaleString()} already imported`);
+    }
+    if (failures.length > 0) {
+      const logPath = normalizePath(
+        base ? `${base}/Import errors.md` : "Import errors.md",
+      );
+      await this.writeImportErrors(logPath, failures);
+      summary.push(
+        `${failures.length.toLocaleString()} file${failures.length === 1 ? "" : "s"} failed (see ${logPath})`,
+      );
+    }
+    new Notice(`${summary.join(", ")}.`, 15000);
+  }
+
+  /**
+   * Every url and `source_file` already on a note in the vault. Read from
+   * the metadata cache, so it's cheap even with thousands of notes.
+   */
+  private importedRecipeKeys(): Set<string> {
+    const keys = new Set<string>();
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      if (!fm) continue;
+      for (const value of [fm.url, fm.source_file]) {
+        if (typeof value === "string" && value.trim()) keys.add(value.trim());
+      }
+    }
+    return keys;
+  }
+
+  /** List the files a folder import couldn't read, replacing any older list. */
+  private async writeImportErrors(
+    path: string,
+    failures: string[],
+  ): Promise<void> {
+    const body = [
+      `Recipe Vault couldn't import these files on ${new Date().toLocaleString()}.`,
+      "Fix them and run the folder import again. Recipes that already imported are skipped.",
+      "",
+      ...failures.map((line) => `- ${line}`),
+      "",
+    ].join("\n");
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) {
+      await this.app.vault.modify(existing, body);
+    } else {
+      await this.app.vault.create(path, body);
+    }
+  }
 
   /**
    * Write a recipe note back out as a JSON-LD (`.json`) or Cooklang (`.cook`)
