@@ -121,7 +121,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                           |
 | **Recipe gallery folder**                  | The folder the Recipe Gallery browses, including its subfolders. **Leave blank to follow the Recipe save folder** (recommended). Set it only to browse a different folder    |
 | **OpenRouter API key**                     | Required for Ask AI and Add recipe from photo                                                                                                                                |
-| **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-2.5-flash-lite`)                                                                            |
+| **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-3.5-flash-lite`)                                                                            |
 | **AI request timeout (ms)**                | Timeout for AI requests (minimum 5000 ms)                                                                                                                                    |
 | **Custom AI system prompt**                | Optional override for the built-in Ask AI instructions                                                                                                                       |
 | **Recipe title filler words**              | Controls how imported titles are cleaned up                                                                                                                                  |
@@ -262,7 +262,7 @@ Recipe Vault can use an AI model to suggest edits to a markdown recipe note dire
 
 > **No OpenRouter key yet?** Sign up free at [openrouter.ai](https://openrouter.ai/), then grab a key from [openrouter.ai/keys](https://openrouter.ai/keys). It's pay-as-you-go (no subscription), and the default model costs well under a cent per request. Paste the key into **Recipe Vault settings → OpenRouter API key**.
 
-The default model is `google/gemini-2.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
+The default model is `google/gemini-3.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
 
 ---
 

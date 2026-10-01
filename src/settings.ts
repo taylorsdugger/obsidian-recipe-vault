@@ -40,12 +40,22 @@ export interface PluginSettings {
   filterGlutenFreeWords: boolean;
 }
 
+export const DEFAULT_AI_MODEL = "google/gemini-3.5-flash-lite";
+
 const AI_MODEL_PRESETS: Array<{ id: string; label: string }> = [
-  { id: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite ($)" },
-  { id: "openai/gpt-4.1-mini", label: "GPT-4.1 Mini ($)" },
-  { id: "anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku ($)" },
-  { id: "minimax/minimax-m2.5", label: "MiniMax: MiniMax M2.5 ($)" },
+  { id: DEFAULT_AI_MODEL, label: "Gemini 3.5 Flash Lite ($)" },
+  { id: "openai/gpt-5.4-mini", label: "GPT-5.4 Mini ($)" },
+  { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5 ($)" },
+  { id: "minimax/minimax-m3", label: "MiniMax: MiniMax M3 ($)" },
 ];
+
+/** Old preset ids, mapped to the preset that replaced them. */
+export const LEGACY_AI_MODEL_PRESETS: Record<string, string> = {
+  "google/gemini-2.5-flash-lite": DEFAULT_AI_MODEL,
+  "openai/gpt-4.1-mini": "openai/gpt-5.4-mini",
+  "anthropic/claude-3.5-haiku": "anthropic/claude-haiku-4.5",
+  "minimax/minimax-m2.5": "minimax/minimax-m3",
+};
 
 const AI_MODEL_OTHER = "__other__";
 
@@ -64,9 +74,9 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   shoppingListFile: "Shopping List.md",
   recipeGalleryFolder: "",
   openRouterApiKey: "",
-  aiModelPreset: "google/gemini-2.5-flash-lite",
+  aiModelPreset: DEFAULT_AI_MODEL,
   aiCustomModelId: "",
-  aiModelId: "google/gemini-2.5-flash-lite",
+  aiModelId: DEFAULT_AI_MODEL,
   aiTimeoutMs: 45000,
   aiSystemPrompt: "",
   fillerWordsMode: "auto",
@@ -501,7 +511,7 @@ export class SettingsTab extends PluginSettingTab {
               .onChange(async (value) => {
                 this.plugin.settings.aiCustomModelId = value.trim();
                 this.plugin.settings.aiModelId =
-                  value.trim() || "google/gemini-2.5-flash-lite";
+                  value.trim() || DEFAULT_AI_MODEL;
                 await this.plugin.saveSettings();
               });
             text.inputEl.addClass("recipe-vault-input-full");
