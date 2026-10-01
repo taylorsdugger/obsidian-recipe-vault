@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 
 import type { AppBindings, Env } from "./env";
+import { wait as delay } from "./wait";
 
 // One household, one password (locked decision 3). The password hash and the
 // cookie signing key are Worker secrets - `wrangler secret put`, or .dev.vars
@@ -169,7 +170,7 @@ export async function signIn(
 
   if (!ok) {
     const wait = FAILURE_FLOOR_MS - (Date.now() - started);
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    if (wait > 0) await delay(wait);
     return false;
   }
 

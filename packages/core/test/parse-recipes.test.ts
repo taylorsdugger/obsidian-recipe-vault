@@ -138,6 +138,7 @@ describe("fetchRecipes", () => {
     ...OPTS,
     proxyFallback: false,
     retryDelayMs: 0,
+    sleep: async () => {},
   };
 
   /** An HttpPort that answers every request with the same body. */

@@ -17,6 +17,7 @@ import type { AppBindings } from "../env";
 import { workerHttpPort } from "../http";
 import { PARSE_OPTIONS } from "../parse-options";
 import { freeKeyFor, writeNote } from "../vault-store";
+import { wait } from "../wait";
 
 /**
  * The web app stores remote image URLs, so `photo:` is written bare rather
@@ -65,6 +66,7 @@ const IMPORT_OPTIONS: FetchOptions = {
   ...PARSE_OPTIONS,
   proxyFallback: true,
   retryDelayMs: 500,
+  sleep: wait,
 };
 
 export const importRoutes = new Hono<AppBindings>()

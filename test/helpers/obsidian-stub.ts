@@ -154,7 +154,12 @@ export class PluginSettingTab {
     this.plugin = plugin;
   }
   display(): void {}
+  refreshDomState(): void {}
   hide(): void {}
+}
+
+export function requireApiVersion(): boolean {
+  return false;
 }
 
 export class FuzzySuggestModal<T> {

@@ -1259,6 +1259,7 @@ export default class RecipeVault extends Plugin {
       filterGlutenFreeWords: s.filterGlutenFreeWords ?? true,
       proxyFallback: s.proxyFallback,
       retryDelayMs: this.fetchRetryDelayMs,
+      sleep: (ms) => sleep(ms),
       onProgress: (message) => {
         new Notice(message);
       },

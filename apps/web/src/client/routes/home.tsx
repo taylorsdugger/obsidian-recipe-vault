@@ -50,10 +50,10 @@ function useMealTime(): { today: Date; meal: MealTime } {
       const next = mealTime(now);
       setMeal((current) => (sameMealTime(current, next) ? current : next));
     };
-    const timer = setInterval(check, 60_000);
+    const timer = window.setInterval(check, 60_000);
     document.addEventListener("visibilitychange", check);
     return () => {
-      clearInterval(timer);
+      window.clearInterval(timer);
       document.removeEventListener("visibilitychange", check);
     };
   }, []);
