@@ -1794,10 +1794,13 @@ export default class RecipeVault extends Plugin {
   }
 
   /**
-   * Save a recipe as a `.cook` file in the save folder (or `opts.folder`),
-   * with its photo next to it as `Name.jpg`, which is where Cooklang and the
-   * Cooklang view look. The photo is the one passed in, or the recipe's
-   * remote image when "Save images" is on.
+   * Save a recipe as a `.cook` file in the save folder (or `opts.folder`).
+   *
+   * The photo is the one passed in, or the recipe's remote image when "Save
+   * images" is on. With an image folder set it goes there, like a note's
+   * photo, and the file's `image:` front matter points at it. With no image
+   * folder it goes next to the file as `Name.jpg`, which is where Cooklang
+   * looks on its own.
    */
   private async saveCooklangRecipe(
     recipe: ParsedRecipe,
@@ -1823,21 +1826,44 @@ export default class RecipeVault extends Plugin {
     }
     const file = await this.app.vault.create(path, text);
 
-    if (opts.localImage) {
-      await this.saveCooklangPhoto(file, await opts.localImage.arrayBuffer());
-    } else if (
+    const remote =
       this.settings.saveImg &&
       typeof recipe.image === "string" &&
       /^https?:\/\//i.test(recipe.image)
-    ) {
-      try {
-        const res = await requestUrl({ url: recipe.image, method: "GET" });
-        await this.saveCooklangPhoto(file, res.arrayBuffer);
-      } catch (err) {
-        // The recipe is saved either way, and its front matter still has the
-        // image url for the gallery to show.
-        console.error("Recipe Vault: failed to download recipe photo", err);
+        ? recipe.image
+        : null;
+    if (!opts.localImage && !remote) return file;
+
+    try {
+      let imagePath: string | null = null;
+      if (this.settings.imgFolder === "") {
+        const buffer = opts.localImage
+          ? await opts.localImage.arrayBuffer()
+          : (await requestUrl({ url: remote ?? "", method: "GET" }))
+              .arrayBuffer;
+        await this.saveCooklangPhoto(file, buffer);
+      } else if (opts.localImage) {
+        imagePath = await this.saveLocalRecipeImage(
+          file.basename,
+          opts.localImage,
+          file,
+        );
+      } else {
+        await this.saveRemoteMainImage(recipe, file);
+        if (typeof recipe.image === "string" && recipe.image !== remote) {
+          imagePath = recipe.image;
+        }
       }
+      if (imagePath) {
+        const saved = imagePath;
+        await this.app.vault.process(file, (current) =>
+          setCooklangMetadata(current, { image: saved }),
+        );
+      }
+    } catch (err) {
+      // The recipe is saved either way. A remote image is still in its front
+      // matter for the gallery to show.
+      console.error("Recipe Vault: failed to save recipe photo", err);
     }
     return file;
   }

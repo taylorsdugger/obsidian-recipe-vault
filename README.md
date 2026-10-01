@@ -113,7 +113,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Recipe save folder**                     | Where new recipes are created. The gallery browses this folder by default, so imports show up automatically                                                                  |
 | **Save new recipes as**                    | **Markdown note** (default) or **Cooklang file**. Applies to every import and to Add recipe (manual). Recipes you already have stay as they are                              |
 | **Save in currently opened file**          | Import into the active note instead of creating a new one. Markdown only                                                                                                     |
-| **Save images**                            | Download recipe images into your vault. For a `.cook` file the photo goes next to it as `Recipe Name.jpg`                                                                    |
+| **Save images**                            | Download recipe images into your vault, into this folder. Leave the folder blank to use Obsidian's attachment location, or for a `.cook` file, to put the photo next to it   |
 | **Save images in subdirectories**          | Create a per-recipe subfolder under the image folder                                                                                                                         |
 | **Recipe template**                        | Handlebars template used when creating recipe notes. Markdown only                                                                                                           |
 | **Decode entities**                        | Decodes HTML entities in imported data                                                                                                                                       |
@@ -213,7 +213,7 @@ Recipe Vault opens `.cook` files in their own view, laid out like a recipe note:
 
 - **Mark as made** and **Add checked to shopping list** work from the view, the same as from a note. Times made is saved in the file as `times made` and `last made`.
 - **Edit** switches to a plain text editor over the file. The pencil in the view's header does the same.
-- A photo named after the recipe and sitting next to it (`Leek Soup.jpg` beside `Leek Soup.cook`) shows at the top. That's where Cooklang keeps photos.
+- The photo at the top is the one named after the recipe and sitting next to it (`Leek Soup.jpg` beside `Leek Soup.cook`), which is where Cooklang keeps photos. Failing that, it's whatever the file's `image:` points at, a path in your vault or a URL.
 - Another recipe used as an ingredient, like `@./Sauces/Hollandaise{150%g}`, is a link you can click. It's looked for next to the file, then in your recipe folder, then anywhere in the vault by name.
 - Ticked ingredients reset when you close the file, since a `.cook` file has nowhere to keep them.
 
@@ -224,6 +224,8 @@ If you also have the Cooklang plugin installed, whichever plugin loads first ope
 Set **Save new recipes as** to **Cooklang file** and every new recipe is saved as a `.cook` file: URL imports, batch imports, photo imports, file and folder imports, and Add recipe (manual). Switch it back to Markdown and new recipes are notes again. Nothing you already have gets converted either way, and the gallery shows both.
 
 Recipe pages keep the ingredients apart from the steps, and Cooklang marks them inside the steps, so an import has to match them up. Each ingredient is marked in the first step that mentions it. "1 yellow onion, diced" matches a step that says "the onions" and becomes `@yellow onion{1}(diced)`. An ingredient no step mentions goes in a "Gather" step at the top so nothing is lost.
+
+The photo goes in your image folder (see **Save images**) and the file's `image:` points at it. If the image folder is blank, it goes next to the file as `Recipe Name.jpg` instead.
 
 Importing a `.cook` file while in Cooklang mode copies it as written, so its cookware and timers come along.
 

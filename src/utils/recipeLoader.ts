@@ -42,6 +42,20 @@ export function cooklangSiblingImage(vault: Vault, file: TFile): TFile | null {
 }
 
 /**
+ * A `.cook` file's photo in the vault: the one next to it, else the vault
+ * path its `image:` front matter gives. Null for a url or no photo.
+ */
+export function cooklangPhotoFile(
+  vault: Vault,
+  file: TFile,
+  image: string,
+): TFile | null {
+  return (
+    cooklangSiblingImage(vault, file) ?? resolveImageFile(file, vault, image)
+  );
+}
+
+/**
  * All recipe notes and Cooklang files under the configured recipe-gallery
  * folder (recursively).
  *
@@ -150,14 +164,17 @@ function cooklangRecipe(
   };
 }
 
-/** The sibling photo (its thumbnail if there is one), else the file's image url. */
+/**
+ * The photo next to the file (its thumbnail if there is one), else what its
+ * `image:` front matter says: a vault path in the image folder, or a url.
+ */
 function cooklangPhoto(vault: Vault, file: TFile, linked: string): string {
   const image = cooklangSiblingImage(vault, file);
   if (image) {
     const thumb = vault.getAbstractFileByPath(thumbPathForImage(image.path));
     return vault.getResourcePath(thumb instanceof TFile ? thumb : image);
   }
-  return /^https?:\/\//i.test(linked) ? linked : "";
+  return resolvePhoto(file, vault, linked);
 }
 
 /**

@@ -142,7 +142,12 @@ function readCooklang(path: string, text: string): RecipeFileSummary {
     title: typeof recipe.name === "string" ? recipe.name : basename(path),
     author: author?.name ?? "",
     sourceUrl: typeof recipe.url === "string" ? recipe.url : "",
-    photo: typeof recipe.image === "string" ? recipe.image : "",
+    // Straight from the front matter, not the JSON-LD, which only keeps a
+    // url. A path like `assets/Leek-Soup.jpg` is the plugin's image folder.
+    photo:
+      (metaText(meta.image) || metaText(meta.images) || metaText(meta.picture))
+        .split(",")[0]
+        .trim(),
     mealType: metaText(meta.course) || metaText(meta.category),
     cookTime: time || (cookTimeMins ? readableMinutes(cookTimeMins) : ""),
     cookTimeMins,

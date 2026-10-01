@@ -57,6 +57,14 @@ describe("readRecipeFile", () => {
     });
   });
 
+  it("keeps a vault path for the photo, not only a url", () => {
+    const summary = readRecipeFile(
+      "Recipes/Soup.cook",
+      "---\nimage: assets/Leek-Soup.jpg\n---\n\nSimmer @leeks{2}.",
+    );
+    expect(summary?.photo).toBe("assets/Leek-Soup.jpg");
+  });
+
   it("falls back to the file name and says when there's no recipe", () => {
     const summary = readRecipeFile("Recipes/Empty One.cook", "");
     expect(summary?.title).toBe("Empty One");

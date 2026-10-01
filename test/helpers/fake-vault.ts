@@ -61,6 +61,11 @@ export class FakeVault {
     return file;
   }
 
+  /** Binary files only need to exist here, so the bytes aren't kept. */
+  async createBinary(path: string, _data: ArrayBuffer): Promise<TFile> {
+    return this.create(path, "");
+  }
+
   async read(file: TFile): Promise<string> {
     return this.contents.get(file.path) ?? "";
   }

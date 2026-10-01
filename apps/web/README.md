@@ -122,8 +122,9 @@ direction, which is why a push from R2 wouldn't buy much.
 
 A note whose photo is a vault-local `[[image.jpg]]` gets served out of the same
 bucket through `/api/vault/media/…`, resolved by filename the way Obsidian
-resolves a wikilink. A `.cook` file's photo is the image next to it with the
-same name (`Leek Soup.jpg` for `Leek Soup.cook`), served the same way. Those
+resolves a wikilink. A `.cook` file's photo is the vault path in its `image:`
+front matter, or failing that the image next to it with the same name
+(`Leek Soup.jpg` for `Leek Soup.cook`), served the same way. Those
 files are full-size camera photos, a few MB each.
 
 A `.cook` file next to a note of the same name is the plugin's Cooklang export

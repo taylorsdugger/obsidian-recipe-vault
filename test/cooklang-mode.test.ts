@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { FakeVault, makeFakeApp } from "./helpers/fake-vault";
 import { makePlugin, resetObsidianStub } from "./helpers/plugin";
-import { noticeLog, type TFile, type TFolder } from "./helpers/obsidian-stub";
+import {
+  noticeLog,
+  setRequestUrl,
+  type TFile,
+  type TFolder,
+} from "./helpers/obsidian-stub";
+import { readRecipeFile } from "@recipe-vault/core";
 import {
   getRecipeFiles,
   loadRecipes,
@@ -221,5 +227,74 @@ describe("recipe references", () => {
     expect(resolve("Basics/Stock.md")).toBe("Recipes/Basics/Stock.md");
     expect(resolve("Sauces/Pesto")).toBe("Elsewhere/Pesto.cook");
     expect(resolve("Sauces/Nothing")).toBeNull();
+  });
+});
+
+describe("a .cook file's photo", () => {
+  beforeEach(() => resetObsidianStub());
+
+  // Enough of a JPEG for the type sniffing: the FF D8 FF signature.
+  const photo = () =>
+    new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])]);
+  const soup = {
+    name: "Leek Soup",
+    recipeIngredient: ["2 leeks"],
+    recipeInstructions: [{ text: "Simmer the leeks." }],
+  };
+
+  it("goes in the image folder when one is set", async () => {
+    const { vault, plugin } = setup();
+    plugin.settings.imgFolder = "assets";
+
+    await (plugin as any).saveParsedRecipe(soup, {
+      localImage: photo(),
+      quiet: true,
+    });
+
+    expect(vault.paths("assets/")).toEqual(["assets/Leek-Soup.jpg"]);
+    expect(vault.paths("Recipes/")).toEqual(["Recipes/Leek Soup.cook"]);
+    const text = vault.text("Recipes/Leek Soup.cook");
+    expect(readRecipeFile("Recipes/Leek Soup.cook", text)?.photo).toBe(
+      "assets/Leek-Soup.jpg",
+    );
+  });
+
+  it("downloads a url import's photo into the image folder", async () => {
+    const { vault, plugin } = setup();
+    plugin.settings.imgFolder = "assets";
+    plugin.settings.saveImg = true;
+    const bytes = await photo().arrayBuffer();
+    setRequestUrl(() => ({
+      status: 200,
+      text: "",
+      arrayBuffer: bytes,
+      headers: {},
+      json: null,
+    }));
+
+    await (plugin as any).saveParsedRecipe(
+      { ...soup, image: "https://example.com/soup.jpg" },
+      { quiet: true },
+    );
+
+    expect(vault.paths("assets/")).toEqual(["assets/Leek-Soup.jpg"]);
+    expect(
+      readRecipeFile("x.cook", vault.text("Recipes/Leek Soup.cook"))?.photo,
+    ).toBe("assets/Leek-Soup.jpg");
+  });
+
+  it("goes next to the file when there's no image folder", async () => {
+    const { vault, plugin } = setup();
+
+    await (plugin as any).saveParsedRecipe(soup, {
+      localImage: photo(),
+      quiet: true,
+    });
+
+    expect(vault.paths("Recipes/")).toEqual([
+      "Recipes/Leek Soup.cook",
+      "Recipes/Leek Soup.jpg",
+    ]);
+    expect(vault.text("Recipes/Leek Soup.cook")).not.toContain("image:");
   });
 });

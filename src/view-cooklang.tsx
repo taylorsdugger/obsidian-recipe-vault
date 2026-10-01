@@ -10,7 +10,7 @@ import { CooklangRecipe } from "./components/CooklangRecipe";
 import * as c from "./constants";
 import type RecipeVault from "./main";
 import {
-  cooklangSiblingImage,
+  cooklangPhotoFile,
   resolveRecipeReference,
 } from "./utils/recipeLoader";
 
@@ -174,8 +174,14 @@ export class CooklangView extends TextFileView {
     const summary = cooklangToJsonLd(recipe, { name: this.file?.basename });
     const linked =
       typeof summary.image === "string" ? summary.image : undefined;
-    const sibling = this.file
-      ? cooklangSiblingImage(this.app.vault, this.file)
+    // Next to the file, or in the image folder its `image:` points at.
+    const imageMeta = recipe.metadata.image;
+    const local = this.file
+      ? cooklangPhotoFile(
+          this.app.vault,
+          this.file,
+          (Array.isArray(imageMeta) ? imageMeta[0] : imageMeta) ?? "",
+        )
       : null;
     const file = this.file;
     const linkFor = (reference: string): string | null =>
@@ -195,7 +201,7 @@ export class CooklangView extends TextFileView {
         recipe={recipe}
         summary={summary}
         history={readRecipeVaultState(summary)}
-        imageSrc={sibling ? this.app.vault.getResourcePath(sibling) : linked}
+        imageSrc={local ? this.app.vault.getResourcePath(local) : linked}
         checked={this.checked}
         onToggle={(i) => this.toggle(i)}
         onMarkMade={() => {

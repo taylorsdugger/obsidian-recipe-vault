@@ -246,7 +246,7 @@ export class SettingsTab extends PluginSettingTab {
       },
       {
         name: "Save new recipes as",
-        desc: "Markdown notes use the recipe template below. Cooklang saves a .cook file, with the photo next to it. Recipes you already have stay as they are, and the gallery shows both.",
+        desc: "Markdown notes use the recipe template below. Cooklang saves a .cook file, with its photo in the image folder below, or next to the file if that's blank. Recipes you already have stay as they are, and the gallery shows both.",
         render: (setting) => {
           setting.addDropdown((dropdown) => {
             dropdown.addOption("markdown", "Markdown note");
