@@ -756,7 +756,6 @@ export default class RecipeVault extends Plugin {
   }
 
   private resolveAiModelId(): string {
-    const defaultModel = "google/gemini-2.5-flash-lite";
     const preset = this.settings.aiModelPreset?.trim();
 
     if (preset && preset !== "__other__") {
@@ -769,7 +768,7 @@ export default class RecipeVault extends Plugin {
     }
 
     const legacy = this.settings.aiModelId?.trim();
-    return legacy || defaultModel;
+    return legacy || settings.DEFAULT_AI_MODEL;
   }
 
   private queueInjectActiveRecipeActions(): void {
@@ -1367,6 +1366,17 @@ export default class RecipeVault extends Plugin {
     const migrated = migrateImageLink(this.settings.recipeTemplate);
     if (migrated !== this.settings.recipeTemplate) {
       this.settings.recipeTemplate = migrated;
+      await this.saveData(this.settings);
+    }
+
+    // Presets get swapped for newer models over time. Move anyone still on a
+    // retired preset to its replacement, so the dropdown doesn't fall back to
+    // "Other (custom)" with an empty field.
+    const replacement =
+      settings.LEGACY_AI_MODEL_PRESETS[this.settings.aiModelPreset];
+    if (replacement) {
+      this.settings.aiModelPreset = replacement;
+      this.settings.aiModelId = replacement;
       await this.saveData(this.settings);
     }
   }
