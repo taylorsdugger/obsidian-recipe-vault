@@ -58,7 +58,17 @@ async function listNotes(
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
 
-  return notes.sort((a, b) => a.key.localeCompare(b.key));
+  // A .cook file next to a note of the same name is the plugin's export of
+  // that note. Same recipe, so only the note gets a row.
+  const stem = (key: string) => key.slice(0, key.lastIndexOf(".")).toLowerCase();
+  const noteStems = new Set(
+    notes.filter((n) => recipeFormatOf(n.key) === "markdown").map((n) => stem(n.key)),
+  );
+  return notes
+    .filter(
+      (n) => recipeFormatOf(n.key) !== "cooklang" || !noteStems.has(stem(n.key)),
+    )
+    .sort((a, b) => a.key.localeCompare(b.key));
 }
 
 /**

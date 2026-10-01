@@ -44,6 +44,10 @@ export function cooklangSiblingImage(vault: Vault, file: TFile): TFile | null {
 /**
  * All recipe notes and Cooklang files under the configured recipe-gallery
  * folder (recursively).
+ *
+ * A `.cook` file with a note of the same name next to it is left out. That's
+ * what "Export recipe as Cooklang" leaves behind, and it's the same recipe,
+ * so the note stands for both instead of the gallery showing it twice.
  */
 export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
   if (!folderPath.trim()) return [];
@@ -54,7 +58,7 @@ export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
     .replace(/\/+$/, "")
     .toLowerCase();
 
-  return vault.getFiles().filter((file) => {
+  const inFolder = vault.getFiles().filter((file) => {
     if (!isRecipeFileType(file)) return false;
     const fileFolder = (file.parent?.path ?? "")
       .replace(/\\/g, "/")
@@ -64,6 +68,15 @@ export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
       fileFolder.startsWith(normalizedFolder + "/")
     );
   });
+
+  const withoutExtension = (file: TFile) =>
+    file.path.slice(0, -(file.extension.length + 1)).toLowerCase();
+  const notes = new Set(
+    inFolder.filter((file) => !isCooklangFile(file)).map(withoutExtension),
+  );
+  return inFolder.filter(
+    (file) => !isCooklangFile(file) || !notes.has(withoutExtension(file)),
+  );
 }
 
 /**
@@ -327,4 +340,46 @@ export function timesMadeGroup(n: number): string {
   if (n <= 3) return "1\u20133 times";
   if (n <= 10) return "4\u201310 times";
   return "11+ times";
+}
+
+/** Join a folder and a relative path, working out `.` and `..` steps. */
+function joinVaultPath(dir: string, relative: string): string {
+  const parts = dir ? dir.split("/") : [];
+  for (const part of relative.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.join("/");
+}
+
+/**
+ * The file a Cooklang recipe reference (`@./Sauces/Hollandaise{}`) points at.
+ *
+ * Tried relative to the file it's in, then relative to the recipe folder,
+ * as a `.cook` file and then as a note. When neither has it, `findByName`
+ * gets the last word, the way a `[[wikilink]]` would find "Hollandaise"
+ * anywhere in the vault.
+ */
+export function resolveRecipeReference(
+  vault: Vault,
+  from: TFile,
+  reference: string,
+  recipeFolder: string,
+  findByName: (name: string) => TFile | null = () => null,
+): TFile | null {
+  const dir = from.parent && !from.parent.isRoot() ? from.parent.path : "";
+  const hasExtension = /\.(cook|md)$/i.test(reference);
+  const bases = [
+    joinVaultPath(dir, reference),
+    joinVaultPath(recipeFolder.trim().replace(/\/+$/, ""), reference),
+  ];
+  for (const base of bases) {
+    for (const ext of hasExtension ? [""] : [".cook", ".md"]) {
+      const file = vault.getAbstractFileByPath(`${base}${ext}`);
+      if (file instanceof TFile && file.path !== from.path) return file;
+    }
+  }
+  const name = reference.replace(/^.*\//, "").replace(/\.(cook|md)$/i, "");
+  return findByName(`${name}.cook`) ?? findByName(name);
 }

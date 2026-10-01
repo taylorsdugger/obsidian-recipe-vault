@@ -4,8 +4,9 @@ The household web app. One Cloudflare Worker serves everything: Hono handles
 `/api/*`, Workers static assets serve the Vite build from `dist/`, and D1 is
 the database. See `docs/web-app-plan.md` step 2 for what goes where.
 
-This is scaffolding. Login works, the shell and the tab bar work, and
-`/api/import/preview` really parses a URL. Every other route answers 501.
+It has recipes (browse, search, cook from, edit, mark made), the week plan,
+the shopping list, and URL import. Recipes and the shopping list live in the
+synced Obsidian vault, so the app and Obsidian share them.
 
 ## Running it
 
@@ -26,7 +27,7 @@ npm run dev -w @recipe-vault/web   # http://localhost:8787
 ```
 
 `npm run dev` is `wrangler dev`, which runs the Worker and the built client
-together. For client hot reload, run `vite` separately — it proxies `/api` to
+together. For client hot reload, run `vite` separately. It proxies `/api` to
 port 8787.
 
 Check the parser still runs on workerd:
@@ -64,20 +65,37 @@ scripts above from anywhere in the repo. Running bare `npx wrangler …` at the
 repo root fails with "Required Worker name missing" because there's no config
 up there to find.
 
+## Deploying a new migration
+
+When a change adds a file to `migrations/`, run it before deploying:
+
+```
+npm run db:migrate -w @recipe-vault/web
+```
+
+`0005_settings.sql` is the latest. It adds the `settings` table that holds the
+"Save new recipes as" choice. Until it runs, imports keep saving markdown.
+
 ## The vault is the source of truth
 
-The Obsidian vault syncs to the `obsidian` R2 bucket, and the recipe notes
-under `Recipes/All recipes/` are already in this app's format. R2 holds the
-recipes; D1 is an index of them that can be thrown away and rebuilt.
+The Obsidian vault syncs to the `obsidian` R2 bucket, and the recipes under
+`Recipes/All recipes/` are already in this app's format: markdown notes from
+the plugin's template, and Cooklang `.cook` files. R2 holds the recipes; D1 is
+an index of them that can be thrown away and rebuilt. The `markdown` column
+holds whichever the file is, as written, and the key's extension says which.
 
 Every change the app makes to a recipe is written to the note first, then the
 index row is rebuilt from what landed:
 
-- **Mark made** rewrites `times_made` and `last_made` in the frontmatter.
-- **Edit** saves the markdown you typed.
-- **Delete** deletes the note.
-- **Importing a URL** writes a new note under `Recipes/All recipes/`, so it
-  turns up in Obsidian like any other recipe.
+- **Mark made** rewrites `times_made` and `last_made` in the frontmatter, or
+  `times made` and `last made` in a `.cook` file.
+- **Edit** saves the text you typed.
+- **Delete** deletes the file.
+- **Importing a URL** writes a new file under `Recipes/All recipes/`, so it
+  turns up in Obsidian like any other recipe. It's a note or a `.cook` file
+  depending on "Save new recipes as" on the Import screen. That choice is
+  stored in D1 for every device, and it's separate from the plugin's own
+  setting.
 
 Remotely Save syncs both directions, so a note written here reaches Obsidian on
 its next run, and a note edited in Obsidian reaches the app on the next sync
@@ -104,14 +122,23 @@ direction, which is why a push from R2 wouldn't buy much.
 
 A note whose photo is a vault-local `[[image.jpg]]` gets served out of the same
 bucket through `/api/vault/media/…`, resolved by filename the way Obsidian
-resolves a wikilink. Those files are full-size camera photos, a few MB each.
+resolves a wikilink. A `.cook` file's photo is the image next to it with the
+same name (`Leek Soup.jpg` for `Leek Soup.cook`), served the same way. Those
+files are full-size camera photos, a few MB each.
 
-The week plan and the shopping list live only in D1. They have no vault
-representation yet.
+A `.cook` file next to a note of the same name is the plugin's Cooklang export
+of that note, so sync skips it and only the note gets a row.
+
+The recipe screen shows a `.cook` file's steps as plain text. The ingredient,
+cookware and timer highlighting the plugin's Cooklang view has isn't here yet.
+
+The shopping list is the vault's `Shopping List.md`, edited a line at a time
+(`src/worker/shopping-store.ts`). The week plan lives only in D1 and has no
+vault representation yet.
 
 `wrangler dev` reads the real bucket while D1 stays local, so a sync can be
 tried out without touching deployed data. That only works with plain `wrangler
-dev` - `--local` disables remote bindings. Careful with the write paths in that
+dev`. `--local` turns off remote bindings. Careful with the write paths in that
 mode: they go to the real bucket. To exercise writes, run `--local` and seed
 the local bucket with `wrangler r2 object put … --local` instead (note that the
 CLI can't handle a key with spaces in it).

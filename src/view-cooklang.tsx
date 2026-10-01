@@ -1,4 +1,5 @@
-import { TextFileView, WorkspaceLeaf, setIcon } from "obsidian";
+import { Keymap, TextFileView, WorkspaceLeaf, setIcon } from "obsidian";
+import type { Menu } from "obsidian";
 import { createRoot } from "react-dom/client";
 import {
   cooklangToJsonLd,
@@ -8,7 +9,10 @@ import {
 import { CooklangRecipe } from "./components/CooklangRecipe";
 import * as c from "./constants";
 import type RecipeVault from "./main";
-import { cooklangSiblingImage } from "./utils/recipeLoader";
+import {
+  cooklangSiblingImage,
+  resolveRecipeReference,
+} from "./utils/recipeLoader";
 
 type CooklangViewMode = "preview" | "source";
 
@@ -43,6 +47,19 @@ export class CooklangView extends TextFileView {
 
   getIcon(): string {
     return "chef-hat";
+  }
+
+  /** The view's "more options" menu, alongside Obsidian's own items. */
+  onPaneMenu(menu: Menu, source: string): void {
+    super.onPaneMenu(menu, source);
+    const file = this.file;
+    if (!file) return;
+    menu.addItem((item) =>
+      item
+        .setTitle("Export recipe as JSON-LD")
+        .setIcon("braces")
+        .onClick(() => void this.plugin.exportRecipe(file, "jsonld")),
+    );
   }
 
   getViewData(): string {
@@ -161,6 +178,17 @@ export class CooklangView extends TextFileView {
       ? cooklangSiblingImage(this.app.vault, this.file)
       : null;
     const file = this.file;
+    const linkFor = (reference: string): string | null =>
+      file
+        ? resolveRecipeReference(
+            this.app.vault,
+            file,
+            reference,
+            this.plugin.getGalleryFolder(),
+            (name) =>
+              this.app.metadataCache.getFirstLinkpathDest(name, file.path),
+          )?.path ?? null
+        : null;
 
     this.root.render(
       <CooklangRecipe
@@ -175,6 +203,15 @@ export class CooklangView extends TextFileView {
         }}
         onAddToList={() => void this.addCheckedToList()}
         onEdit={() => this.setMode("source")}
+        linkFor={linkFor}
+        onOpenLink={(path, event) => {
+          // Cmd/Ctrl-click opens it in a new tab, like any other link.
+          void this.app.workspace.openLinkText(
+            path,
+            file?.path ?? "",
+            Keymap.isModEvent(event),
+          );
+        }}
       />,
     );
   }

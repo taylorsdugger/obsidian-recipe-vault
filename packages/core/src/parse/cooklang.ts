@@ -30,6 +30,11 @@ export interface CooklangIngredient {
   prep: string;
   /** `@&name`: points back at an earlier ingredient rather than adding one. */
   reference: boolean;
+  /**
+   * For another recipe used as an ingredient (`@./Sauces/Hollandaise{}`), its
+   * path as written, without the `./`. The name is just "Hollandaise".
+   */
+  recipe?: string;
 }
 
 /**
@@ -226,10 +231,15 @@ function parseStep(source: string): CooklangStep {
       // `@&flour{}` references an earlier ingredient; `@?` marks it
       // optional. Neither changes what the name is.
       const reference = /^[&?]*&/.test(marker.name);
-      // A recipe reference (`@./sauces/Hollandaise{}`) reads as its name.
-      const name = marker.name
-        .replace(/^[&?]+/, "")
+      // A recipe reference (`@./sauces/Hollandaise{}`) reads as its name,
+      // and keeps its path so a view can link to it.
+      const bare = marker.name.replace(/^[&?]+/, "").trim();
+      const recipe = bare.includes("/")
+        ? bare.replace(/^\.\//, "")
+        : undefined;
+      const name = bare
         .replace(/^.*\//, "")
+        .replace(/\.(cook|md)$/i, "")
         .trim();
 
       if (ch === "@") {
@@ -240,6 +250,7 @@ function parseStep(source: string): CooklangStep {
           unit: amount.unit,
           prep: prep ? prep[1].trim() : "",
           reference,
+          ...(recipe ? { recipe } : {}),
         });
       } else {
         push({ type: "cookware", name, quantity: amount.quantity });
@@ -335,6 +346,7 @@ export function parseCooklang(source: string): CooklangRecipe {
         unit: token.unit,
         prep: token.prep,
         reference: false,
+        ...(token.recipe ? { recipe: token.recipe } : {}),
       });
     }
   };

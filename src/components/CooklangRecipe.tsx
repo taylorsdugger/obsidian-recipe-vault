@@ -21,6 +21,47 @@ interface CooklangRecipeProps {
   onMarkMade: () => void;
   onAddToList: () => void;
   onEdit: () => void;
+  /** Where a recipe reference points in the vault, or null if nowhere. */
+  linkFor: (reference: string) => string | null;
+  onOpenLink: (path: string, event: MouseEvent) => void;
+}
+
+interface LinkProps {
+  linkFor: CooklangRecipeProps["linkFor"];
+  onOpenLink: CooklangRecipeProps["onOpenLink"];
+}
+
+/**
+ * Another recipe used as an ingredient, as an Obsidian-style internal link.
+ * One that doesn't resolve looks like an unresolved `[[link]]`.
+ */
+function RecipeLink({
+  name,
+  reference,
+  linkFor,
+  onOpenLink,
+  className,
+}: LinkProps & { name: string; reference: string; className?: string }) {
+  const target = linkFor(reference);
+  return (
+    <a
+      className={[
+        "internal-link",
+        target ? "" : "is-unresolved",
+        className ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      href={target ?? reference}
+      data-href={target ?? reference}
+      onClick={(event) => {
+        event.preventDefault();
+        if (target) onOpenLink(target, event);
+      }}
+    >
+      {name}
+    </a>
+  );
 }
 
 /** "2 tbsp", or "" when the file gives no amount. */
@@ -59,11 +100,37 @@ function IngredientItem({
   ingredient,
   checked,
   onToggle,
-}: {
+  linkFor,
+  onOpenLink,
+}: LinkProps & {
   ingredient: CooklangIngredient;
   checked: boolean;
   onToggle: () => void;
 }) {
+  if (ingredient.recipe) {
+    const amount = amountText(ingredient);
+    return (
+      <li
+        className={checked ? "task-list-item is-checked" : "task-list-item"}
+        data-task={checked ? "x" : ""}
+      >
+        <input
+          type="checkbox"
+          className="task-list-item-checkbox"
+          checked={checked}
+          onChange={onToggle}
+        />
+        {amount && `${amount} `}
+        <RecipeLink
+          name={ingredient.name}
+          reference={ingredient.recipe}
+          linkFor={linkFor}
+          onOpenLink={onOpenLink}
+        />
+        {ingredient.prep && `, ${ingredient.prep}`}
+      </li>
+    );
+  }
   return (
     <li
       className={checked ? "task-list-item is-checked" : "task-list-item"}
@@ -80,7 +147,11 @@ function IngredientItem({
   );
 }
 
-function Token({ token }: { token: CooklangToken }) {
+function Token({
+  token,
+  linkFor,
+  onOpenLink,
+}: LinkProps & { token: CooklangToken }) {
   switch (token.type) {
     case "text":
       return <>{token.value}</>;
@@ -88,7 +159,17 @@ function Token({ token }: { token: CooklangToken }) {
       const amount = amountText(token);
       return (
         <>
-          <span className="cooklang-ingredient">{token.name}</span>
+          {token.recipe ? (
+            <RecipeLink
+              name={token.name}
+              reference={token.recipe}
+              linkFor={linkFor}
+              onOpenLink={onOpenLink}
+              className="cooklang-ingredient"
+            />
+          ) : (
+            <span className="cooklang-ingredient">{token.name}</span>
+          )}
           {amount && (
             <span className="cooklang-inline-amount"> ({amount})</span>
           )}
@@ -117,6 +198,8 @@ export function CooklangRecipe({
   onMarkMade,
   onAddToList,
   onEdit,
+  linkFor,
+  onOpenLink,
 }: CooklangRecipeProps) {
   const name = asText(summary.name);
   const description = asText(summary.description);
@@ -239,6 +322,8 @@ export function CooklangRecipe({
                   ingredient={ingredient}
                   checked={checked.has(i)}
                   onToggle={() => onToggle(i)}
+                  linkFor={linkFor}
+                  onOpenLink={onOpenLink}
                 />
               ))}
             </ul>
@@ -264,7 +349,12 @@ export function CooklangRecipe({
               {section.steps.map((step, i) => (
                 <li key={i}>
                   {step.tokens.map((token, t) => (
-                    <Token key={t} token={token} />
+                    <Token
+                      key={t}
+                      token={token}
+                      linkFor={linkFor}
+                      onOpenLink={onOpenLink}
+                    />
                   ))}
                 </li>
               ))}

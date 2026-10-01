@@ -1133,12 +1133,14 @@ export default class RecipeVault extends Plugin {
       id: c.CMD_EXPORT_JSONLD,
       name: "Export recipe as JSON-LD file",
       callback: async () => {
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (!view?.file) {
+        const file =
+          this.app.workspace.getActiveViewOfType(MarkdownView)?.file ??
+          this.app.workspace.getActiveViewOfType(CooklangView)?.file;
+        if (!file) {
           new Notice("No active recipe file open.");
           return;
         }
-        await this.exportRecipe(view.file, "jsonld");
+        await this.exportRecipe(file, "jsonld");
       },
     });
 
@@ -1181,6 +1183,14 @@ export default class RecipeVault extends Plugin {
               .setIcon("chef-hat")
               .onClick(() => void this.importRecipeFromFile(target)),
           );
+          if (isCooklangFile(target)) {
+            menu.addItem((item) =>
+              item
+                .setTitle("Export recipe as JSON-LD")
+                .setIcon("braces")
+                .onClick(() => void this.exportRecipe(target, "jsonld")),
+            );
+          }
           return;
         }
 
@@ -2298,24 +2308,31 @@ export default class RecipeVault extends Plugin {
   /**
    * Write a recipe note back out as a JSON-LD (`.json`) or Cooklang (`.cook`)
    * file next to it, so it can be handed to someone using a different recipe
-   * app.
+   * app. A `.cook` file can go out as JSON-LD the same way.
    *
    * The note is what gets read, not a stored copy of the original import, so
    * any edits since come along. An existing export is overwritten: the note is
    * the source of truth and a stale export next to it is worse than none.
    */
-  private async exportRecipe(
+  async exportRecipe(
     file: TFile,
     format: "jsonld" | "cooklang",
   ): Promise<void> {
     const label = format === "jsonld" ? "JSON-LD" : "Cooklang";
     try {
       const markdown = await this.app.vault.read(file);
-      const recipe = noteToJsonLd(markdown, { name: file.basename });
+      // A .cook file goes out through the same reader its import uses.
+      // Exporting one as Cooklang would just copy it, so that isn't offered.
+      const fromCooklang = isCooklangFile(file);
+      const recipe = fromCooklang
+        ? core.cooklangToJsonLd(markdown, { name: file.basename })
+        : noteToJsonLd(markdown, { name: file.basename });
 
       if (!recipe.recipeIngredient && !recipe.recipeInstructions) {
         new Notice(
-          `${file.basename} has no Ingredients or Instructions section to export.`,
+          fromCooklang
+            ? `${file.basename} has no ingredients or steps to export.`
+            : `${file.basename} has no Ingredients or Instructions section to export.`,
         );
         return;
       }

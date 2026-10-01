@@ -194,6 +194,10 @@ export class TextFileView extends ItemView {
 
 export function setIcon(): void {}
 
+export const Keymap = {
+  isModEvent: (): boolean => false,
+};
+
 export class WorkspaceLeaf {}
 export class App {}
 export class MarkdownView {}

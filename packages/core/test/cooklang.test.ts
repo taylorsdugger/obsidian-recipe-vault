@@ -363,6 +363,24 @@ describe("parseCooklang", () => {
     expect(ingredients.map((i) => i.name)).toEqual(["flour"]);
   });
 
+  it("keeps a recipe reference's path for linking", () => {
+    const { sections, ingredients } = parseCooklang(
+      "Top with @./Sauces/Hollandaise{150%g} and @../Basics/Stock.cook{1%l}.",
+    );
+    const linked = sections[0].steps[0].tokens.filter(
+      (token) => token.type === "ingredient",
+    );
+    expect(linked).toMatchObject([
+      { name: "Hollandaise", recipe: "Sauces/Hollandaise" },
+      { name: "Stock", recipe: "../Basics/Stock.cook" },
+    ]);
+    expect(ingredients.map((i) => i.recipe)).toEqual([
+      "Sauces/Hollandaise",
+      "../Basics/Stock.cook",
+    ]);
+    expect(sections[0].steps[0].text).toBe("Top with Hollandaise and Stock.");
+  });
+
   it("hands cooklangToJsonLd the same recipe the text would give", () => {
     const source = [
       "---",

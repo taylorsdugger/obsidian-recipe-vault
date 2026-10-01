@@ -3,7 +3,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { FakeVault, makeFakeApp } from "./helpers/fake-vault";
 import { makePlugin, resetObsidianStub } from "./helpers/plugin";
 import { noticeLog, type TFile, type TFolder } from "./helpers/obsidian-stub";
-import { loadRecipes } from "../src/utils/recipeLoader";
+import {
+  getRecipeFiles,
+  loadRecipes,
+  resolveRecipeReference,
+} from "../src/utils/recipeLoader";
 
 const pie = {
   "@context": "https://schema.org",
@@ -151,5 +155,71 @@ describe("the gallery with .cook files", () => {
       cook_time_mins: 45,
       ingredients: ["1 l stock", "2 leeks"],
     });
+  });
+});
+
+describe("an exported .cook next to its note", () => {
+  beforeEach(() => resetObsidianStub());
+
+  it("shows once in the gallery, as the note", async () => {
+    const { vault } = setup();
+    await vault.seed("Recipes/Apple Pie.md", "# Apple Pie\n");
+    await vault.seed("Recipes/Apple Pie.cook", "Bake @apples{6}.");
+    await vault.seed("Recipes/Leek Soup.cook", soupCook);
+
+    expect(
+      getRecipeFiles(vault as any, "Recipes").map((f) => f.path).sort(),
+    ).toEqual(["Recipes/Apple Pie.md", "Recipes/Leek Soup.cook"]);
+  });
+});
+
+describe("exporting a .cook file", () => {
+  beforeEach(() => resetObsidianStub());
+
+  it("writes JSON-LD next to it", async () => {
+    const { vault, plugin } = setup();
+    const file = await vault.seed(
+      "Recipes/Leek Soup.cook",
+      "---\ntitle: Leek Soup\ntimes made: 2\n---\n\n" + soupCook,
+    );
+
+    await plugin.exportRecipe(file as any, "jsonld");
+
+    expect(JSON.parse(vault.text("Recipes/Leek Soup.json"))).toEqual({
+      "@context": "https://schema.org",
+      "@type": "Recipe",
+      name: "Leek Soup",
+      recipeIngredient: ["1 l stock", "2 leeks"],
+      recipeInstructions: [
+        {
+          "@type": "HowToStep",
+          text: "Simmer stock with leeks in a pot for 20 minutes.",
+        },
+      ],
+      recipeVault: { timesMade: 2 },
+    });
+    expect(noticeLog.at(-1)).toBe("Exported to Recipes/Leek Soup.json");
+  });
+});
+
+describe("recipe references", () => {
+  it("finds the file next to it, in the recipe folder, or by name", async () => {
+    const vault = new FakeVault();
+    const from = await vault.seed("Recipes/Mains/Eggs Benedict.cook", "");
+    await vault.seed("Recipes/Mains/Sauces/Hollandaise.cook", "");
+    await vault.seed("Recipes/Basics/Stock.md", "");
+    const pesto = await vault.seed("Elsewhere/Pesto.cook", "");
+    const resolve = (ref: string) =>
+      resolveRecipeReference(vault as any, from as any, ref, "Recipes", (name) =>
+        name === "Pesto.cook" ? (pesto as any) : null,
+      )?.path ?? null;
+
+    expect(resolve("Sauces/Hollandaise")).toBe(
+      "Recipes/Mains/Sauces/Hollandaise.cook",
+    );
+    expect(resolve("../Basics/Stock")).toBe("Recipes/Basics/Stock.md");
+    expect(resolve("Basics/Stock.md")).toBe("Recipes/Basics/Stock.md");
+    expect(resolve("Sauces/Pesto")).toBe("Elsewhere/Pesto.cook");
+    expect(resolve("Sauces/Nothing")).toBeNull();
   });
 });
