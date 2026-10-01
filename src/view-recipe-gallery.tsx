@@ -59,7 +59,7 @@ export class RecipeGalleryView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Recipe Gallery";
+    return "Recipe gallery";
   }
 
   getIcon(): string {

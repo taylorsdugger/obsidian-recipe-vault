@@ -59,10 +59,22 @@ export function loadRecipes(
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
+/**
+ * A frontmatter value as text, the way `String()` would print it. An unquoted
+ * `image: [[Pie.jpg]]` parses as a nested array, which joins back to the name.
+ * Objects come back empty rather than as "[object Object]".
+ */
+function frontmatterText(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
+  if (Array.isArray(raw)) return raw.map(frontmatterText).join(",");
+  return "";
+}
+
 /** Strip WikiLink/Markdown wrappers from a frontmatter image reference. */
 function normalizeImageRef(raw: unknown): string {
   if (!raw) return "";
-  let p = String(raw).trim();
+  let p = frontmatterText(raw).trim();
 
   if (p.startsWith("![[") && p.endsWith("]]")) {
     p = p.slice(3, -2);
@@ -157,7 +169,7 @@ function parseMealType(raw: unknown): string[] {
   if (Array.isArray(raw)) {
     return raw.map((s) => String(s).trim()).filter(Boolean);
   }
-  return String(raw)
+  return frontmatterText(raw)
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

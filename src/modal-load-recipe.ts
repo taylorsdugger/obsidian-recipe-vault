@@ -14,9 +14,9 @@ export class LoadRecipeModal extends Modal {
   onOpen() {
     const { contentEl } = this;
 
-    contentEl.createEl("p", { text: "Paste the url of your recipe" });
+    contentEl.createEl("p", { text: "Paste the URL of your recipe" });
 
-    new Setting(contentEl).setName("url: ").addText((text) => {
+    new Setting(contentEl).setName("URL").addText((text) => {
       text.setPlaceholder("https://www.example.com/recipe");
 
       text.onChange((value) => {
@@ -27,7 +27,7 @@ export class LoadRecipeModal extends Modal {
 
     new Setting(contentEl).addButton((btn) =>
       btn
-        .setButtonText("Get Recipe")
+        .setButtonText("Get recipe")
         .setCta()
         .onClick(() => {
           const url = this.result?.trim();

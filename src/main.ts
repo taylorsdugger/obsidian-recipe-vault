@@ -1188,7 +1188,7 @@ export default class RecipeVault extends Plugin {
     );
     if (existing.length > 0) {
       this.app.workspace.setActiveLeaf(existing[0], { focus: true });
-      this.app.workspace.revealLeaf(existing[0]);
+      await this.app.workspace.revealLeaf(existing[0]);
       return;
     }
 
@@ -1201,7 +1201,7 @@ export default class RecipeVault extends Plugin {
       active: true,
     });
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
-    this.app.workspace.revealLeaf(leaf);
+    await this.app.workspace.revealLeaf(leaf);
   }
 
   async loadSettings() {
@@ -1322,7 +1322,7 @@ export default class RecipeVault extends Plugin {
       }
 
       if (!view) {
-        new Notice("Could not open a markdown view");
+        new Notice("Could not open a Markdown view");
         return;
       }
 
@@ -2091,7 +2091,7 @@ export default class RecipeVault extends Plugin {
     imgNum?: number,
     options: { thumbnail?: boolean } = {},
   ): Promise<false | TFile> {
-    if (!imgUrl) {
+    if (typeof imgUrl !== "string" || !imgUrl) {
       return false;
     }
     const subDir = filename;
@@ -2099,7 +2099,7 @@ export default class RecipeVault extends Plugin {
 
     try {
       const res = await requestUrl({
-        url: String(imgUrl),
+        url: imgUrl,
         method: "GET",
       });
       const type = this.detectImageType(res.arrayBuffer); // type of the image

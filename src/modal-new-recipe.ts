@@ -16,7 +16,7 @@ export class NewRecipeModal extends Modal {
     contentEl.createEl("p", { text: "Enter a name for your new recipe" });
 
     new Setting(contentEl).setName("Recipe name").addText((text) => {
-      text.setPlaceholder("eg: Grandma's Apple Pie");
+      text.setPlaceholder("Grandma's apple pie");
 
       text.onChange((value) => {
         this.recipeName = value;
@@ -35,7 +35,7 @@ export class NewRecipeModal extends Modal {
 
     new Setting(contentEl).addButton((btn) =>
       btn
-        .setButtonText("Create Recipe")
+        .setButtonText("Create recipe")
         .setCta()
         .onClick(() => {
           this.close();

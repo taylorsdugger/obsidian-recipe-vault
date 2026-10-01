@@ -234,12 +234,12 @@ export function noteToCooklang(
   const author = recipe.author as { name?: string } | undefined;
   if (author?.name) meta.push(["author", author.name]);
   const category = recipe.recipeCategory;
-  if (category) {
-    meta.push([
-      "course",
-      Array.isArray(category) ? category.join(", ") : String(category),
-    ]);
-  }
+  const course = Array.isArray(category)
+    ? category.join(", ")
+    : typeof category === "string"
+      ? category
+      : "";
+  if (course) meta.push(["course", course]);
   const mins = cookTimeToMinutes(recipe.totalTime as string | undefined);
   if (mins) meta.push(["time", formatMinutes(mins)]);
   if (typeof recipe.image === "string") meta.push(["image", recipe.image]);
