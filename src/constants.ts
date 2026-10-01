@@ -16,6 +16,7 @@ export const CMD_IMPORT_FOLDER = "cmd-import-folder";
 export const MANUAL_RECIPE_DEFAULT_FOLDER = "recipes";
 export const VIEW_TYPE_RECIPE_GALLERY = "recipe-gallery-view";
 export const CMD_OPEN_RECIPE_GALLERY = "cmd-open-recipe-gallery";
+export const VIEW_TYPE_COOKLANG = "recipe-vault-cooklang-view";
 
 /**
  * A folder import this big asks first. Not a measured limit: the gallery took

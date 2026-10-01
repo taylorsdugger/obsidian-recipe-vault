@@ -83,6 +83,7 @@ export class Plugin {
   }
   addSettingTab(): void {}
   registerView(): void {}
+  registerExtensions(): void {}
   registerEvent(): void {}
   registerMarkdownPostProcessor(): any {
     return {};
@@ -184,6 +185,18 @@ export class ItemView {
     this.leaf = leaf;
   }
 }
+
+export class TextFileView extends ItemView {
+  data = "";
+  file: TFile | null = null;
+  requestSave = (): void => {};
+}
+
+export function setIcon(): void {}
+
+export const Keymap = {
+  isModEvent: (): boolean => false,
+};
 
 export class WorkspaceLeaf {}
 export class App {}

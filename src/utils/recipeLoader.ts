@@ -1,7 +1,68 @@
 import { MetadataCache, TFile, Vault } from "obsidian";
 import { RecipeNote } from "../types/recipe";
 
-/** All markdown files under the configured recipe-gallery folder (recursively). */
+/**
+ * What the plugin's index keeps for a `.cook` file. Obsidian has no metadata
+ * cache for these, so the index reads them once per change instead.
+ */
+export interface CooklangIndexInfo {
+  title: string;
+  photo: string;
+  mealType: string;
+  cookTime: string;
+  timesMade: number;
+  sourceUrl: string;
+  /** `source file`, what a folder import uses to skip one it already did. */
+  sourceFile: string;
+}
+
+/** True for a file that can hold a recipe: a note or a Cooklang file. */
+export function isRecipeFileType(file: TFile): boolean {
+  const ext = file.extension.toLowerCase();
+  return ext === "md" || ext === "cook";
+}
+
+/** True for a Cooklang recipe file. */
+export function isCooklangFile(file: TFile): boolean {
+  return file.extension.toLowerCase() === "cook";
+}
+
+/**
+ * `Pie.jpg` (or .jpeg/.png/.webp) next to `Pie.cook`, which is where Cooklang
+ * keeps a recipe's photo. Null when there isn't one.
+ */
+export function cooklangSiblingImage(vault: Vault, file: TFile): TFile | null {
+  const dir =
+    file.parent && !file.parent.isRoot() ? `${file.parent.path}/` : "";
+  for (const ext of ["jpg", "jpeg", "png", "webp"]) {
+    const image = vault.getAbstractFileByPath(`${dir}${file.basename}.${ext}`);
+    if (image instanceof TFile) return image;
+  }
+  return null;
+}
+
+/**
+ * A `.cook` file's photo in the vault: the one next to it, else the vault
+ * path its `image:` front matter gives. Null for a url or no photo.
+ */
+export function cooklangPhotoFile(
+  vault: Vault,
+  file: TFile,
+  image: string,
+): TFile | null {
+  return (
+    cooklangSiblingImage(vault, file) ?? resolveImageFile(file, vault, image)
+  );
+}
+
+/**
+ * All recipe notes and Cooklang files under the configured recipe-gallery
+ * folder (recursively).
+ *
+ * A `.cook` file with a note of the same name next to it is left out. That's
+ * what "Export recipe as Cooklang" leaves behind, and it's the same recipe,
+ * so the note stands for both instead of the gallery showing it twice.
+ */
 export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
   if (!folderPath.trim()) return [];
 
@@ -11,7 +72,8 @@ export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
     .replace(/\/+$/, "")
     .toLowerCase();
 
-  return vault.getMarkdownFiles().filter((file) => {
+  const inFolder = vault.getFiles().filter((file) => {
+    if (!isRecipeFileType(file)) return false;
     const fileFolder = (file.parent?.path ?? "")
       .replace(/\\/g, "/")
       .toLowerCase();
@@ -20,22 +82,42 @@ export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
       fileFolder.startsWith(normalizedFolder + "/")
     );
   });
+
+  const withoutExtension = (file: TFile) =>
+    file.path.slice(0, -(file.extension.length + 1)).toLowerCase();
+  const notes = new Set(
+    inFolder.filter((file) => !isCooklangFile(file)).map(withoutExtension),
+  );
+  return inFolder.filter(
+    (file) => !isCooklangFile(file) || !notes.has(withoutExtension(file)),
+  );
 }
 
 /**
- * Load all recipe notes from the given folder path using the metadata cache.
- * No file reads are performed — only the in-memory metadata index is used.
- * Ingredients come from the plugin's ingredient index (`getIngredients`), not
- * from frontmatter, so the searchable list never has to live in the notes.
+ * Load all recipes from the given folder path. No file reads are performed.
+ * Notes come from Obsidian's metadata cache and `.cook` files from the
+ * plugin's index (`getCooklangInfo`). Ingredients come from the plugin's
+ * ingredient index (`getIngredients`), not from frontmatter, so the searchable
+ * list never has to live in the notes.
  */
 export function loadRecipes(
   vault: Vault,
   metadataCache: MetadataCache,
   folderPath: string,
   getIngredients: (path: string) => string[],
+  getCooklangInfo: (path: string) => CooklangIndexInfo | undefined = () =>
+    undefined,
 ): RecipeNote[] {
   return getRecipeFiles(vault, folderPath)
     .map((file) => {
+      if (isCooklangFile(file)) {
+        return cooklangRecipe(
+          vault,
+          file,
+          getCooklangInfo(file.path),
+          getIngredients(file.path),
+        );
+      }
       const fm = (metadataCache.getFileCache(file)?.frontmatter ??
         {}) as Record<string, unknown>;
       const photo = resolvePhoto(file, vault, fm.photo);
@@ -57,6 +139,42 @@ export function loadRecipes(
       };
     })
     .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/**
+ * A `.cook` file as a gallery card. Before the index has read it, it still
+ * shows, by file name.
+ */
+function cooklangRecipe(
+  vault: Vault,
+  file: TFile,
+  info: CooklangIndexInfo | undefined,
+  ingredients: string[],
+): RecipeNote {
+  const cook_time = info?.cookTime ?? "";
+  return {
+    title: file.basename,
+    path: file.path,
+    photo: cooklangPhoto(vault, file, info?.photo ?? ""),
+    meal_type: parseMealType(info?.mealType),
+    cook_time,
+    cook_time_mins: parseCookTimeMins(cook_time),
+    times_made: info?.timesMade ?? 0,
+    ingredients,
+  };
+}
+
+/**
+ * The photo next to the file (its thumbnail if there is one), else what its
+ * `image:` front matter says: a vault path in the image folder, or a url.
+ */
+function cooklangPhoto(vault: Vault, file: TFile, linked: string): string {
+  const image = cooklangSiblingImage(vault, file);
+  if (image) {
+    const thumb = vault.getAbstractFileByPath(thumbPathForImage(image.path));
+    return vault.getResourcePath(thumb instanceof TFile ? thumb : image);
+  }
+  return resolvePhoto(file, vault, linked);
 }
 
 /**
@@ -239,4 +357,46 @@ export function timesMadeGroup(n: number): string {
   if (n <= 3) return "1\u20133 times";
   if (n <= 10) return "4\u201310 times";
   return "11+ times";
+}
+
+/** Join a folder and a relative path, working out `.` and `..` steps. */
+function joinVaultPath(dir: string, relative: string): string {
+  const parts = dir ? dir.split("/") : [];
+  for (const part of relative.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.join("/");
+}
+
+/**
+ * The file a Cooklang recipe reference (`@./Sauces/Hollandaise{}`) points at.
+ *
+ * Tried relative to the file it's in, then relative to the recipe folder,
+ * as a `.cook` file and then as a note. When neither has it, `findByName`
+ * gets the last word, the way a `[[wikilink]]` would find "Hollandaise"
+ * anywhere in the vault.
+ */
+export function resolveRecipeReference(
+  vault: Vault,
+  from: TFile,
+  reference: string,
+  recipeFolder: string,
+  findByName: (name: string) => TFile | null = () => null,
+): TFile | null {
+  const dir = from.parent && !from.parent.isRoot() ? from.parent.path : "";
+  const hasExtension = /\.(cook|md)$/i.test(reference);
+  const bases = [
+    joinVaultPath(dir, reference),
+    joinVaultPath(recipeFolder.trim().replace(/\/+$/, ""), reference),
+  ];
+  for (const base of bases) {
+    for (const ext of hasExtension ? [""] : [".cook", ".md"]) {
+      const file = vault.getAbstractFileByPath(`${base}${ext}`);
+      if (file instanceof TFile && file.path !== from.path) return file;
+    }
+  }
+  const name = reference.replace(/^.*\//, "").replace(/\.(cook|md)$/i, "");
+  return findByName(`${name}.cook`) ?? findByName(name);
 }

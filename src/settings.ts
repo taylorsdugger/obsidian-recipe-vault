@@ -15,6 +15,8 @@ import * as c from "./constants";
 
 export interface PluginSettings {
   folder: string;
+  /** What new recipes are saved as. Existing files stay in their format. */
+  recipeFormat: "markdown" | "cooklang";
   saveInActiveFile: boolean;
   imgFolder: string;
   saveImg: boolean;
@@ -49,6 +51,7 @@ const AI_MODEL_OTHER = "__other__";
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   folder: "Recipes",
+  recipeFormat: "markdown",
   saveInActiveFile: false,
   imgFolder: "",
   saveImg: false,
@@ -242,8 +245,27 @@ export class SettingsTab extends PluginSettingTab {
         },
       },
       {
+        name: "Save new recipes as",
+        desc: "Markdown notes use the recipe template below. Cooklang saves a .cook file, with its photo in the image folder below, or next to the file if that's blank. Recipes you already have stay as they are, and the gallery shows both.",
+        render: (setting) => {
+          setting.addDropdown((dropdown) => {
+            dropdown.addOption("markdown", "Markdown note");
+            dropdown.addOption("cooklang", "Cooklang file");
+            dropdown.setValue(this.plugin.settings.recipeFormat);
+            dropdown.onChange(async (value) => {
+              this.plugin.settings.recipeFormat =
+                value === "cooklang" ? "cooklang" : "markdown";
+              await this.plugin.saveSettings();
+              this.refresh();
+            });
+          });
+        },
+      },
+      {
         name: "Save in currently opened file",
         desc: "Imports the recipe into an active document. if no active document, the above save folder setting will apply.",
+        // A .cook file can't go inside a markdown note.
+        visible: () => this.plugin.settings.recipeFormat === "markdown",
         render: (setting) => {
           setting.addToggle((toggle) => {
             toggle
@@ -309,6 +331,7 @@ export class SettingsTab extends PluginSettingTab {
       {
         name: "Recipe template",
         desc: templateDescription,
+        visible: () => this.plugin.settings.recipeFormat === "markdown",
         cls: "settingsTemplateRow",
         render: (setting) => {
           let area: TextAreaComponent;

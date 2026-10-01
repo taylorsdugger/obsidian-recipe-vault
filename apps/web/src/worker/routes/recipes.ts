@@ -1,6 +1,6 @@
 import { eq, like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { setFrontmatterValues } from "@recipe-vault/core/note/frontmatter";
+import { setRecipeHistory } from "@recipe-vault/core";
 
 import { db, schema } from "../db/client";
 import { indexNote } from "../db/index-recipe";
@@ -172,9 +172,10 @@ export const recipeRoutes = new Hono<AppBindings>()
         ? sent.date
         : new Date().toISOString().slice(0, 10);
 
-    const markdown = setFrontmatterValues(row.markdown, {
-      times_made: row.timesMade + 1,
-      last_made: today,
+    // `times made` in a .cook file, `times_made` in a note.
+    const markdown = setRecipeHistory(row.vaultKey ?? "recipe.md", row.markdown, {
+      timesMade: row.timesMade + 1,
+      lastMade: today,
     });
 
     try {
@@ -214,7 +215,7 @@ async function saveRecipe(
       .update(schema.recipes)
       .set({
         markdown,
-        ...deriveRecipeFields(markdown),
+        ...deriveRecipeFields(markdown, row.vaultKey ?? undefined),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(schema.recipes.id, row.id));

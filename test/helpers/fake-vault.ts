@@ -21,6 +21,12 @@ export class FakeVault {
     return this.byPath.get(path === "" ? "/" : path) ?? null;
   }
 
+  getFiles(): TFile[] {
+    return [...this.byPath.values()].filter(
+      (f): f is TFile => f instanceof TFile,
+    );
+  }
+
   getMarkdownFiles(): TFile[] {
     return [...this.byPath.values()].filter(
       (f): f is TFile => f instanceof TFile && f.extension === "md",
@@ -55,6 +61,11 @@ export class FakeVault {
     return file;
   }
 
+  /** Binary files only need to exist here, so the bytes aren't kept. */
+  async createBinary(path: string, _data: ArrayBuffer): Promise<TFile> {
+    return this.create(path, "");
+  }
+
   async read(file: TFile): Promise<string> {
     return this.contents.get(file.path) ?? "";
   }
@@ -65,6 +76,12 @@ export class FakeVault {
 
   async modify(file: TFile, data: string): Promise<void> {
     this.contents.set(file.path, data);
+  }
+
+  async process(file: TFile, fn: (data: string) => string): Promise<string> {
+    const next = fn(this.contents.get(file.path) ?? "");
+    this.contents.set(file.path, next);
+    return next;
   }
 
   /** Test helper: make a file, and any folders above it. */
@@ -139,6 +156,18 @@ export function makeFakeApp(vault: FakeVault) {
       },
     },
     workspace: {
+      /** Every view state a test's code asked a leaf to open, in order. */
+      opened: [] as { type: string; state: Record<string, unknown> }[],
+      getLeaf() {
+        return {
+          setViewState: async (viewState: {
+            type: string;
+            state: Record<string, unknown>;
+          }) => {
+            this.opened.push(viewState);
+          },
+        };
+      },
       async openLinkText() {},
       getLeavesOfType() {
         return [];

@@ -1,7 +1,6 @@
 import { inArray } from "drizzle-orm";
 import { Hono } from "hono";
-import { parseRecipeSections } from "@recipe-vault/core/note/sections";
-import { readFrontmatter } from "@recipe-vault/core/note/frontmatter";
+import { readRecipeFile, recipeFormatOf } from "@recipe-vault/core";
 
 import { db, schema } from "../db/client";
 import { indexNote } from "../db/index-recipe";
@@ -41,7 +40,7 @@ function extensionOf(key: string): string {
   return dot === -1 ? "" : key.slice(dot).toLowerCase();
 }
 
-/** Every `.md` under the prefix, with the etag the listing reports. */
+/** Every `.md` and `.cook` under the prefix, with the etag the listing reports. */
 async function listNotes(
   bucket: R2Bucket,
   prefix: string,
@@ -52,14 +51,24 @@ async function listNotes(
   do {
     const page = await bucket.list({ prefix, cursor, limit: 1000 });
     for (const object of page.objects) {
-      if (object.key.toLowerCase().endsWith(".md")) {
+      if (recipeFormatOf(object.key)) {
         notes.push({ key: object.key, etag: object.etag });
       }
     }
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
 
-  return notes.sort((a, b) => a.key.localeCompare(b.key));
+  // A .cook file next to a note of the same name is the plugin's export of
+  // that note. Same recipe, so only the note gets a row.
+  const stem = (key: string) => key.slice(0, key.lastIndexOf(".")).toLowerCase();
+  const noteStems = new Set(
+    notes.filter((n) => recipeFormatOf(n.key) === "markdown").map((n) => stem(n.key)),
+  );
+  return notes
+    .filter(
+      (n) => recipeFormatOf(n.key) !== "cooklang" || !noteStems.has(stem(n.key)),
+    )
+    .sort((a, b) => a.key.localeCompare(b.key));
 }
 
 /**
@@ -100,6 +109,19 @@ function vaultPhotoUrl(
   const exact = [...index.values()].includes(photo) ? photo : null;
   const key = exact ?? index.get(name);
   return key ? `/api/vault/media/${key.split("/").map(encodeURIComponent).join("/")}` : null;
+}
+
+/** `Recipes/Pie.jpg` (or .jpeg/.png/.webp) for `Recipes/Pie.cook`, if it's there. */
+function siblingPhotoUrl(
+  key: string,
+  index: Map<string, string>,
+): string | null {
+  const base = key.slice(0, key.lastIndexOf("."));
+  const keys = new Set(index.values());
+  for (const ext of [".jpg", ".jpeg", ".png", ".webp"]) {
+    if (keys.has(`${base}${ext}`)) return vaultPhotoUrl(`${base}${ext}`, index);
+  }
+  return null;
 }
 
 export const vaultRoutes = new Hono<AppBindings>()
@@ -202,12 +224,20 @@ export const vaultRoutes = new Hono<AppBindings>()
       }
 
       const markdown = await object.text();
+      const summary = readRecipeFile(key, markdown);
 
       // A note with no Ingredients section isn't a recipe - the vault has a
-      // few templates and stubs mixed in with the real ones.
-      if (!parseRecipeSections(markdown)) {
+      // few templates and stubs mixed in with the real ones. Same for a
+      // .cook file with no steps.
+      if (!summary?.isRecipe) {
         skipped++;
-        skippedNotes.push({ key, why: "no Ingredients or Instructions section" });
+        skippedNotes.push({
+          key,
+          why:
+            summary?.format === "cooklang"
+              ? "no ingredients or steps"
+              : "no Ingredients or Instructions section",
+        });
         continue;
       }
 
@@ -220,12 +250,15 @@ export const vaultRoutes = new Hono<AppBindings>()
       }
 
       // A photo the plugin saved into the vault rather than hot-linked. The
-      // file is in the bucket too, so serve it from there.
+      // file is in the bucket too, so serve it from there. A .cook file's
+      // photo sits next to it as `Name.jpg`, which is where Cooklang looks.
       let photoUrl: string | null = null;
-      const frontmatter = readFrontmatter(markdown);
-      if (frontmatter.photo && !frontmatter.photo.startsWith("http")) {
+      if (summary.format === "cooklang" && !summary.photo) {
         mediaIndex ??= await buildMediaIndex(c.env.VAULT);
-        photoUrl = vaultPhotoUrl(frontmatter.photo, mediaIndex);
+        photoUrl = siblingPhotoUrl(key, mediaIndex);
+      } else if (summary.photo && !summary.photo.startsWith("http")) {
+        mediaIndex ??= await buildMediaIndex(c.env.VAULT);
+        photoUrl = vaultPhotoUrl(summary.photo, mediaIndex);
       }
 
       const result = await indexNote(

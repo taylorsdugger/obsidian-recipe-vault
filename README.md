@@ -2,7 +2,7 @@
 
 # 🥘 Recipe Vault
 
-**Your recipes, in plain markdown, right inside Obsidian.**
+**Your recipes, in plain markdown or Cooklang, right inside Obsidian.**
 
 <a href="https://recipes.taylordugger.com"><img alt="Website" src="https://img.shields.io/badge/website-recipes.taylordugger.com-7c3aed?logo=safari&logoColor=white"></a>
 <a href="https://github.com/taylorsdugger/obsidian-recipe-vault/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/taylorsdugger/obsidian-recipe-vault?logo=obsidian&color=7c3aed"></a>
@@ -21,7 +21,7 @@
 
 ---
 
-Import recipes from the web, browse them in a visual gallery, and build shopping lists automatically. Paste a URL, get a clean recipe note. No subscriptions, no accounts, no ads, just your recipes in your vault.
+Import recipes from the web, browse them in a visual gallery, and build shopping lists automatically. Paste a URL, get a clean recipe note, or a [Cooklang](https://cooklang.org) file if you'd rather. No subscriptions, no accounts, no ads. Just your recipes in your vault.
 
 Screenshots and a walkthrough of every feature: **[recipes.taylordugger.com](https://recipes.taylordugger.com)**.
 
@@ -32,12 +32,14 @@ Screenshots and a walkthrough of every feature: **[recipes.taylordugger.com](htt
 - 🌐 **Import from any URL:** fetches structured recipe data (JSON-LD) from a recipe page and creates a formatted note instantly.
 - 📸 **Add recipe from photo:** photograph a cookbook page or recipe card (or pick image files) and let AI vision transcribe it into a recipe note, with a verify/edit step before saving. Works on desktop and mobile.
 - ✍️ **Add recipes manually:** create a recipe note from scratch using the same template.
-- 🖼️ **Recipe gallery:** browse your whole collection visually in a dedicated gallery view.
+- 🍳 **Cooklang support:** open `.cook` files in a recipe view, or have every new recipe saved as Cooklang instead of markdown. The gallery, search and shopping list work with both. See [Cooklang](#-cooklang).
+- 📦 **Import and export files:** turn JSON-LD (`.json`) and Cooklang (`.cook`) files into recipes one at a time or a whole folder at once, and export any recipe back out as either.
+- 🖼️ **Recipe gallery:** browse your whole collection visually in a dedicated gallery view, markdown notes and `.cook` files together.
 - 🔍 **Search everything:** filter as you type across titles, meal types, _and_ ingredients, so you can find every recipe that uses what's already in the fridge.
-- ⚖️ **Shopping list:** check off ingredients in a note and send them to a single shopping list file. Duplicates combine even when the recipes wrote them differently - "1 large onion" and "2 yellow onions, diced" come out as one row of three - and the list is sorted by aisle, so the produce is together.
+- ⚖️ **Shopping list:** check off ingredients in a recipe and send them to a single shopping list file. Duplicates combine even when the recipes wrote them differently - "1 large onion" and "2 yellow onions, diced" come out as one row of three - and the list is sorted by aisle, so the produce is together.
 - 🔁 **Compare recipes:** select multiple recipes and view them side by side, with shared and unique ingredients highlighted.
 - 📅 **Mark as made:** track when you last made a recipe and how many times.
-- 🤖 **Ask AI for edits:** request changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter (API key required).
+- 🤖 **Ask AI for edits:** request changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter (API key required). Markdown notes only for now.
 - 🎨 **Customizable templates:** full Handlebars support so your notes look exactly how you want.
 
 <div align="center">
@@ -72,7 +74,7 @@ Screenshots and a walkthrough of every feature: **[recipes.taylordugger.com](htt
 
 1. Click the **chef hat icon** in the ribbon (or run **Import recipe** from the command palette).
 2. Paste a recipe URL and press Enter.
-3. Your recipe note is created in the configured save folder.
+3. Your recipe note is created in the configured save folder. If **Save new recipes as** is set to Cooklang, you get a `.cook` file instead.
 
 To browse your recipes, click the **utensils icon** in the ribbon to open the Recipe Gallery.
 
@@ -86,17 +88,21 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 ## ⌨️ Commands
 
-| Command                                      | What it does                                                                                             |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| **Import recipe**                            | Opens a URL prompt and imports a recipe into a new note                                                  |
-| **Open recipe gallery**                      | Opens the visual gallery of your recipe notes                                                            |
-| **Mark recipe as made**                      | Increments `times_made` and sets `last_made` to today on the active note                                 |
-| **Add checked ingredients to shopping list** | Sends checked ingredients from the active recipe to your shopping list file                              |
-| **Clear checked items from shopping list**   | Removes completed items from your shopping list                                                          |
-| **Add recipe (manual)**                      | Creates a new recipe note from a title prompt                                                            |
-| **Add recipe from photo**                    | Transcribes a photographed cookbook page or recipe card into a new note (requires an OpenRouter API key) |
-| **Batch import recipes from URL list**       | Imports multiple recipes from a list of URLs (one per line) in the active note                           |
-| **Rebuild ingredient search index**          | Rebuilds the in-memory index that powers ingredient search in the gallery                                |
+| Command                                         | What it does                                                                                                     |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **Import recipe**                               | Opens a URL prompt and imports a recipe into a new note (or `.cook` file)                                        |
+| **Open recipe gallery**                         | Opens the visual gallery of your recipes                                                                         |
+| **Mark recipe as made**                         | Adds one to the times made and sets the last made date to today on the active recipe                             |
+| **Add checked ingredients to shopping list**    | Sends checked ingredients from the active recipe to your shopping list file                                      |
+| **Clear checked items from shopping list**      | Removes completed items from your shopping list                                                                  |
+| **Add recipe (manual)**                         | Creates a new recipe from a title prompt                                                                         |
+| **Add recipe from photo**                       | Transcribes a photographed cookbook page or recipe card into a new recipe (requires an OpenRouter API key)       |
+| **Batch import recipes from URL list**          | Imports multiple recipes from a list of URLs (one per line) in the active note                                   |
+| **Import recipe from JSON-LD or Cooklang file** | Pick a `.json` or `.cook` file in your vault and make a recipe from it                                           |
+| **Import recipes from folder**                  | Makes a recipe from every `.json` and `.cook` file in a folder. Also on a folder's right-click menu              |
+| **Export recipe as JSON-LD file**               | Writes the active recipe out as a `.json` file next to it. Works on notes and `.cook` files                      |
+| **Export recipe as Cooklang file**              | Writes the active recipe note out as a `.cook` file next to it                                                   |
+| **Rebuild ingredient search index**             | Rebuilds the index that powers ingredient search in the gallery                                                  |
 
 ---
 
@@ -104,11 +110,12 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 | Setting                                    | Description                                                                                                                                                                  |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Recipe save folder**                     | Where new recipe notes are created. The gallery browses this folder by default, so imports show up automatically                                                             |
-| **Save in currently opened file**          | Import into the active note instead of creating a new one                                                                                                                    |
-| **Save images**                            | Download recipe images into your vault                                                                                                                                       |
+| **Recipe save folder**                     | Where new recipes are created. The gallery browses this folder by default, so imports show up automatically                                                                  |
+| **Save new recipes as**                    | **Markdown note** (default) or **Cooklang file**. Applies to every import and to Add recipe (manual). Recipes you already have stay as they are                              |
+| **Save in currently opened file**          | Import into the active note instead of creating a new one. Markdown only                                                                                                     |
+| **Save images**                            | Download recipe images into your vault, into this folder. Leave the folder blank to use Obsidian's attachment location, or for a `.cook` file, to put the photo next to it   |
 | **Save images in subdirectories**          | Create a per-recipe subfolder under the image folder                                                                                                                         |
-| **Recipe template**                        | Handlebars template used when creating recipe notes                                                                                                                          |
+| **Recipe template**                        | Handlebars template used when creating recipe notes. Markdown only                                                                                                           |
 | **Decode entities**                        | Decodes HTML entities in imported data                                                                                                                                       |
 | **Proxy fallback for blocked imports**     | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default |
 | **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                           |
@@ -184,9 +191,68 @@ last_made:
 
 ---
 
+## 🍳 Cooklang
+
+[Cooklang](https://cooklang.org) is a plain-text recipe format. Instead of a separate ingredient list, ingredients are marked right in the steps:
+
+```
+---
+title: Leek Soup
+servings: 4
+time: 45m
+---
+
+Melt @butter{2%tbsp} in a #large pot{} and soften @leeks{3}(sliced) for ~{10%minutes}.
+
+Add @stock{1%l} and simmer for ~{20%minutes}.
+```
+
+### Opening .cook files
+
+Recipe Vault opens `.cook` files in their own view, laid out like a recipe note: an "At a Glance" box, the ingredients as a checkbox list, cookware, and the steps with ingredients, cookware and timers picked out. Your theme styles it the same as your notes.
+
+- **Mark as made** and **Add checked to shopping list** work from the view, the same as from a note. Times made is saved in the file as `times made` and `last made`.
+- **Edit** switches to a plain text editor over the file. The pencil in the view's header does the same.
+- The photo at the top is the one named after the recipe and sitting next to it (`Leek Soup.jpg` beside `Leek Soup.cook`), which is where Cooklang keeps photos. Failing that, it's whatever the file's `image:` points at, a path in your vault or a URL.
+- Another recipe used as an ingredient, like `@./Sauces/Hollandaise{150%g}`, is a link you can click. It's looked for next to the file, then in your recipe folder, then anywhere in the vault by name.
+- Ticked ingredients reset when you close the file, since a `.cook` file has nowhere to keep them.
+
+If you also have the Cooklang plugin installed, whichever plugin loads first opens `.cook` files. Recipe Vault leaves them alone if another plugin already has them.
+
+### Saving new recipes as Cooklang
+
+Set **Save new recipes as** to **Cooklang file** and every new recipe is saved as a `.cook` file: URL imports, batch imports, photo imports, file and folder imports, and Add recipe (manual). Switch it back to Markdown and new recipes are notes again. Nothing you already have gets converted either way, and the gallery shows both.
+
+Recipe pages keep the ingredients apart from the steps, and Cooklang marks them inside the steps, so an import has to match them up. Each ingredient is marked in the first step that mentions it. "1 yellow onion, diced" matches a step that says "the onions" and becomes `@yellow onion{1}(diced)`. An ingredient no step mentions goes in a "Gather" step at the top so nothing is lost.
+
+The photo goes in your image folder (see **Save images**) and the file's `image:` points at it. If the image folder is blank, it goes next to the file as `Recipe Name.jpg` instead.
+
+Importing a `.cook` file while in Cooklang mode copies it as written, so its cookware and timers come along.
+
+### The gallery
+
+`.cook` files show up in the gallery next to your notes, with their photo, meal type (`course`), cook time (`time`) and times made, and their ingredients are searchable. When a `.cook` file sits next to a note with the same name, which is what **Export recipe as Cooklang file** leaves behind, only the note shows.
+
+---
+
+## 📦 Importing and exporting files
+
+Recipe Vault can turn recipe files already in your vault into recipes:
+
+- **JSON-LD (`.json`):** a schema.org Recipe, the same data recipe websites carry. One file can hold several recipes.
+- **Cooklang (`.cook`):** see [Cooklang](#-cooklang).
+
+Right-click a file and choose **Import as recipe**, or run **Import recipe from JSON-LD or Cooklang file**. Obsidian only shows `.json` files in the file explorer with **Files and links → Detect all file extensions** turned on.
+
+To import a whole folder, right-click it and choose **Import recipes from folder**. Subfolders are kept, so `Imports/Desserts/pie.json` lands in `Recipes/Desserts/`. It's safe to run again: a recipe whose URL or source file is already in your vault is skipped. Files that can't be read are listed in an `Import errors` note in the folder you imported. A folder with 1,000 or more files asks first, since the gallery gets slow with thousands of recipes.
+
+To go the other way, right-click a recipe and choose **Export recipe as JSON-LD** or **Export recipe as Cooklang**, or use the matching commands. The file is written next to the recipe. A `.cook` file can be exported as JSON-LD too. Times made comes along, so exporting and importing a recipe back doesn't reset it.
+
+---
+
 ## 🤖 Ask AI
 
-Recipe Vault can use an AI model to suggest edits to a recipe directly in the note preview (for example, "make this dairy-free" or "scale to 2 servings"). This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add in plugin settings.
+Recipe Vault can use an AI model to suggest edits to a markdown recipe note directly in the note preview (for example, "make this dairy-free" or "scale to 2 servings"). This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add in plugin settings.
 
 <div align="center">
 
@@ -206,7 +272,7 @@ No cookbook page? No problem. Run **Add recipe from photo** from the command pal
 
 1. **Capture:** take a photo (camera opens automatically on mobile) or choose existing image files. Multiple photos are treated as pages of a single recipe, so multi-page cookbook spreads work in one go.
 2. **Verify:** the vision model transcribes the name, ingredients, instructions, time, and yield; edit the result before saving to fix any misreads.
-3. **Photo:** the captured photo is attached to the note by default, or choose a different image or none.
+3. **Photo:** the captured photo is attached to the recipe by default, or choose a different image or none.
 
 This uses the same [OpenRouter](https://openrouter.ai/) API key and model as Ask AI, so no separate setup is required. There's no bundled OCR engine; the vision model does the transcription, so it works on mobile too.
 
@@ -220,7 +286,7 @@ Recipe Vault is primarily local, but it can make network requests for the follow
 
 - **Recipe URL import:** fetches the page you provide to read recipe JSON-LD data. The URL and page response are used only to create recipe notes in your vault.
 - **Proxy fallback (optional, off by default):** if an import is blocked and you enable this setting, the recipe URL is retried once through a public read proxy (allorigins.win), which sends that URL to a third-party service.
-- **Recipe image download (optional):** when enabled, recipe images referenced by imported recipes are downloaded into your vault.
+- **Recipe image download (optional):** when enabled, recipe images referenced by imported recipes are downloaded into your vault. This includes the image URL in an imported JSON-LD file.
 - **Ask AI via OpenRouter (optional):** sends your prompt plus recipe ingredients/instructions to OpenRouter to generate suggestions. Requests include your configured OpenRouter API key.
 - **Add recipe from photo via OpenRouter (optional):** sends your captured/chosen photo(s) to OpenRouter for transcription. Requests include your configured OpenRouter API key.
 

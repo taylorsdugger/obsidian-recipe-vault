@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
-import { api, type ParsedRecipePreview } from "../api";
+import { api, type ParsedRecipePreview, type RecipeFormat } from "../api";
 import { VaultImport } from "../components/vault-import";
 import { navigate } from "../router";
 
@@ -31,6 +31,27 @@ export function Import() {
   const [preview, setPreview] = useState<ParsedRecipePreview[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Null until the server says, so the pills don't flash the wrong one.
+  const [format, setFormat] = useState<RecipeFormat | null>(null);
+
+  useEffect(() => {
+    api
+      .recipeFormat()
+      .then((res) => setFormat(res.recipeFormat))
+      .catch(() => setFormat("markdown"));
+  }, []);
+
+  // Saved on tap, and every import from then on uses it, on every device.
+  const chooseFormat = async (next: RecipeFormat) => {
+    const before = format;
+    setFormat(next);
+    try {
+      await api.setRecipeFormat(next);
+    } catch (err) {
+      setFormat(before);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const look = async (target: string) => {
     setBusy(true);
@@ -78,6 +99,28 @@ export function Import() {
   return (
     <div class="screen space-y-4">
       <h1 class="text-xl font-semibold">Import a recipe</h1>
+
+      {format && (
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-muted">Save new recipes as</span>
+          {(
+            [
+              ["markdown", "Markdown"],
+              ["cooklang", "Cooklang"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              class={format === key ? "pill-on" : "pill"}
+              aria-pressed={format === key}
+              onClick={() => void chooseFormat(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <form class="flex gap-2" onSubmit={lookUp}>
         <input

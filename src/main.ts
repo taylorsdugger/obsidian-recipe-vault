@@ -10,6 +10,7 @@ import {
   TFolder,
   TFile,
   Vault,
+  WorkspaceLeaf,
 } from "obsidian";
 
 import * as c from "./constants";
@@ -21,7 +22,12 @@ import {
   RecipeRefineApplyResult,
 } from "./modal-refine-recipe";
 import { RecipeGalleryView, resetGalleryUiState } from "./view-recipe-gallery";
-import { getRecipeFiles, thumbPathForImage } from "./utils/recipeLoader";
+import { CooklangView } from "./view-cooklang";
+import {
+  type CooklangIndexInfo,
+  getRecipeFiles,
+  thumbPathForImage,
+} from "./utils/recipeLoader";
 import { PhotoRecipeModal } from "./modal-photo-recipe";
 import { ConfirmModal } from "./modal-confirm";
 import {
@@ -45,6 +51,10 @@ import {
   ensureRequiredRecipeFrontmatter,
   ingredientsFromBody,
   itemsFromIngredientLine,
+  readRecipeFile,
+  recipeToCooklang,
+  setCooklangMetadata,
+  setRecipeHistory,
   mergeShoppingItems,
   migrateImageLink,
   normalizeRecipeNotes,
@@ -63,12 +73,17 @@ import type {
   ShoppingItem,
 } from "@recipe-vault/core";
 
-/** One note's entry in the persisted ingredient search index. */
+/** One recipe's entry in the persisted ingredient search index. */
 interface IngredientIndexEntry {
   /** The file's modified time when it was indexed, so we can skip re-reads. */
   mtime: number;
-  /** Ingredient lines parsed from the note's body `### Ingredients` section. */
+  /**
+   * Ingredient lines, from a note's `### Ingredients` section or the
+   * ingredients a `.cook` file's steps mark up.
+   */
   ingredients: string[];
+  /** For a `.cook` file, what the gallery would otherwise get from frontmatter. */
+  cook?: CooklangIndexInfo;
 }
 
 type CommandExecutorApp = App & {
@@ -135,6 +150,8 @@ export default class RecipeVault extends Plugin {
   }
 
   async ensureRecipeNoteCssClass(file: TFile): Promise<boolean> {
+    // Front matter edits through Obsidian only work on notes.
+    if (file.extension !== "md") return false;
     const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
     if (this.hasRecipeNoteCssClass(fm?.cssclasses)) {
       return false;
@@ -164,7 +181,113 @@ export default class RecipeVault extends Plugin {
     return true;
   }
 
+  /**
+   * Merge ingredient lines into the shopping list file, in aisle order, and
+   * say how many were new.
+   */
+  async addToShoppingList(
+    checked: string[],
+    recipeName: string,
+  ): Promise<void> {
+    // Parse new items. One line can make two ("salt and pepper") or none
+    // (water), so this flattens.
+    const newItems: ShoppingItem[] = checked.flatMap((text) =>
+      itemsFromIngredientLine(text, recipeName),
+    );
+
+    // Read and parse existing shopping list
+    const listPath = normalizePath(this.settings.shoppingListFile);
+    const existingFile = this.app.vault.getAbstractFileByPath(listPath);
+    let headerLines: string[] = [];
+    let existingItems: ShoppingItem[] = [];
+
+    if (existingFile && existingFile instanceof TFile) {
+      const existingContent = await this.app.vault.read(existingFile);
+      ({ headerLines, items: existingItems } =
+        parseShoppingListMarkdown(existingContent));
+    }
+
+    // Merge new items into existing list
+    const { items, mergedCount } = mergeShoppingItems(existingItems, newItems);
+
+    // Rebuild and write the file, in aisle order. This command already
+    // re-renders the whole note, so sorting it costs nothing extra and
+    // saves walking the shop twice.
+    const newContent = renderShoppingListMarkdown(
+      headerLines,
+      [...items].sort(compareByAisle),
+    );
+
+    if (existingFile && existingFile instanceof TFile) {
+      await this.app.vault.process(existingFile, () => newContent);
+    } else {
+      const folder = listPath.includes("/")
+        ? listPath.substring(0, listPath.lastIndexOf("/"))
+        : "";
+      if (folder) await this.folderCheck(folder);
+      await this.app.vault.create(listPath, newContent);
+    }
+
+    const added = newItems.length - mergedCount;
+    const msg = [
+      mergedCount ? `${mergedCount} merged` : "",
+      added ? `${added} new` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    new Notice(
+      `Shopping list updated (${msg || newItems.length + " items"}) → ${this.settings.shoppingListFile}`,
+    );
+  }
+
+  /**
+   * Count one more time made and stamp today, in the recipe's own front
+   * matter: `times_made` in a note, `times made` in a `.cook` file.
+   */
+  async markRecipeMade(file: TFile): Promise<void> {
+    const today = dateFormat(new Date(), "yyyy-mm-dd");
+    if (isCooklangFile(file)) {
+      await this.app.vault.process(file, (text) => {
+        const current = readRecipeFile(file.path, text)?.timesMade ?? 0;
+        return setRecipeHistory(file.path, text, {
+          timesMade: current + 1,
+          lastMade: today,
+        });
+      });
+    } else {
+      await this.app.fileManager.processFrontMatter(file, (fm: JsonRecord) => {
+        const current = typeof fm.times_made === "number" ? fm.times_made : 0;
+        fm.times_made = current + 1;
+        fm.last_made = today;
+      });
+    }
+    new Notice("Marked as made!");
+  }
+
+  /**
+   * Open a recipe in `leaf` in reading mode: a note in the markdown view with
+   * the recipe styling, a `.cook` file in the Cooklang view.
+   */
+  async openRecipe(leaf: WorkspaceLeaf, file: TFile): Promise<void> {
+    if (isCooklangFile(file)) {
+      await leaf.setViewState({
+        type: c.VIEW_TYPE_COOKLANG,
+        state: { file: file.path, mode: "preview" },
+        active: true,
+      });
+      return;
+    }
+    await this.ensureRecipeNoteCssClass(file);
+    await leaf.setViewState({
+      type: "markdown",
+      state: { file: file.path, mode: "preview" },
+      active: true,
+    });
+  }
+
   private isRecipeFile(file: TFile): boolean {
+    // A .cook file is a recipe by what it is. There's no tag to look for.
+    if (isCooklangFile(file)) return true;
     const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
     if (!fm) return false;
 
@@ -351,10 +474,38 @@ export default class RecipeVault extends Plugin {
     return this.ingredientIndex.get(path)?.ingredients ?? [];
   }
 
-  /** Parse a recipe's body `### Ingredients` section into searchable lines. */
-  private async parseIngredientsFromBody(file: TFile): Promise<string[]> {
+  /** What the index read out of a `.cook` file, for the gallery card. */
+  getCooklangInfo(path: string): CooklangIndexInfo | undefined {
+    return this.ingredientIndex.get(path)?.cook;
+  }
+
+  /**
+   * Read one recipe file into its index entry. A note gives its body's
+   * `### Ingredients` section. A `.cook` file is parsed whole, since there's
+   * no metadata cache to read its front matter from.
+   */
+  private async readIndexEntry(file: TFile): Promise<IngredientIndexEntry> {
     const content = await this.app.vault.cachedRead(file);
-    return ingredientsFromBody(content);
+    if (!isCooklangFile(file)) {
+      return {
+        mtime: file.stat.mtime,
+        ingredients: ingredientsFromBody(content),
+      };
+    }
+    const summary = readRecipeFile(file.path, content);
+    return {
+      mtime: file.stat.mtime,
+      ingredients: summary?.ingredients ?? [],
+      cook: {
+        title: summary?.title ?? file.basename,
+        photo: summary?.photo ?? "",
+        mealType: summary?.mealType ?? "",
+        cookTime: summary?.cookTime ?? "",
+        timesMade: summary?.timesMade ?? 0,
+        sourceUrl: summary?.sourceUrl ?? "",
+        sourceFile: summary?.sourceFile ?? "",
+      },
+    };
   }
 
   /** Path of the sidecar index file, or null if the plugin dir is unknown. */
@@ -383,6 +534,9 @@ export default class RecipeVault extends Plugin {
           this.ingredientIndex.set(notePath, {
             mtime: entry.mtime,
             ingredients: entry.ingredients.map((s) => String(s)),
+            ...(entry.cook && typeof entry.cook === "object"
+              ? { cook: entry.cook }
+              : {}),
           });
         }
       }
@@ -417,15 +571,14 @@ export default class RecipeVault extends Plugin {
     }
   }
 
-  /** (Re)index a single recipe note from its body. Never writes to the note. */
+  /** (Re)index a single recipe file. Never writes to the file. */
   private async indexRecipeFile(file: TFile): Promise<void> {
     try {
-      const ingredients = await this.parseIngredientsFromBody(file);
-      this.ingredientIndex.set(file.path, {
-        mtime: file.stat.mtime,
-        ingredients,
-      });
+      this.ingredientIndex.set(file.path, await this.readIndexEntry(file));
       this.queuePersistIngredientIndex();
+      // A note's change reaches the gallery through the metadata cache. A
+      // .cook file has none, so the gallery hears about it from here.
+      if (isCooklangFile(file)) this.refreshRecipeGalleryView();
     } catch (err) {
       console.error("Recipe Vault: failed to index", file.path, err);
     }
@@ -464,13 +617,16 @@ export default class RecipeVault extends Plugin {
     for (const file of files) {
       seen.add(file.path);
       const existing = this.ingredientIndex.get(file.path);
-      if (existing && existing.mtime === file.stat.mtime) continue;
+      // An entry from before .cook files were indexed has no `cook` part.
+      if (
+        existing &&
+        existing.mtime === file.stat.mtime &&
+        (existing.cook || !isCooklangFile(file))
+      ) {
+        continue;
+      }
       try {
-        const ingredients = await this.parseIngredientsFromBody(file);
-        this.ingredientIndex.set(file.path, {
-          mtime: file.stat.mtime,
-          ingredients,
-        });
+        this.ingredientIndex.set(file.path, await this.readIndexEntry(file));
         changed = true;
       } catch (err) {
         console.error("Recipe Vault: failed to index", file.path, err);
@@ -676,6 +832,22 @@ export default class RecipeVault extends Plugin {
       (leaf) => new RecipeGalleryView(leaf, this),
     );
 
+    // Open .cook files in a recipe view instead of hiding them. Another plugin
+    // (like the Cooklang one) may have claimed the extension first, and
+    // Obsidian throws on a second claim, so leave it to that plugin.
+    this.registerView(
+      c.VIEW_TYPE_COOKLANG,
+      (leaf) => new CooklangView(leaf, this),
+    );
+    try {
+      this.registerExtensions(["cook"], c.VIEW_TYPE_COOKLANG);
+    } catch (error) {
+      console.warn(
+        "Recipe Vault: .cook files are already handled by another plugin",
+        error,
+      );
+    }
+
     // Ribbon icon to open/reveal the gallery
     this.addRibbonIcon("utensils", "Open recipe gallery", () => {
       void this.activateRecipeGalleryView();
@@ -768,21 +940,14 @@ export default class RecipeVault extends Plugin {
       id: c.CMD_MARK_MADE,
       name: "Mark recipe as made",
       callback: async () => {
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (!view?.file) {
+        const file =
+          this.app.workspace.getActiveViewOfType(MarkdownView)?.file ??
+          this.app.workspace.getActiveViewOfType(CooklangView)?.file;
+        if (!file) {
           new Notice("No active recipe file open.");
           return;
         }
-        await this.app.fileManager.processFrontMatter(
-          view.file,
-          (fm: JsonRecord) => {
-            const current =
-              typeof fm.times_made === "number" ? fm.times_made : 0;
-            fm.times_made = current + 1;
-            fm.last_made = dateFormat(new Date(), "yyyy-mm-dd");
-          },
-        );
-        new Notice("Marked as made!");
+        await this.markRecipeMade(file);
       },
     });
 
@@ -791,6 +956,20 @@ export default class RecipeVault extends Plugin {
       id: c.CMD_ADD_TO_SHOPPING_LIST,
       name: "Add checked ingredients to shopping list",
       callback: async () => {
+        // A .cook file's ticks live in its view, since the file has nowhere
+        // to keep them.
+        const cookView = this.app.workspace.getActiveViewOfType(CooklangView);
+        if (cookView?.file) {
+          const lines = cookView.checkedIngredients();
+          if (lines.length === 0) {
+            new Notice("No checked ingredients found.");
+            return;
+          }
+          await this.addToShoppingList(lines, cookView.file.basename);
+          cookView.clearChecked();
+          return;
+        }
+
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view?.file) {
           new Notice("No active recipe file open.");
@@ -827,58 +1006,7 @@ export default class RecipeVault extends Plugin {
         // Uncheck the items in the active recipe using the editor API.
         view.editor.setValue(newLines.join("\n"));
 
-        // Parse new items. One line can make two ("salt and pepper") or none
-        // (water), so this flattens.
-        const newItems: ShoppingItem[] = checked.flatMap((text) =>
-          itemsFromIngredientLine(text, recipeName),
-        );
-
-        // Read and parse existing shopping list
-        const listPath = normalizePath(this.settings.shoppingListFile);
-        const existingFile = this.app.vault.getAbstractFileByPath(listPath);
-        let headerLines: string[] = [];
-        let existingItems: ShoppingItem[] = [];
-
-        if (existingFile && existingFile instanceof TFile) {
-          const existingContent = await this.app.vault.read(existingFile);
-          ({ headerLines, items: existingItems } =
-            parseShoppingListMarkdown(existingContent));
-        }
-
-        // Merge new items into existing list
-        const { items, mergedCount } = mergeShoppingItems(
-          existingItems,
-          newItems,
-        );
-
-        // Rebuild and write the file, in aisle order. This command already
-        // re-renders the whole note, so sorting it costs nothing extra and
-        // saves walking the shop twice.
-        const newContent = renderShoppingListMarkdown(
-          headerLines,
-          [...items].sort(compareByAisle),
-        );
-
-        if (existingFile && existingFile instanceof TFile) {
-          await this.app.vault.process(existingFile, () => newContent);
-        } else {
-          const folder = listPath.includes("/")
-            ? listPath.substring(0, listPath.lastIndexOf("/"))
-            : "";
-          if (folder) await this.folderCheck(folder);
-          await this.app.vault.create(listPath, newContent);
-        }
-
-        const added = newItems.length - mergedCount;
-        const msg = [
-          mergedCount ? `${mergedCount} merged` : "",
-          added ? `${added} new` : "",
-        ]
-          .filter(Boolean)
-          .join(", ");
-        new Notice(
-          `Shopping list updated (${msg || newItems.length + " items"}) → ${this.settings.shoppingListFile}`,
-        );
+        await this.addToShoppingList(checked, recipeName);
       },
     });
 
@@ -1005,12 +1133,14 @@ export default class RecipeVault extends Plugin {
       id: c.CMD_EXPORT_JSONLD,
       name: "Export recipe as JSON-LD file",
       callback: async () => {
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (!view?.file) {
+        const file =
+          this.app.workspace.getActiveViewOfType(MarkdownView)?.file ??
+          this.app.workspace.getActiveViewOfType(CooklangView)?.file;
+        if (!file) {
           new Notice("No active recipe file open.");
           return;
         }
-        await this.exportRecipe(view.file, "jsonld");
+        await this.exportRecipe(file, "jsonld");
       },
     });
 
@@ -1029,8 +1159,8 @@ export default class RecipeVault extends Plugin {
     });
 
     // The same actions from the file explorer's right-click menu, which is
-    // the only place a .json or .cook file is reachable at all. A .cook file
-    // only shows in the explorer with "Detect all file extensions" on.
+    // the only place a .json file is reachable at all. A .cook file also
+    // opens in the Cooklang view, which has its own import button.
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, abstractFile) => {
         if (abstractFile instanceof TFolder) {
@@ -1053,6 +1183,14 @@ export default class RecipeVault extends Plugin {
               .setIcon("chef-hat")
               .onClick(() => void this.importRecipeFromFile(target)),
           );
+          if (isCooklangFile(target)) {
+            menu.addItem((item) =>
+              item
+                .setTitle("Export recipe as JSON-LD")
+                .setIcon("braces")
+                .onClick(() => void this.exportRecipe(target, "jsonld")),
+            );
+          }
           return;
         }
 
@@ -1105,11 +1243,11 @@ export default class RecipeVault extends Plugin {
         let cleaned = 0;
         for (const file of files) {
           try {
-            const ingredients = await this.parseIngredientsFromBody(file);
-            this.ingredientIndex.set(file.path, {
-              mtime: file.stat.mtime,
-              ingredients,
-            });
+            this.ingredientIndex.set(
+              file.path,
+              await this.readIndexEntry(file),
+            );
+            if (isCooklangFile(file)) continue;
             // One-time cleanup of the old searchable frontmatter copy.
             const fmHasLegacy =
               this.app.metadataCache.getFileCache(file)?.frontmatter
@@ -1289,6 +1427,14 @@ export default class RecipeVault extends Plugin {
         return;
       }
 
+      // A .cook file is always its own file. It can't go into the open note.
+      if (this.settings.recipeFormat === "cooklang") {
+        for (const recipe of recipes) {
+          await this.saveParsedRecipe(recipe, { source: "url" });
+        }
+        return;
+      }
+
       let view = this.settings.saveInActiveFile
         ? this.app.workspace.getActiveViewOfType(MarkdownView)
         : null;
@@ -1457,6 +1603,24 @@ export default class RecipeVault extends Plugin {
     const name = recipeName.trim();
     if (!name) return;
 
+    if (this.settings.recipeFormat === "cooklang") {
+      const folder = this.recipeSaveFolder();
+      await this.folderCheck(folder);
+      const safeName = name.replace(/"|\*|\\|\/|<|>|:|\?/g, "");
+      const file = await this.app.vault.create(
+        this.freeRecipePath(folder, safeName, "cook"),
+        `---\ntitle: ${name}\n---\n\n`,
+      );
+      new Notice(`Recipe "${name}" created.`);
+      // Straight into the editor, since there's nothing to read yet.
+      await this.app.workspace.getLeaf("tab").setViewState({
+        type: c.VIEW_TYPE_COOKLANG,
+        state: { file: file.path, mode: "source" },
+        active: true,
+      });
+      return;
+    }
+
     const markdown = createRecipeRenderer(this.settings.recipeTemplate);
     const stub = { name };
     let md = markdown(stub);
@@ -1517,9 +1681,24 @@ export default class RecipeVault extends Plugin {
        * failure so the caller can collect the error instead.
        */
       quiet?: boolean;
+      /**
+       * The `.cook` file's own text, when the recipe came from one. Saving as
+       * Cooklang keeps it as written instead of rebuilding it, which would
+       * lose its cookware and timers.
+       */
+      cooklangText?: string;
     } = {},
   ): Promise<TFile | null> {
     try {
+      if (this.settings.recipeFormat === "cooklang") {
+        const file = await this.saveCooklangRecipe(recipe, opts);
+        if (!opts.quiet) {
+          new Notice(`Recipe "${file.basename}" created.`);
+          await this.openRecipe(this.app.workspace.getLeaf("tab"), file);
+        }
+        return file;
+      }
+
       const rawName = typeof recipe.name === "string" ? recipe.name.trim() : "";
       // Mirror the URL importer's disallowed-char strip; fall back to a unique
       // timestamp when the transcription has no usable title.
@@ -1612,6 +1791,108 @@ export default class RecipeVault extends Plugin {
       new Notice(`Recipe save failed: ${msg}`, 10000);
       return null;
     }
+  }
+
+  /**
+   * Save a recipe as a `.cook` file in the save folder (or `opts.folder`).
+   *
+   * The photo is the one passed in, or the recipe's remote image when "Save
+   * images" is on. With an image folder set it goes there, like a note's
+   * photo, and the file's `image:` front matter points at it. With no image
+   * folder it goes next to the file as `Name.jpg`, which is where Cooklang
+   * looks on its own.
+   */
+  private async saveCooklangRecipe(
+    recipe: ParsedRecipe,
+    opts: {
+      localImage?: Blob;
+      folder?: string;
+      sourceFile?: string;
+      cooklangText?: string;
+    },
+  ): Promise<TFile> {
+    const rawName = typeof recipe.name === "string" ? recipe.name.trim() : "";
+    const safeName =
+      rawName.replace(/"|\*|\\|\/|<|>|:|\?/g, "").trim() ||
+      String(new Date().getTime());
+
+    const folder = opts.folder ?? this.recipeSaveFolder();
+    await this.folderCheck(folder);
+    const path = this.freeRecipePath(folder, safeName, "cook");
+
+    let text = opts.cooklangText ?? recipeToCooklang(recipe);
+    if (opts.sourceFile) {
+      text = setCooklangMetadata(text, { "source file": opts.sourceFile });
+    }
+    const file = await this.app.vault.create(path, text);
+
+    const remote =
+      this.settings.saveImg &&
+      typeof recipe.image === "string" &&
+      /^https?:\/\//i.test(recipe.image)
+        ? recipe.image
+        : null;
+    if (!opts.localImage && !remote) return file;
+
+    try {
+      let imagePath: string | null = null;
+      if (this.settings.imgFolder === "") {
+        const buffer = opts.localImage
+          ? await opts.localImage.arrayBuffer()
+          : (await requestUrl({ url: remote ?? "", method: "GET" }))
+              .arrayBuffer;
+        await this.saveCooklangPhoto(file, buffer);
+      } else if (opts.localImage) {
+        imagePath = await this.saveLocalRecipeImage(
+          file.basename,
+          opts.localImage,
+          file,
+        );
+      } else {
+        await this.saveRemoteMainImage(recipe, file);
+        if (typeof recipe.image === "string" && recipe.image !== remote) {
+          imagePath = recipe.image;
+        }
+      }
+      if (imagePath) {
+        const saved = imagePath;
+        await this.app.vault.process(file, (current) =>
+          setCooklangMetadata(current, { image: saved }),
+        );
+      }
+    } catch (err) {
+      // The recipe is saved either way. A remote image is still in its front
+      // matter for the gallery to show.
+      console.error("Recipe Vault: failed to save recipe photo", err);
+    }
+    return file;
+  }
+
+  /** Write `Name.<ext>` next to `Name.cook`, plus a gallery thumbnail. */
+  private async saveCooklangPhoto(
+    cookFile: TFile,
+    buffer: ArrayBuffer,
+  ): Promise<void> {
+    const type = this.detectImageType(buffer);
+    if (!type) return;
+    const dir =
+      cookFile.parent && !cookFile.parent.isRoot()
+        ? `${cookFile.parent.path}/`
+        : "";
+    const path = normalizePath(`${dir}${cookFile.basename}.${type.ext}`);
+    if (!this.app.vault.getAbstractFileByPath(path)) {
+      await this.app.vault.createBinary(path, buffer);
+    }
+    await this.createThumbnail(buffer, type, path);
+  }
+
+  /** `folder/name.ext`, or `name (2).ext` and up when that's taken. */
+  private freeRecipePath(folder: string, name: string, ext: string): string {
+    let path = `${normalizePath(folder)}/${name}.${ext}`;
+    for (let n = 2; this.app.vault.getAbstractFileByPath(path); n++) {
+      path = `${normalizePath(folder)}/${name} (${n}).${ext}`;
+    }
+    return path;
   }
 
   /**
@@ -1798,7 +2079,10 @@ export default class RecipeVault extends Plugin {
    */
   private async readRecipesFromFile(
     file: TFile,
-  ): Promise<{ recipes: ParsedRecipe[]; source: string } | { error: string }> {
+  ): Promise<
+    | { recipes: ParsedRecipe[]; source: string; cooklangText?: string }
+    | { error: string }
+  > {
     const raw = await this.app.vault.read(file);
 
     if (isCooklangFile(file)) {
@@ -1810,6 +2094,7 @@ export default class RecipeVault extends Plugin {
       return {
         recipes: core.parseRecipesFromJsonLd([recipe], this.fetchOptions()),
         source: "cooklang",
+        cooklangText: raw,
       };
     }
 
@@ -1829,7 +2114,7 @@ export default class RecipeVault extends Plugin {
   }
 
   /** Create recipe notes from one `.json` / `.jsonld` or `.cook` file. */
-  private importRecipeFromFile = async (file: TFile): Promise<void> => {
+  importRecipeFromFile = async (file: TFile): Promise<void> => {
     const format = isCooklangFile(file) ? "Cooklang" : "JSON-LD";
     try {
       const read = await this.readRecipesFromFile(file);
@@ -1843,6 +2128,7 @@ export default class RecipeVault extends Plugin {
         const note = await this.saveParsedRecipe(recipe, {
           source: read.source,
           sourceFile: sourceFileKey(file, i, read.recipes.length),
+          cooklangText: read.cooklangText,
         });
         if (note) saved += 1;
       }
@@ -1922,7 +2208,7 @@ export default class RecipeVault extends Plugin {
     this.folderImportRunning = true;
     const saveFolder = this.recipeSaveFolder();
     const base = folder.isRoot() ? "" : folder.path;
-    const seen = this.importedRecipeKeys();
+    const seen = await this.importedRecipeKeys();
     const progress = new Notice("", 0);
     const failures: string[] = [];
     let imported = 0;
@@ -1961,6 +2247,7 @@ export default class RecipeVault extends Plugin {
               folder: target,
               sourceFile,
               quiet: true,
+              cooklangText: read.cooklangText,
             });
             seen.add(sourceFile);
             if (recipe.url) seen.add(recipe.url);
@@ -1996,17 +2283,30 @@ export default class RecipeVault extends Plugin {
   }
 
   /**
-   * Every url and `source_file` already on a note in the vault. Read from
-   * the metadata cache, so it's cheap even with thousands of notes.
+   * Every url and `source_file` already on a recipe in the vault. Notes are
+   * read from the metadata cache, so they're cheap even with thousands.
+   * `.cook` files have no cache and are read, using the index when it's
+   * current for that file.
    */
-  private importedRecipeKeys(): Set<string> {
+  private async importedRecipeKeys(): Promise<Set<string>> {
     const keys = new Set<string>();
-    for (const file of this.app.vault.getMarkdownFiles()) {
+    const add = (value: unknown) => {
+      if (typeof value === "string" && value.trim()) keys.add(value.trim());
+    };
+    for (const file of this.app.vault.getFiles()) {
+      if (isCooklangFile(file)) {
+        const entry = this.ingredientIndex.get(file.path);
+        let cook = entry?.mtime === file.stat.mtime ? entry.cook : undefined;
+        if (!cook) cook = (await this.readIndexEntry(file)).cook;
+        add(cook?.sourceUrl);
+        add(cook?.sourceFile);
+        continue;
+      }
+      if (file.extension !== "md") continue;
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       if (!fm) continue;
-      for (const value of [fm.url, fm.source_file]) {
-        if (typeof value === "string" && value.trim()) keys.add(value.trim());
-      }
+      add(fm.url);
+      add(fm.source_file);
     }
     return keys;
   }
@@ -2034,24 +2334,31 @@ export default class RecipeVault extends Plugin {
   /**
    * Write a recipe note back out as a JSON-LD (`.json`) or Cooklang (`.cook`)
    * file next to it, so it can be handed to someone using a different recipe
-   * app.
+   * app. A `.cook` file can go out as JSON-LD the same way.
    *
    * The note is what gets read, not a stored copy of the original import, so
    * any edits since come along. An existing export is overwritten: the note is
    * the source of truth and a stale export next to it is worse than none.
    */
-  private async exportRecipe(
+  async exportRecipe(
     file: TFile,
     format: "jsonld" | "cooklang",
   ): Promise<void> {
     const label = format === "jsonld" ? "JSON-LD" : "Cooklang";
     try {
       const markdown = await this.app.vault.read(file);
-      const recipe = noteToJsonLd(markdown, { name: file.basename });
+      // A .cook file goes out through the same reader its import uses.
+      // Exporting one as Cooklang would just copy it, so that isn't offered.
+      const fromCooklang = isCooklangFile(file);
+      const recipe = fromCooklang
+        ? core.cooklangToJsonLd(markdown, { name: file.basename })
+        : noteToJsonLd(markdown, { name: file.basename });
 
       if (!recipe.recipeIngredient && !recipe.recipeInstructions) {
         new Notice(
-          `${file.basename} has no Ingredients or Instructions section to export.`,
+          fromCooklang
+            ? `${file.basename} has no ingredients or steps to export.`
+            : `${file.basename} has no Ingredients or Instructions section to export.`,
         );
         return;
       }

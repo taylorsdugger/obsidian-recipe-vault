@@ -6,6 +6,7 @@ import {
   ensureRequiredRecipeFrontmatter,
   fetchRecipes,
   normalizeRecipeNotes,
+  recipeToCooklang,
   type FetchOptions,
   type ParsedRecipe,
 } from "@recipe-vault/core";
@@ -16,6 +17,7 @@ import { deriveRecipeFields } from "../db/recipe-row";
 import type { AppBindings } from "../env";
 import { workerHttpPort } from "../http";
 import { PARSE_OPTIONS } from "../parse-options";
+import { getRecipeFormat } from "../settings";
 import { freeKeyFor, writeNote } from "../vault-store";
 import { wait } from "../wait";
 
@@ -113,15 +115,24 @@ export const importRoutes = new Hono<AppBindings>()
       return c.json({ error: "Send the recipe you previewed." }, 400);
     }
 
-    const markdown = recipeToMarkdown(recipe as ParsedRecipe);
-    const { title } = deriveRecipeFields(markdown);
+    // Markdown or Cooklang, by the app's own "save new recipes as" setting.
+    // A .cook file keeps the photo as a url in its front matter, the same as
+    // the app's notes do (locked decision 7).
+    const database = db(c.env.DB);
+    const format = await getRecipeFormat(database);
+    const ext = format === "cooklang" ? "cook" : "md";
+    const markdown =
+      format === "cooklang"
+        ? recipeToCooklang(recipe as ParsedRecipe)
+        : recipeToMarkdown(recipe as ParsedRecipe);
+    const { title } = deriveRecipeFields(markdown, `recipe.${ext}`);
 
     // The vault is the source of truth, so a recipe imported here becomes a
-    // note like any other. Remotely Save carries it into Obsidian on its next
+    // file like any other. Remotely Save carries it into Obsidian on its next
     // run, and the D1 row is just the index of it.
-    const key = await freeKeyFor(c.env, title);
+    const key = await freeKeyFor(c.env, title, ext);
     const etag = await writeNote(c.env, key, markdown, null);
-    const { id } = await indexNote(db(c.env.DB), { key, markdown, etag });
+    const { id } = await indexNote(database, { key, markdown, etag });
 
     return c.json({ recipe: { id, title } }, 201);
   });

@@ -111,8 +111,9 @@ export class RecipeGalleryView extends ItemView {
     this.root = null;
   }
 
+  /** Debounced, since a folder import of .cook files calls this per file. */
   refresh(): void {
-    this.render();
+    this.scheduleRender();
   }
 
   async setState(state: unknown): Promise<void> {
@@ -158,6 +159,7 @@ export class RecipeGalleryView extends ItemView {
       this.app.metadataCache,
       galleryFolder,
       (path) => this.plugin.getIngredients(path),
+      (path) => this.plugin.getCooklangInfo(path),
     );
 
     // When the gallery is empty, check whether recipes are actually landing in
@@ -208,13 +210,8 @@ export class RecipeGalleryView extends ItemView {
           void (async () => {
             const abstractFile = this.app.vault.getAbstractFileByPath(path);
             if (abstractFile instanceof TFile) {
-              await this.plugin.ensureRecipeNoteCssClass(abstractFile);
-              // Open in this leaf and force Reading mode when entering from gallery.
-              await this.leaf.setViewState({
-                type: "markdown",
-                state: { file: abstractFile.path, mode: "preview" },
-                active: true,
-              });
+              // Open in this leaf, in reading mode, when entering from gallery.
+              await this.plugin.openRecipe(this.leaf, abstractFile);
             }
           })();
         }}
@@ -226,13 +223,8 @@ export class RecipeGalleryView extends ItemView {
             for (const path of paths) {
               const file = this.app.vault.getAbstractFileByPath(path);
               if (file instanceof TFile) {
-                await this.plugin.ensureRecipeNoteCssClass(file);
                 const leaf = this.app.workspace.getLeaf("split");
-                await leaf.setViewState({
-                  type: "markdown",
-                  state: { file: file.path, mode: "preview" },
-                  active: true,
-                });
+                await this.plugin.openRecipe(leaf, file);
               }
             }
           })();
