@@ -1,4 +1,5 @@
 import { MetadataCache, TFile, Vault } from "obsidian";
+import { normalizePhotoProperty } from "@recipe-vault/core";
 import { RecipeNote } from "../types/recipe";
 
 /**
@@ -57,13 +58,17 @@ export function cooklangPhotoFile(
 
 /**
  * All recipe notes and Cooklang files under the configured recipe-gallery
- * folder (recursively).
+ * folder (recursively), minus `excludePath` (the template file).
  *
  * A `.cook` file with a note of the same name next to it is left out. That's
  * what "Export recipe as Cooklang" leaves behind, and it's the same recipe,
  * so the note stands for both instead of the gallery showing it twice.
  */
-export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
+export function getRecipeFiles(
+  vault: Vault,
+  folderPath: string,
+  excludePath = "",
+): TFile[] {
   if (!folderPath.trim()) return [];
 
   const normalizedFolder = folderPath
@@ -74,6 +79,7 @@ export function getRecipeFiles(vault: Vault, folderPath: string): TFile[] {
 
   const inFolder = vault.getFiles().filter((file) => {
     if (!isRecipeFileType(file)) return false;
+    if (excludePath && file.path === excludePath) return false;
     const fileFolder = (file.parent?.path ?? "")
       .replace(/\\/g, "/")
       .toLowerCase();
@@ -107,8 +113,10 @@ export function loadRecipes(
   getIngredients: (path: string) => string[],
   getCooklangInfo: (path: string) => CooklangIndexInfo | undefined = () =>
     undefined,
+  opts: { photoProperty?: string; excludePath?: string } = {},
 ): RecipeNote[] {
-  return getRecipeFiles(vault, folderPath)
+  const photoKey = normalizePhotoProperty(opts.photoProperty);
+  return getRecipeFiles(vault, folderPath, opts.excludePath)
     .map((file) => {
       if (isCooklangFile(file)) {
         return cooklangRecipe(
@@ -120,7 +128,9 @@ export function loadRecipes(
       }
       const fm = (metadataCache.getFileCache(file)?.frontmatter ??
         {}) as Record<string, unknown>;
-      const photo = resolvePhoto(file, vault, fm.photo);
+      // The configured property, else `photo`, so notes made before it
+      // changed keep their photo.
+      const photo = resolvePhoto(file, vault, fm[photoKey] || fm.photo);
       const meal_type = parseMealType(fm.meal_type);
       const cook_time = String((fm.cook_time as string) ?? "");
       const cook_time_mins = parseCookTimeMins(cook_time);

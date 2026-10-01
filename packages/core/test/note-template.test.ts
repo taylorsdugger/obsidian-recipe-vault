@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_TEMPLATE,
-  TEMPLATE_VERSION,
   createRecipeRenderer,
   migrateImageLink,
 } from "../src";
@@ -113,10 +112,6 @@ describe("helpers", () => {
     ).toBe("2024");
     expect(createRecipeRenderer("{{magicTime t}}")({})).toBe("");
   });
-});
-
-it("exposes the template version", () => {
-  expect(TEMPLATE_VERSION).toBe(2);
 });
 
 describe("migrateImageLink", () => {

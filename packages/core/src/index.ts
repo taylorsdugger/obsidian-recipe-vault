@@ -56,6 +56,9 @@ export {
 } from "./note/sections";
 export type { FrontmatterOptions } from "./note/frontmatter";
 export {
+  DEFAULT_PHOTO_PROPERTY,
+  normalizePhotoProperty,
+  readPhotoProperty,
   formatPhotoValue,
   formatIsoDuration,
   readFrontmatter,
@@ -73,7 +76,11 @@ export {
 } from "./note/to-json-ld";
 export type { NoteToCooklangOptions } from "./note/to-cooklang";
 export { noteToCooklang, recipeToCooklang } from "./note/to-cooklang";
-export type { RecipeFileSummary, RecipeFormat } from "./note/recipe-file";
+export type {
+  ReadRecipeFileOptions,
+  RecipeFileSummary,
+  RecipeFormat,
+} from "./note/recipe-file";
 export {
   readRecipeFile,
   recipeFormatOf,
@@ -83,7 +90,6 @@ export {
 export type { RecipeRenderer, RendererOptions } from "./note/template";
 export {
   DEFAULT_TEMPLATE,
-  TEMPLATE_VERSION,
   createRecipeRenderer,
   formatImageLink,
   migrateImageLink,

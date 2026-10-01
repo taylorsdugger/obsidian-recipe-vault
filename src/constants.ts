@@ -26,5 +26,8 @@ export const VIEW_TYPE_COOKLANG = "recipe-vault-cooklang-view";
 export const BULK_IMPORT_WARN_AT = 1000;
 
 /* ------------------------------- TEMPLATE --------------------------------- */
-/** The note template and its version live in @recipe-vault/core. */
-export { DEFAULT_TEMPLATE, TEMPLATE_VERSION } from "@recipe-vault/core";
+/** The note template lives in @recipe-vault/core. */
+export { DEFAULT_TEMPLATE } from "@recipe-vault/core";
+
+/** Where "Create template file" puts a new template, before de-duplicating. */
+export const TEMPLATE_FILE_DEFAULT_PATH = "Recipe Vault template.md";
