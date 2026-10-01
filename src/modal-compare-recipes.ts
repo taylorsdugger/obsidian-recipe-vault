@@ -76,13 +76,7 @@ export class CompareRecipesModal extends Modal {
         void (async () => {
           const file = this.app.vault.getAbstractFileByPath(recipe.path);
           if (file instanceof TFile) {
-            await this.plugin.ensureRecipeNoteCssClass(file);
-            const leaf = this.app.workspace.getLeaf();
-            await leaf.setViewState({
-              type: "markdown",
-              state: { file: file.path, mode: "preview" },
-              active: true,
-            });
+            await this.plugin.openRecipe(this.app.workspace.getLeaf(), file);
           }
           this.close();
         })();

@@ -1,4 +1,5 @@
 import { App, FuzzySuggestModal, TFile } from "obsidian";
+import { isCooklangFile } from "./utils/recipeLoader";
 
 /** True for the file extensions the JSON-LD importer will read. */
 export function isJsonLdFile(file: TFile): boolean {
@@ -6,10 +7,7 @@ export function isJsonLdFile(file: TFile): boolean {
   return ext === "json" || ext === "jsonld";
 }
 
-/** True for a Cooklang recipe file. */
-export function isCooklangFile(file: TFile): boolean {
-  return file.extension.toLowerCase() === "cook";
-}
+export { isCooklangFile };
 
 /** True for any file the "import from file" actions can turn into a note. */
 export function isImportableRecipeFile(file: TFile): boolean {
@@ -19,9 +17,9 @@ export function isImportableRecipeFile(file: TFile): boolean {
 /**
  * Pick one `.json` / `.jsonld` / `.cook` file out of the vault.
  *
- * Obsidian can't open these in an editor, so there's no "active file" to act
- * on the way the export commands have one. This is how the command palette
- * reaches a file that only exists in the file explorer.
+ * Obsidian can't open a JSON file in an editor, so there's no "active file"
+ * to act on the way the export commands have one. This is how the command
+ * palette reaches a file that only exists in the file explorer.
  */
 export class PickRecipeFileModal extends FuzzySuggestModal<TFile> {
   private onChoose: (file: TFile) => void;

@@ -72,7 +72,14 @@ export {
   VAULT_STATE_KEY,
 } from "./note/to-json-ld";
 export type { NoteToCooklangOptions } from "./note/to-cooklang";
-export { noteToCooklang } from "./note/to-cooklang";
+export { noteToCooklang, recipeToCooklang } from "./note/to-cooklang";
+export type { RecipeFileSummary, RecipeFormat } from "./note/recipe-file";
+export {
+  readRecipeFile,
+  recipeFormatOf,
+  setCooklangMetadata,
+  setRecipeHistory,
+} from "./note/recipe-file";
 export type { RecipeRenderer, RendererOptions } from "./note/template";
 export {
   DEFAULT_TEMPLATE,
@@ -106,8 +113,16 @@ export {
 export { normalizeImages } from "./parse/images";
 export type { JsonLdParseOptions } from "./parse/json-ld";
 export { parseRecipesFromJsonLd } from "./parse/json-ld";
-export type { CooklangToJsonLdOptions } from "./parse/cooklang";
-export { cooklangToJsonLd } from "./parse/cooklang";
+export type {
+  CooklangIngredient,
+  CooklangMetadata,
+  CooklangRecipe,
+  CooklangSection,
+  CooklangStep,
+  CooklangToken,
+  CooklangToJsonLdOptions,
+} from "./parse/cooklang";
+export { cooklangToJsonLd, parseCooklang } from "./parse/cooklang";
 export { extractMicrodataRecipes } from "./parse/microdata";
 export { extractWprmRecipeNotes, normalizeRecipeNotes } from "./parse/notes";
 export type { ParseOptions, FetchOptions } from "./parse/recipes";

@@ -11,7 +11,7 @@ import type { JsonRecord } from "../types";
  * folded into dotted keys (`source:` / `  url: …` becomes `source.url`), which
  * is how the Cooklang conventions name the nested forms anyway.
  */
-type CooklangMetadata = Record<string, string | string[]>;
+export type CooklangMetadata = Record<string, string | string[]>;
 
 export interface CooklangToJsonLdOptions {
   /**
@@ -22,8 +22,8 @@ export interface CooklangToJsonLdOptions {
   name?: string;
 }
 
-/** One `@ingredient` or `#cookware` reference pulled out of a step. */
-interface CooklangIngredient {
+/** One `@ingredient` pulled out of a step. */
+export interface CooklangIngredient {
   name: string;
   quantity: string;
   unit: string;
@@ -32,9 +32,42 @@ interface CooklangIngredient {
   reference: boolean;
 }
 
-interface CooklangSection {
+/**
+ * One piece of a step. Text is kept as written; the markup pieces carry what
+ * was inside them so a view can show them apart from the prose.
+ */
+export type CooklangToken =
+  | { type: "text"; value: string }
+  | ({ type: "ingredient" } & CooklangIngredient)
+  | { type: "cookware"; name: string; quantity: string }
+  | { type: "timer"; name: string; quantity: string; unit: string };
+
+export interface CooklangStep {
+  tokens: CooklangToken[];
+  /** The step as plain text, markup read back as words. */
+  text: string;
+}
+
+export interface CooklangSection {
+  /** Empty for steps before the first `= Section =`, or an unnamed `==`. */
   name: string;
-  steps: string[];
+  steps: CooklangStep[];
+}
+
+/** A `.cook` file, parsed but not yet mapped onto schema.org. */
+export interface CooklangRecipe {
+  metadata: CooklangMetadata;
+  /** Only sections with at least one step. */
+  sections: CooklangSection[];
+  /** `>` lines. */
+  notes: string[];
+  /**
+   * Every ingredient in the order it first shows up. One mentioned again
+   * without an amount isn't listed twice; one given a second amount is.
+   */
+  ingredients: CooklangIngredient[];
+  /** Cookware names, each once, in the order they first show up. */
+  cookware: string[];
 }
 
 /** Drop one layer of matching quotes around a YAML scalar. */
@@ -152,18 +185,31 @@ function readName(
   return null;
 }
 
+/** What a token reads as in plain text. */
+function tokenText(token: CooklangToken): string {
+  switch (token.type) {
+    case "text":
+      return token.value;
+    case "timer":
+      return [token.quantity, token.unit].filter(Boolean).join(" ") || token.name;
+    default:
+      return token.name;
+  }
+}
+
 /**
- * Turn one step's markup into plain text, collecting its ingredients.
- * `@olive oil{2%tbsp}` reads back as "olive oil", `#pot` as "pot", and
- * `~{25%minutes}` as "25 minutes". Anything that isn't valid markup, like
- * "email me @ home", is kept as written.
+ * Split one step's markup into tokens. `@olive oil{2%tbsp}` reads back as
+ * "olive oil", `#pot` as "pot", and `~{25%minutes}` as "25 minutes". Anything
+ * that isn't valid markup, like "email me @ home", is kept as text.
  */
-function renderStep(source: string): {
-  text: string;
-  ingredients: CooklangIngredient[];
-} {
-  const ingredients: CooklangIngredient[] = [];
-  let text = "";
+function parseStep(source: string): CooklangStep {
+  const tokens: CooklangToken[] = [];
+  let pending = "";
+  const push = (token: CooklangToken): void => {
+    if (pending) tokens.push({ type: "text", value: pending });
+    pending = "";
+    tokens.push(token);
+  };
   let i = 0;
 
   while (i < source.length) {
@@ -186,15 +232,17 @@ function renderStep(source: string): {
         .replace(/^.*\//, "")
         .trim();
 
-      text += name;
       if (ch === "@") {
-        ingredients.push({
+        push({
+          type: "ingredient",
           name,
           quantity: amount.quantity,
           unit: amount.unit,
           prep: prep ? prep[1].trim() : "",
           reference,
         });
+      } else {
+        push({ type: "cookware", name, quantity: amount.quantity });
       }
       i += 1 + consumed;
       continue;
@@ -205,23 +253,25 @@ function renderStep(source: string): {
       const single = timer ? null : rest.match(WORD);
       if (timer) {
         const { quantity, unit } = parseAmount(timer[2]);
-        text += [quantity, unit].filter(Boolean).join(" ") || timer[1];
+        push({ type: "timer", name: timer[1], quantity, unit });
         i += 1 + timer[0].length;
         continue;
       }
       if (single) {
         // A bare `~rest` is a named timer with no time on it.
-        text += single[0];
+        push({ type: "timer", name: single[0], quantity: "", unit: "" });
         i += 1 + single[0].length;
         continue;
       }
     }
 
-    text += ch;
+    pending += ch;
     i++;
   }
+  if (pending) tokens.push({ type: "text", value: pending });
 
-  return { text: text.replace(/\s+/g, " ").trim(), ingredients };
+  const text = tokens.map(tokenText).join("").replace(/\s+/g, " ").trim();
+  return { tokens, text };
 }
 
 /** "1/2 cup milk, warmed", the way an ingredient line reads in a note. */
@@ -233,23 +283,14 @@ function ingredientLine(ingredient: CooklangIngredient): string {
 }
 
 /**
- * Build a schema.org Recipe from a Cooklang (`.cook`) file, so it can go
- * through the same normalize pass as a JSON-LD import.
+ * Parse a Cooklang (`.cook`) file into its metadata, steps and the
+ * ingredients and cookware the steps mention.
  *
  * Cooklang has no ingredient list of its own. Ingredients are marked inline
- * in the steps, so the list is collected in the order they first show up. An
- * ingredient mentioned again without an amount ("stir in the @butter") is the
- * same one and isn't listed twice; one given a second amount is.
- *
- * Front matter maps onto schema.org by the Cooklang canonical metadata names:
- * `source` becomes the url when it is one, `course` or `category` the meal
- * type, `time` (or prep time plus cook time) the total time. The older
- * `>> key: value` metadata lines are read too.
+ * in the steps, so the list is collected in the order they first show up.
+ * The older `>> key: value` metadata lines are read along with front matter.
  */
-export function cooklangToJsonLd(
-  source: string,
-  opts: CooklangToJsonLdOptions = {},
-): JsonRecord {
+export function parseCooklang(source: string): CooklangRecipe {
   let body = source.replace(/\r\n?/g, "\n");
   let meta: CooklangMetadata = {};
 
@@ -261,8 +302,10 @@ export function cooklangToJsonLd(
 
   const sections: CooklangSection[] = [{ name: "", steps: [] }];
   const notes: string[] = [];
-  const ingredients: string[] = [];
+  const ingredients: CooklangIngredient[] = [];
+  const cookware: string[] = [];
   const listed = new Set<string>();
+  const cookwareSeen = new Set<string>();
   let paragraph: string[] = [];
 
   const flushStep = (): void => {
@@ -272,15 +315,27 @@ export function cooklangToJsonLd(
       .map((line) => line.replace(/\\\s*$/, ""))
       .join(" ");
     paragraph = [];
-    const { text, ingredients: found } = renderStep(joined);
-    if (text) sections[sections.length - 1].steps.push(text);
+    const step = parseStep(joined);
+    if (step.text) sections[sections.length - 1].steps.push(step);
 
-    for (const ingredient of found) {
-      const key = ingredient.name.toLowerCase();
-      if (ingredient.reference) continue;
-      if (listed.has(key) && !ingredient.quantity) continue;
+    for (const token of step.tokens) {
+      if (token.type === "cookware") {
+        const key = token.name.toLowerCase();
+        if (!cookwareSeen.has(key)) cookware.push(token.name);
+        cookwareSeen.add(key);
+        continue;
+      }
+      if (token.type !== "ingredient" || token.reference) continue;
+      const key = token.name.toLowerCase();
+      if (listed.has(key) && !token.quantity) continue;
       listed.add(key);
-      ingredients.push(ingredientLine(ingredient));
+      ingredients.push({
+        name: token.name,
+        quantity: token.quantity,
+        unit: token.unit,
+        prep: token.prep,
+        reference: false,
+      });
     }
   };
 
@@ -316,6 +371,33 @@ export function cooklangToJsonLd(
     paragraph.push(trimmed);
   }
   flushStep();
+
+  return {
+    metadata: meta,
+    sections: sections.filter((section) => section.steps.length > 0),
+    notes,
+    ingredients,
+    cookware,
+  };
+}
+
+/**
+ * Build a schema.org Recipe from a Cooklang (`.cook`) file, so it can go
+ * through the same normalize pass as a JSON-LD import.
+ *
+ * Takes the file's text, or a recipe `parseCooklang` already read. The
+ * ingredient list is `parseCooklang`'s: in the order things first show up.
+ *
+ * Front matter maps onto schema.org by the Cooklang canonical metadata names:
+ * `source` becomes the url when it is one, `course` or `category` the meal
+ * type, `time` (or prep time plus cook time) the total time.
+ */
+export function cooklangToJsonLd(
+  source: string | CooklangRecipe,
+  opts: CooklangToJsonLdOptions = {},
+): JsonRecord {
+  const { metadata: meta, sections, notes, ingredients } =
+    typeof source === "string" ? parseCooklang(source) : source;
 
   const recipe: JsonRecord = {
     "@context": "https://schema.org",
@@ -366,12 +448,17 @@ export function cooklangToJsonLd(
     recipe.totalTime = minutesToIsoDuration((prepMins ?? 0) + (cookMins ?? 0));
   }
 
-  if (ingredients.length > 0) recipe.recipeIngredient = ingredients;
+  if (ingredients.length > 0) {
+    recipe.recipeIngredient = ingredients.map(ingredientLine);
+  }
 
   // Named sections become HowToSections. Steps before the first named
   // section, or a file whose sections are all unnamed `==`, stay plain steps.
   const instructions = sections.flatMap((section): JsonRecord[] => {
-    const steps = section.steps.map((text) => ({ "@type": "HowToStep", text }));
+    const steps = section.steps.map(({ text }) => ({
+      "@type": "HowToStep",
+      text,
+    }));
     if (!section.name) return steps;
     if (steps.length === 0) return [];
     return [

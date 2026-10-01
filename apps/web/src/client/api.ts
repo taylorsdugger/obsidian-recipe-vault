@@ -24,6 +24,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+export type RecipeFormat = "markdown" | "cooklang";
+
 /** A recipe as the list endpoint returns it. */
 export interface RecipeSummary {
   id: string;
@@ -51,7 +53,9 @@ export interface ParsedRecipePreview {
 
 /** The full row, markdown included. */
 export interface RecipeDetail extends RecipeSummary {
+  /** The vault file's text: a note, or Cooklang when `vaultKey` is a .cook. */
   markdown: string;
+  vaultKey: string | null;
   author: string | null;
   sourceUrl: string | null;
   ingredients: string;
@@ -178,6 +182,16 @@ export const api = {
     request<{ recipes: ParsedRecipePreview[] }>("/import/preview", {
       method: "POST",
       body: JSON.stringify({ url }),
+    }),
+
+  /** What recipes imported in the app are saved as. */
+  recipeFormat: () =>
+    request<{ recipeFormat: RecipeFormat }>("/settings"),
+
+  setRecipeFormat: (recipeFormat: RecipeFormat) =>
+    request<{ recipeFormat: RecipeFormat }>("/settings", {
+      method: "PUT",
+      body: JSON.stringify({ recipeFormat }),
     }),
 
   importSave: (recipe: ParsedRecipePreview) =>

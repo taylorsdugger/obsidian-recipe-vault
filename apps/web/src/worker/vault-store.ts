@@ -52,7 +52,11 @@ export async function writeNote(
   expectedEtag: string | null,
 ): Promise<string> {
   const written = await env.VAULT.put(key, markdown, {
-    httpMetadata: { contentType: "text/markdown; charset=utf-8" },
+    httpMetadata: {
+      contentType: key.toLowerCase().endsWith(".cook")
+        ? "text/plain; charset=utf-8"
+        : "text/markdown; charset=utf-8",
+    },
     // No etag means the app believes nothing is there yet, which is the
     // `If-None-Match: *` case - the write fails if a file appeared meanwhile.
     onlyIf: expectedEtag
@@ -75,19 +79,23 @@ function safeFilename(title: string): string {
 }
 
 /**
- * A free key for a new note, named after the recipe the way the plugin names
- * its files. Falls back to " (2)", " (3)" when the name is taken, rather than
- * overwriting somebody's note.
+ * A free key for a new note or `.cook` file, named after the recipe the way
+ * the plugin names its files. Falls back to " (2)", " (3)" when the name is
+ * taken, rather than overwriting somebody's recipe.
  */
-export async function freeKeyFor(env: Env, title: string): Promise<string> {
+export async function freeKeyFor(
+  env: Env,
+  title: string,
+  ext: "md" | "cook" = "md",
+): Promise<string> {
   const base = safeFilename(title);
 
   for (let n = 1; n < 50; n++) {
-    const key = `${RECIPE_PREFIX}${base}${n === 1 ? "" : ` (${n})`}.md`;
+    const key = `${RECIPE_PREFIX}${base}${n === 1 ? "" : ` (${n})`}.${ext}`;
     const head = await env.VAULT.head(key);
     if (!head) return key;
   }
 
   // Fifty notes with the same name is not a real case; make it unmistakable.
-  return `${RECIPE_PREFIX}${base} (${Date.now()}).md`;
+  return `${RECIPE_PREFIX}${base} (${Date.now()}).${ext}`;
 }

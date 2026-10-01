@@ -2,6 +2,7 @@
 // which the parser and the renderer need on the Worker but the phone does not.
 import { parseRecipeSections } from "@recipe-vault/core/note/sections";
 import { readFrontmatter } from "@recipe-vault/core/note/frontmatter";
+import { readRecipeFile } from "@recipe-vault/core/note/recipe-file";
 import { useEffect, useMemo, useState } from "preact/hooks";
 
 import { api, type RecipeDetail } from "../api";
@@ -40,17 +41,34 @@ export function Recipe({ id }: { id: string }) {
       );
   }, [id]);
 
-  const sections = useMemo(
-    () => (recipe ? parseRecipeSections(recipe.markdown) : null),
+  // A .cook file has no sections to find. Its ingredients come from the
+  // steps' markup, and its steps read back as plain text.
+  const cooklang = useMemo(
+    () =>
+      recipe?.vaultKey?.toLowerCase().endsWith(".cook")
+        ? readRecipeFile(recipe.vaultKey, recipe.markdown)
+        : null,
     [recipe],
+  );
+  const sections = useMemo(
+    () =>
+      cooklang
+        ? {
+            recipeIngredient: cooklang.ingredients,
+            recipeInstructions: cooklang.instructions,
+          }
+        : recipe
+          ? parseRecipeSections(recipe.markdown)
+          : null,
+    [recipe, cooklang],
   );
   const frontmatter = useMemo(
     () => (recipe ? readFrontmatter(recipe.markdown) : {}),
     [recipe],
   );
   const notes = useMemo(
-    () => notesFromMarkdown(recipe?.markdown ?? ""),
-    [recipe],
+    () => cooklang?.notes ?? notesFromMarkdown(recipe?.markdown ?? ""),
+    [recipe, cooklang],
   );
 
   if (error) return <p class="p-4 text-sm text-red-700">{error}</p>;
@@ -282,7 +300,9 @@ export function Recipe({ id }: { id: string }) {
 
           {ingredients.length === 0 ? (
             <p class="text-sm text-muted">
-              This note has no Ingredients section.
+              {cooklang
+                ? "This recipe has no ingredients marked in its steps."
+                : "This note has no Ingredients section."}
             </p>
           ) : (
             <ul class="card divide-y divide-line overflow-hidden">

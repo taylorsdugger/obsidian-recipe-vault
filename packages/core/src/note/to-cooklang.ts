@@ -2,6 +2,7 @@ import {
   normalizeIngredientUnit,
   parseShoppingLine,
 } from "../shopping/parse-line";
+import type { JsonRecord } from "../types";
 import { cookTimeToMinutes } from "./frontmatter";
 import {
   noteToJsonLd,
@@ -149,39 +150,71 @@ function yamlValue(value: string): string {
     : value;
 }
 
+/** A schema.org field as one line of text. A list joins with ", ". */
+function fieldText(value: unknown): string {
+  if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) {
+    return value.map(fieldText).filter(Boolean).join(", ");
+  }
+  if (value && typeof value === "object" && "name" in value) {
+    return fieldText(value.name);
+  }
+  return "";
+}
+
 /**
- * Write a recipe note out as a Cooklang (`.cook`) file.
+ * The steps in order, with a section name ahead of each section's steps.
+ * Takes schema.org's shapes: a HowToStep, a HowToSection holding steps, or a
+ * bare string.
+ */
+function instructionBlocks(raw: unknown): ({ section: string } | string)[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item): ({ section: string } | string)[] => {
+    if (typeof item === "string") return [item];
+    if (!item || typeof item !== "object") return [];
+    const step = item as { name?: unknown; text?: unknown; itemListElement?: unknown };
+    if (Array.isArray(step.itemListElement)) {
+      const inner = instructionBlocks(step.itemListElement);
+      const name = fieldText(step.name);
+      return name && inner.length > 0 ? [{ section: name }, ...inner] : inner;
+    }
+    return typeof step.text === "string" ? [step.text] : [];
+  });
+}
+
+/**
+ * Write a schema.org recipe out as a Cooklang (`.cook`) file. Takes what
+ * `noteToJsonLd` builds or what an import parsed off a page.
  *
  * Cooklang marks ingredients inline in the steps (`Add @flour{2%cups}`)
- * instead of keeping a list, and a note keeps them apart. So each ingredient
- * line is looked for in the step text, first by its name as written and then
- * by the shopping list's normalized name ("onion" for "1 yellow onion,
- * diced"), and the first unclaimed mention is marked up. When the match was
- * the short name, the step ends up saying the full one: "the onions" becomes
- * `the @yellow onion{1}(diced)`, because that name is what a Cooklang app
- * builds its ingredient list from.
+ * instead of keeping a list, and a recipe page keeps them apart. So each
+ * ingredient line is looked for in the step text, first by its name as written
+ * and then by the shopping list's normalized name ("onion" for "1 yellow
+ * onion, diced"), and the first unclaimed mention is marked up. When the
+ * match was the short name, the step ends up saying the full one: "the
+ * onions" becomes `the @yellow onion{1}(diced)`, because that name is what a
+ * Cooklang app builds its ingredient list from.
  *
  * An ingredient no step mentions still goes in the file, in a "Gather …" step
  * at the top, so nothing is lost on the way out.
  *
- * Reads the note through `noteToJsonLd`, so both exports agree on what's in a
- * note. Cooking history goes out as `times made` / `last made` metadata so
- * importing the file back keeps it.
+ * Only an http(s) image is written. A vault-local photo means nothing in the
+ * file; Cooklang finds `Recipe.jpg` sitting next to `Recipe.cook` on its own.
+ * Cooking history goes out as `times made` / `last made` metadata so importing
+ * the file back keeps it.
  */
-export function noteToCooklang(
-  markdown: string,
-  opts: NoteToCooklangOptions = {},
-): string {
-  const recipe = noteToJsonLd(markdown, opts);
-
-  const ingredients = ((recipe.recipeIngredient as string[] | undefined) ?? [])
+export function recipeToCooklang(recipe: JsonRecord): string {
+  const ingredients = (
+    Array.isArray(recipe.recipeIngredient) ? recipe.recipeIngredient : []
+  )
+    .filter((line): line is string => typeof line === "string")
     .map(splitIngredient)
     .filter((ingredient) => ingredient.name);
-  const steps = (
-    (recipe.recipeInstructions as { text: string }[] | undefined) ?? []
-  )
-    .map((step) => plainText(step.text))
+  const blocks = instructionBlocks(recipe.recipeInstructions)
+    .map((block) => (typeof block === "string" ? plainText(block) : block))
     .filter(Boolean);
+  const steps = blocks.filter((b): b is string => typeof b === "string");
 
   // Claim mentions in two passes, full names for every ingredient before any
   // short name, so "oil" for the olive oil can't take the spot where the
@@ -213,7 +246,7 @@ export function noteToCooklang(
     }
   }
 
-  const body = steps.map((text, s) =>
+  const marked = steps.map((text, s) =>
     [...claims[s]]
       .sort((a, b) => b.start - a.start)
       .reduce(
@@ -222,6 +255,10 @@ export function noteToCooklang(
         text,
       ),
   );
+  let next = 0;
+  const body = blocks.map((block) =>
+    typeof block === "string" ? marked[next++] : `== ${plainText(block.section)} ==`,
+  );
 
   const unmatched = ingredients.filter((i) => !matched.has(i));
   if (unmatched.length > 0) {
@@ -229,25 +266,33 @@ export function noteToCooklang(
   }
 
   const meta: [string, string][] = [];
-  if (typeof recipe.name === "string") meta.push(["title", recipe.name]);
-  if (typeof recipe.url === "string") meta.push(["source", recipe.url]);
-  const author = recipe.author as { name?: string } | undefined;
-  if (author?.name) meta.push(["author", author.name]);
-  const category = recipe.recipeCategory;
-  const course = Array.isArray(category)
-    ? category.join(", ")
-    : typeof category === "string"
-      ? category
-      : "";
-  if (course) meta.push(["course", course]);
-  const mins = cookTimeToMinutes(recipe.totalTime as string | undefined);
-  if (mins) meta.push(["time", formatMinutes(mins)]);
-  if (typeof recipe.image === "string") meta.push(["image", recipe.image]);
+  const add = (key: string, value: string): void => {
+    if (value) meta.push([key, value]);
+  };
+  add("title", fieldText(recipe.name));
+  add("description", fieldText(recipe.description));
+  if (typeof recipe.url === "string") add("source", recipe.url.trim());
+  add("author", fieldText(recipe.author));
+  add("course", fieldText(recipe.recipeCategory));
+  add("cuisine", fieldText(recipe.recipeCuisine));
+  // Pages often give a yield as ["4", "4 servings"]; the first is enough.
+  add(
+    "servings",
+    fieldText(Array.isArray(recipe.recipeYield) ? recipe.recipeYield[0] : recipe.recipeYield),
+  );
+  const mins = cookTimeToMinutes(fieldText(recipe.totalTime) || undefined);
+  if (mins) add("time", formatMinutes(mins));
+  add("tags", fieldText(recipe.keywords));
+  const image = fieldText(
+    Array.isArray(recipe.image) ? recipe.image[0] : recipe.image,
+  );
+  if (/^https?:\/\//i.test(image)) add("image", image);
   const history = readRecipeVaultState(recipe);
-  if (history.timesMade) meta.push(["times made", String(history.timesMade)]);
-  if (history.lastMade) meta.push(["last made", history.lastMade]);
+  if (history.timesMade) add("times made", String(history.timesMade));
+  if (history.lastMade) add("last made", history.lastMade);
 
-  const notes = ((recipe.recipeNotes as string[] | undefined) ?? [])
+  const notes = (Array.isArray(recipe.recipeNotes) ? recipe.recipeNotes : [])
+    .filter((note): note is string => typeof note === "string")
     .map(plainText)
     .filter(Boolean)
     .map((note) => `> ${note}`);
@@ -264,4 +309,15 @@ export function noteToCooklang(
   }
   parts.push(...body, ...notes);
   return `${parts.join("\n\n")}\n`;
+}
+
+/**
+ * Write a recipe note out as a Cooklang (`.cook`) file. Reads the note
+ * through `noteToJsonLd`, so both exports agree on what's in a note.
+ */
+export function noteToCooklang(
+  markdown: string,
+  opts: NoteToCooklangOptions = {},
+): string {
+  return recipeToCooklang(noteToJsonLd(markdown, opts));
 }

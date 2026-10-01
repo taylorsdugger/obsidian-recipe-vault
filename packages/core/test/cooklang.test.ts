@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   cooklangToJsonLd,
   noteToCooklang,
+  parseCooklang,
   parseRecipesFromJsonLd,
   readRecipeVaultState,
 } from "../src";
@@ -292,6 +293,89 @@ const NOTE = [
   "- Better the next day.",
   "",
 ].join("\n");
+
+describe("parseCooklang", () => {
+  it("splits a step into text and markup tokens", () => {
+    const { sections } = parseCooklang(
+      "Boil @water{2%l} in a #pot for ~{10%minutes}, then add @salt.",
+    );
+
+    expect(sections[0].steps[0].tokens).toEqual([
+      { type: "text", value: "Boil " },
+      {
+        type: "ingredient",
+        name: "water",
+        quantity: "2",
+        unit: "l",
+        prep: "",
+        reference: false,
+      },
+      { type: "text", value: " in a " },
+      { type: "cookware", name: "pot", quantity: "" },
+      { type: "text", value: " for " },
+      { type: "timer", name: "", quantity: "10", unit: "minutes" },
+      { type: "text", value: ", then add " },
+      {
+        type: "ingredient",
+        name: "salt",
+        quantity: "",
+        unit: "",
+        prep: "",
+        reference: false,
+      },
+      { type: "text", value: "." },
+    ]);
+    expect(sections[0].steps[0].text).toBe(
+      "Boil water in a pot for 10 minutes, then add salt.",
+    );
+  });
+
+  it("keeps markup that isn't markup as text", () => {
+    const { sections } = parseCooklang("Email me @ home # soon");
+    expect(sections[0].steps[0].tokens).toEqual([
+      { type: "text", value: "Email me @ home # soon" },
+    ]);
+  });
+
+  it("lists cookware once each and drops empty sections", () => {
+    const recipe = parseCooklang(
+      [
+        "Heat a #frying pan{}.",
+        "",
+        "= Empty =",
+        "",
+        "= Sauce =",
+        "Whisk in the #frying pan{} with a #whisk.",
+      ].join("\n"),
+    );
+
+    expect(recipe.cookware).toEqual(["frying pan", "whisk"]);
+    expect(recipe.sections.map((section) => section.name)).toEqual([
+      "",
+      "Sauce",
+    ]);
+  });
+
+  it("skips references in the ingredient list", () => {
+    const { ingredients } = parseCooklang(
+      "Mix @flour{200%g}. Dust with @&flour{}.",
+    );
+    expect(ingredients.map((i) => i.name)).toEqual(["flour"]);
+  });
+
+  it("hands cooklangToJsonLd the same recipe the text would give", () => {
+    const source = [
+      "---",
+      "title: Toast",
+      "servings: 2",
+      "---",
+      "Toast @bread{2%slices} in a #toaster.",
+    ].join("\n");
+    expect(cooklangToJsonLd(parseCooklang(source))).toEqual(
+      cooklangToJsonLd(source),
+    );
+  });
+});
 
 describe("noteToCooklang", () => {
   it("marks ingredients up where the steps mention them", () => {

@@ -99,6 +99,12 @@ export const shoppingItems = sqliteTable("shopping_items", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** App settings, one row per key. See `src/worker/settings.ts`. */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
 export type RecipeRow = typeof recipes.$inferSelect;
 export type PlanEntryRow = typeof planEntries.$inferSelect;
 export type ShoppingItemRow = typeof shoppingItems.$inferSelect;
