@@ -7,10 +7,13 @@ import type { HttpPort } from "@recipe-vault/core";
  * Worker egress comes from Cloudflare IPs, which some blogs block the same
  * way they block Obsidian mobile — so callers should leave `proxyFallback`
  * on here (see docs/web-app-plan.md 2c).
+ *
+ * Called as `self.fetch` because the Obsidian plugin linter scans the whole
+ * repo and flags the bare global. `requestUrl` doesn't exist on the Worker.
  */
 export const workerHttpPort: HttpPort = {
   get: async (url, headers) => {
-    const res = await fetch(url, { method: "GET", headers });
+    const res = await self.fetch(url, { method: "GET", headers });
     const text = await res.text();
     if (!res.ok) {
       // Core's fetch loop treats a throw as "this source failed, try the

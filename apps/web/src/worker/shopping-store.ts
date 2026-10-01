@@ -15,6 +15,7 @@ import {
 } from "@recipe-vault/core/shopping/markdown";
 
 import type { Env } from "./env";
+import { wait } from "./wait";
 
 /**
  * The shopping list, stored as the vault's own note.
@@ -46,7 +47,7 @@ const WRITE_ATTEMPTS = 8;
 /** Back off a little between attempts, with jitter so racers don't sync up. */
 function backoff(attempt: number): Promise<void> {
   const base = 40 * 2 ** attempt;
-  return new Promise((r) => setTimeout(r, base / 2 + Math.random() * base));
+  return wait(base / 2 + Math.random() * base);
 }
 
 /** One line of the note, with its parsed form and where it sits in the file. */

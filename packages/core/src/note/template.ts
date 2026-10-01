@@ -138,19 +138,19 @@ export function createRecipeRenderer(
   });
 
   hb.registerHelper("photoFrontmatter", function (imgPath: unknown) {
-    if (!imgPath) return "";
+    if (typeof imgPath !== "string" || !imgPath) return "";
     // The template wraps this in a YAML double-quoted string, so escape for
     // YAML instead of letting Handlebars HTML-escape it. Otherwise a saved
     // `Mom's-Pie.jpg` lands as `[[Mom&#x27;s-Pie.jpg]]` and never resolves.
-    const yamlSafe = formatPhoto(String(imgPath))
+    const yamlSafe = formatPhoto(imgPath)
       .replace(/\\/g, "\\\\")
       .replace(/"/g, '\\"');
     return new hb.SafeString(yamlSafe);
   });
 
   hb.registerHelper("imageLink", function (imgPath: unknown) {
-    if (!imgPath) return "";
-    return formatImageLink(String(imgPath));
+    if (typeof imgPath !== "string" || !imgPath) return "";
+    return formatImageLink(imgPath);
   });
 
   hb.registerHelper("magicTime", function (arg1: unknown, arg2: unknown) {
@@ -160,7 +160,8 @@ export function createRecipeRenderer(
     if (arguments.length === 1) {
       return dateFormat(new Date(), "yyyy-mm-dd HH:MM");
     }
-    const value = typeof arg1 === "string" ? arg1 : String(arg1);
+    const value =
+      typeof arg1 === "string" || typeof arg1 === "number" ? String(arg1) : "";
     if (arguments.length === 2) {
       if (!isNaN(Date.parse(value))) {
         return dateFormat(new Date(value), "yyyy-mm-dd HH:MM");

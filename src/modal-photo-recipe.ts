@@ -213,7 +213,8 @@ export class PhotoRecipeModal extends Modal {
   private blobToDataUrl(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
+      // readAsDataURL always produces a string.
+      reader.onload = () => resolve(reader.result as string);
       reader.onerror = () =>
         reject(reader.error ?? new Error("Failed to read image file."));
       reader.readAsDataURL(blob);

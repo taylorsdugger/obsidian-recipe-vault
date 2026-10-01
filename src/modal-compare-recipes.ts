@@ -17,7 +17,7 @@ export class CompareRecipesModal extends Modal {
     contentEl.empty();
     modalEl.addClass("rg-compare-modal");
 
-    contentEl.createEl("h3", { text: "Compare Recipes" });
+    contentEl.createEl("h3", { text: "Compare recipes" });
 
     // Count how many recipes each ingredient appears in for diff highlighting
     const ingredientCounts = new Map<string, number>();

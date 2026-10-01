@@ -6,13 +6,13 @@ export interface FetchPageOptions {
   proxyFallback: boolean;
   /** Base backoff between retries (ms); scaled per attempt. Tests pass 0. */
   retryDelayMs: number;
+  /**
+   * Waits between retries. Injected because the plugin and the Worker have
+   * different timers (Obsidian's `sleep` vs the Worker's `self.setTimeout`).
+   */
+  sleep: (ms: number) => Promise<void>;
   /** Called with each user-facing status line (the plugin maps it to Notice). */
   onProgress?: (message: string) => void;
-}
-
-/** Promise-based delay used to back off between fetch retries. */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 type PageSource = {
@@ -124,8 +124,8 @@ export async function fetchPageHtml(
         return html;
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
-        if (attempt < source.tries) {
-          await sleep(opts.retryDelayMs * attempt);
+        if (attempt < source.tries && opts.retryDelayMs > 0) {
+          await opts.sleep(opts.retryDelayMs * attempt);
         }
       }
     }

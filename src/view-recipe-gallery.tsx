@@ -38,6 +38,7 @@ export class RecipeGalleryView extends ItemView {
   private savedScrollTop = lastGalleryState.scrollTop;
   private savedSearchQuery = lastGalleryState.searchQuery;
   private savedSortMode: SortMode = lastGalleryState.sortMode;
+  private renderTimer: number | null = null;
 
   private isValidSortMode(value: unknown): value is SortMode {
     return (
@@ -58,7 +59,7 @@ export class RecipeGalleryView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Recipe Gallery";
+    return "Recipe gallery";
   }
 
   getIcon(): string {
@@ -71,25 +72,41 @@ export class RecipeGalleryView extends ItemView {
     // Keep the gallery current as notes are created, renamed, modified, or retagged.
     this.registerEvent(
       this.app.vault.on("create", (file) => {
-        if (file instanceof TFile) this.render();
+        if (file instanceof TFile) this.scheduleRender();
       }),
     );
     this.registerEvent(
       this.app.vault.on("delete", (file) => {
-        if (file instanceof TFile) this.render();
+        if (file instanceof TFile) this.scheduleRender();
       }),
     );
     this.registerEvent(
       this.app.vault.on("rename", (file) => {
-        if (file instanceof TFile) this.render();
+        if (file instanceof TFile) this.scheduleRender();
       }),
     );
     this.registerEvent(
-      this.app.metadataCache.on("changed", () => this.render()),
+      this.app.metadataCache.on("changed", () => this.scheduleRender()),
     );
   }
 
+  /**
+   * Re-render once the vault goes quiet for a moment. A folder import creates
+   * notes back to back, and each one fires a create and a metadata event.
+   * Rendering on every event redraws the whole gallery twice per note, and
+   * one redraw measured ~150ms with 18,000 notes.
+   */
+  private scheduleRender(): void {
+    if (this.renderTimer !== null) window.clearTimeout(this.renderTimer);
+    this.renderTimer = window.setTimeout(() => {
+      this.renderTimer = null;
+      this.render();
+    }, 250);
+  }
+
   async onClose(): Promise<void> {
+    if (this.renderTimer !== null) window.clearTimeout(this.renderTimer);
+    this.renderTimer = null;
     this.root?.unmount();
     this.root = null;
   }

@@ -12,9 +12,17 @@ export const CMD_RECIPE_FROM_PHOTO = "cmd-recipe-from-photo";
 export const CMD_IMPORT_JSONLD = "cmd-import-jsonld";
 export const CMD_EXPORT_JSONLD = "cmd-export-jsonld";
 export const CMD_EXPORT_COOKLANG = "cmd-export-cooklang";
+export const CMD_IMPORT_FOLDER = "cmd-import-folder";
 export const MANUAL_RECIPE_DEFAULT_FOLDER = "recipes";
 export const VIEW_TYPE_RECIPE_GALLERY = "recipe-gallery-view";
 export const CMD_OPEN_RECIPE_GALLERY = "cmd-open-recipe-gallery";
+
+/**
+ * A folder import this big asks first. Not a measured limit: the gallery took
+ * ~4s to open with 18,000 notes, and the plugin is meant for a personal
+ * collection, so a few thousand at once is worth a second look.
+ */
+export const BULK_IMPORT_WARN_AT = 1000;
 
 /* ------------------------------- TEMPLATE --------------------------------- */
 /** The note template and its version live in @recipe-vault/core. */
