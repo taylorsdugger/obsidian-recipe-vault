@@ -97,7 +97,7 @@ export function PlanListPreview({
       }
     >
       <div class="space-y-3">
-        {error && <p class="text-sm text-red-700">{error}</p>}
+        {error && <p class="text-sm text-danger">{error}</p>}
 
         {items && items.length === 0 && (
           <p class="py-8 text-center text-sm text-muted">
@@ -123,9 +123,7 @@ export function PlanListPreview({
             </div>
             {byAisle(items).map((group) => (
               <div key={group.label} class="space-y-1.5">
-                <h3 class="px-1 text-xs font-medium uppercase tracking-wide text-faint">
-                  {group.label}
-                </h3>
+                <h3 class="label px-1 text-muted">{group.label}</h3>
                 <ul class="card divide-y divide-line overflow-hidden">
                   {group.items.map((item) => {
                     const off = skip.has(item.name);
@@ -142,13 +140,13 @@ export function PlanListPreview({
                           <span class="min-w-0 flex-1">
                             <span
                               class={`block leading-snug ${
-                                off ? "text-faint line-through" : ""
+                                off ? "text-muted line-through" : ""
                               }`}
                             >
                               {item.text}
                             </span>
                             {(item.detail || item.sources.length > 0) && (
-                              <span class="mt-0.5 block truncate text-xs text-faint">
+                              <span class="mt-0.5 block truncate text-xs text-muted">
                                 {[item.detail, ...item.sources]
                                   .filter(Boolean)
                                   .join(" · ")}

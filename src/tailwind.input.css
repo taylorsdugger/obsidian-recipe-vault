@@ -53,146 +53,690 @@
 
 /*
   ============================================================
-  Recipe Note Styling
+  Recipe Note
+  ============================================================
+
+  Everything here takes its colors, radii, spacing and fonts from the theme's
+  own variables, so a recipe looks like the rest of the vault in any theme,
+  light or dark. If something only looks right in one mode, it's using the
+  wrong variable. Headings, checkboxes, callouts and buttons are left to the
+  theme. Rows get bigger tap targets from padding, never from resizing the
+  checkbox.
+
+  The properties below are the knobs. Themes and css snippets can override
+  any of them on `.recipe-note`.
+*/
+
+.recipe-note {
+	--recipe-surface: var(--background-secondary);
+	--recipe-border: var(--background-modifier-border);
+	--recipe-radius: var(--radius-m);
+	--recipe-hero-radius: var(--radius-l);
+	--recipe-gap: var(--size-4-12);
+	--recipe-rail-width: 22rem;
+	--recipe-measure: 68ch;
+	--recipe-row-min-height: 44px;
+	--recipe-picked-bg: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
+	--recipe-picked-color: var(--text-normal);
+	--recipe-picked-decoration: none;
+	--recipe-meta-callout-color: var(--color-orange-rgb);
+	--recipe-dock-bg: var(--background-primary);
+
+	/* A ticked ingredient means "add to list", not "done": no strike-through */
+	--checklist-done-decoration: var(--recipe-picked-decoration);
+	--checklist-done-color: var(--recipe-picked-color);
+}
+
+.is-mobile .recipe-note {
+	--recipe-row-min-height: 48px;
+}
+
+.recipe-note .callout[data-callout="recipe-meta"] {
+	--callout-color: var(--recipe-meta-callout-color);
+}
+
+.recipe-note a {
+	text-underline-offset: 0.2em;
+}
+
+/* ---------------------------------------------------------------- hero */
+
+.recipe-note [data-recipe-section="hero"] img,
+.recipe-note .recipe-hero img {
+	display: block;
+	width: 100%;
+	max-height: 420px;
+	object-fit: cover;
+	border-radius: var(--recipe-hero-radius);
+}
+
+/* ---------------------------------------------------- At a Glance callout */
+
+/* The "**Label**: value" lines, split into cells by the post-processor, or
+   a list if the template writes them that way. */
+.recipe-note .callout[data-callout="recipe-meta"] .recipe-meta-grid,
+.recipe-note .callout[data-callout="recipe-meta"] .callout-content > ul {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	column-gap: var(--size-4-4);
+	row-gap: var(--size-2-1);
+	margin-block: var(--size-4-2);
+}
+
+.recipe-note .recipe-meta-item {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------- actions */
+
+/* Hidden unless it's in a recipe note's own sizer. The post-processor adds
+   the row to an embed of the note just the same, and it doesn't belong
+   there. */
+.recipe-note-actions {
+	display: none;
+}
+
+.markdown-preview-view.recipe-note > .markdown-preview-sizer .recipe-note-actions,
+.cooklang-recipe .recipe-main > .recipe-note-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	margin-block: var(--size-4-4);
+}
+
+.recipe-note-actions button,
+.recipe-tabs-cook,
+.recipe-dock button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--size-4-2);
+}
+
+.recipe-button-icon {
+	display: inline-flex;
+}
+
+.recipe-note-actions .recipe-button-icon .svg-icon {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+/* ---------------------------------------------------- ingredient rows */
+
+/* The same list in three places: the note's own Ingredients section, the
+   rail, and a .cook file. Each row is checkbox + text, the text wrapped in
+   a span so a link or bold word stays on the line. */
+.recipe-note [data-recipe-section="ingredients"] ul.contains-task-list,
+.recipe-rail ul.contains-task-list {
+	margin-block: var(--size-4-2) var(--size-4-4);
+	padding-inline-start: 0;
+	border: 1px solid var(--recipe-border);
+	border-radius: var(--recipe-radius);
+	overflow: hidden;
+}
+
+.recipe-note [data-recipe-section="ingredients"] li.task-list-item,
+.recipe-rail li.task-list-item {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: var(--size-4-3);
+	margin: 0;
+	padding: var(--size-4-2) var(--size-4-3);
+	list-style: none;
+	background: var(--background-primary);
+	cursor: pointer;
+}
+
+.recipe-note [data-recipe-section="ingredients"] li.task-list-item + li.task-list-item,
+.recipe-rail li.task-list-item + li.task-list-item {
+	border-top: 1px solid var(--recipe-border);
+}
+
+.recipe-note [data-recipe-section="ingredients"] li.task-list-item.is-checked,
+.recipe-rail li.task-list-item.is-checked {
+	background: var(--recipe-picked-bg);
+}
+
+/* Only the inline offset changes, since the row lays the box out now. The
+   box itself is the theme's. */
+.recipe-note [data-recipe-section="ingredients"] li.task-list-item > .task-list-item-checkbox,
+.recipe-rail li.task-list-item > .task-list-item-checkbox {
+	flex-shrink: 0;
+	margin-inline: 0;
+}
+
+.recipe-note .recipe-item-text {
+	min-width: 0;
+	flex: 1;
+}
+
+.recipe-note li.task-list-item > ul {
+	flex-basis: 100%;
+}
+
+/* ------------------------------------------------- wide pane: the rail */
+
+/* The breakpoint is the pane, not the window, so a split pane on a big
+   monitor still gets the single column. */
+.markdown-reading-view:has(> .markdown-preview-view.recipe-note),
+.cooklang-view {
+	container: recipe-pane / inline-size;
+}
+
+.recipe-rail {
+	display: none;
+}
+
+.recipe-rail-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	padding-top: var(--size-4-2);
+}
+
+.recipe-rail-head h3 {
+	margin: 0;
+}
+
+.recipe-rail-count {
+	color: var(--text-accent);
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
+}
+
+@container recipe-pane (width >= 1000px) {
+	.markdown-preview-view.recipe-note.has-recipe-rail,
+	.cooklang-recipe .recipe-layout {
+		display: grid;
+		grid-template-columns: var(--recipe-rail-width) minmax(0, 70ch);
+		column-gap: var(--recipe-gap);
+		justify-content: center;
+		align-items: start;
+	}
+
+	.markdown-preview-view.recipe-note.has-recipe-rail > .markdown-preview-sizer,
+	.cooklang-recipe .recipe-layout > .recipe-main {
+		grid-column: 2;
+		grid-row: 1;
+		/* Readable line length would center the sizer on its own. */
+		max-width: none;
+		margin-inline: 0;
+	}
+
+	.recipe-rail {
+		display: flex;
+		flex-direction: column;
+		gap: var(--size-4-3);
+		grid-column: 1;
+		grid-row: 1;
+		position: sticky;
+		top: var(--size-4-4);
+		max-height: calc(100dvh - 120px);
+		overflow-y: auto;
+		/* Room for the rail's own scrollbar, so it doesn't sit on the edge of
+		   the ingredient list. */
+		padding-inline-end: var(--size-4-3);
+		scrollbar-gutter: stable;
+	}
+
+	.recipe-rail .recipe-hero img {
+		aspect-ratio: 4 / 3;
+		max-height: none;
+	}
+
+	.recipe-rail .recipe-hero p,
+	.recipe-rail-list > * {
+		margin: 0;
+	}
+
+	/* The rail has its own copy of these. */
+	.has-recipe-rail > .markdown-preview-sizer > [data-recipe-section="hero"],
+	.has-recipe-rail > .markdown-preview-sizer > [data-recipe-section="ingredients"],
+	.cooklang-recipe .recipe-main > [data-recipe-section="hero"],
+	.cooklang-recipe .recipe-main > [data-recipe-section="ingredients"] {
+		display: none;
+	}
+}
+
+/* ---------------------------------------------- phone: Kitchen layout */
+
+.recipe-layout-kitchen [data-recipe-section="ingredients"] ul.contains-task-list {
+	border: 0;
+	border-radius: 0;
+}
+
+.recipe-layout-kitchen [data-recipe-section="ingredients"] li.task-list-item {
+	min-height: var(--recipe-row-min-height);
+	align-items: center;
+	gap: var(--size-4-3);
+	padding-block: var(--size-4-3);
+	padding-inline: var(--size-4-4);
+	border-bottom: 1px solid var(--recipe-border);
+}
+
+.recipe-layout-kitchen [data-recipe-section="ingredients"] li.task-list-item + li.task-list-item {
+	border-top: 0;
+}
+
+.recipe-layout-kitchen [data-recipe-section="ingredients"] li.task-list-item > .task-list-item-checkbox {
+	margin-block: 0;
+}
+
+.recipe-layout-kitchen [data-recipe-section="instructions"] li {
+	font-size: 1.0625em;
+	line-height: 1.6;
+	margin-bottom: var(--size-4-2);
+}
+
+/* The switch picks which half shows. */
+.recipe-layout-kitchen[data-recipe-tab="steps"] [data-recipe-section="ingredients"],
+.recipe-layout-kitchen[data-recipe-tab="steps"] [data-recipe-section="cookware"],
+.recipe-layout-kitchen[data-recipe-tab="ingredients"] [data-recipe-section="instructions"],
+.recipe-layout-kitchen[data-recipe-tab="ingredients"] [data-recipe-section="notes"] {
+	display: none;
+}
+
+/* The dock has these. */
+.markdown-preview-view.recipe-layout-kitchen > .markdown-preview-sizer .recipe-note-actions,
+.cooklang-recipe.recipe-layout-kitchen .recipe-main > .recipe-note-actions {
+	display: none;
+}
+
+/* Mounted on the scroller, outside the sizer, so reading view can't drop
+   them on a long note. That puts the switch above the hero rather than
+   under the callout. */
+.recipe-tabs {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) 0;
+	background: var(--background-primary);
+	border-bottom: 1px solid var(--recipe-border);
+}
+
+.recipe-tabs-track {
+	flex: 1;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 2px;
+	padding: 3px;
+	border-radius: var(--radius-m);
+	background: var(--recipe-surface);
+}
+
+.recipe-tabs-track .recipe-tab,
+.recipe-tabs-track .recipe-tab:hover {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--size-4-2);
+	min-height: 40px;
+	padding: 0 var(--size-4-2);
+	border: 0;
+	border-radius: calc(var(--radius-m) - 2px);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-weight: var(--font-semibold);
+}
+
+.recipe-tabs-track .recipe-tab[aria-selected="true"] {
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+	color: var(--text-normal);
+}
+
+.recipe-tab-count {
+	color: var(--text-faint);
+	font-weight: var(--font-normal);
+}
+
+.recipe-tab[aria-selected="true"] .recipe-tab-count {
+	color: var(--text-muted);
+}
+
+.recipe-tabs-cook {
+	min-height: 46px;
+	padding-inline: var(--size-4-4);
+}
+
+.recipe-dock {
+	position: sticky;
+	bottom: 0;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) 0;
+	background: var(--recipe-dock-bg);
+	border-top: 1px solid var(--recipe-border);
+}
+
+.recipe-dock button {
+	min-height: 48px;
+}
+
+.recipe-dock .recipe-dock-icon {
+	width: 48px;
+	padding: 0;
+	flex-shrink: 0;
+}
+
+.recipe-dock .recipe-add-button {
+	flex: 1;
+}
+
+/*
+  ============================================================
+  Cook mode
   ============================================================
 */
 
-.markdown-preview-view.recipe-note,
-.markdown-source-view.mod-cm6.recipe-note,
-.recipe-note {
-	--recipe-surface: color-mix(in srgb, var(--background-secondary) 92%, #fff 8%);
-	--recipe-border: color-mix(in srgb, var(--background-modifier-border) 78%, var(--color-accent) 22%);
-	--recipe-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
-}
-
-.markdown-preview-view.recipe-note,
-.markdown-source-view.mod-cm6.recipe-note {
-	background:
-		radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 34%),
-		var(--background-primary);
-}
-
-.markdown-preview-view.recipe-note .markdown-preview-sizer,
-.markdown-source-view.mod-cm6.recipe-note .cm-contentContainer,
-.recipe-note .markdown-preview-sizer {
-	max-width: 860px;
-	padding-bottom: 72px;
-}
-
-.markdown-preview-view.recipe-note .inline-title,
-.markdown-preview-view.recipe-note h1,
-.recipe-note .inline-title,
-.recipe-note h1 {
-	font-size: clamp(2rem, 4vw, 2.9rem);
-	line-height: 1.08;
-	letter-spacing: -0.03em;
-	margin-bottom: 0.75rem;
-}
-
-.recipe-note .markdown-preview-sizer > p:first-of-type {
-	font-size: 1.02rem;
-	line-height: 1.7;
-	color: var(--text-muted);
-	max-width: 62ch;
-	margin-bottom: 1.2rem;
-}
-
-.markdown-preview-view.recipe-note img,
-.markdown-source-view.mod-cm6.recipe-note img,
-.recipe-note img {
-	width: 100%;
-	display: block;
-	border-radius: 24px;
-	margin: 1rem 0 1.4rem;
-	box-shadow: var(--recipe-shadow);
-	object-fit: cover;
-	max-height: 420px;
-}
-
-.markdown-preview-view.recipe-note .callout[data-callout="recipe-meta"],
-.markdown-source-view.mod-cm6.recipe-note .callout[data-callout="recipe-meta"],
-.recipe-note .callout[data-callout="recipe-meta"] {
-	border: 1px solid var(--recipe-border);
-	background: linear-gradient(
-		180deg,
-		color-mix(in srgb, var(--background-primary) 35%, var(--background-secondary) 65%),
-		var(--recipe-surface)
-	);
-	border-radius: 18px;
-	padding: 6px 4px;
-	margin: 1rem 0 1.75rem;
-	box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
-}
-
-.recipe-note .recipe-note-actions,
-.markdown-preview-view.recipe-note .recipe-note-actions {
+.modal.recipe-cook-modal {
+	width: min(560px, 100vw);
+	height: min(820px, 90vh);
+	padding: 0;
 	display: flex;
-	flex-wrap: wrap;
-	gap: 12px;
-	margin: 0.25rem 0 1.35rem;
+	flex-direction: column;
 }
 
-.recipe-note .recipe-note-ai-controls,
-.markdown-preview-view.recipe-note .recipe-note-ai-controls {
-	width: 100%;
+.is-mobile .modal.recipe-cook-modal {
+	width: 100vw;
+	height: 100dvh;
+	max-width: none;
+	max-height: none;
+	border-radius: 0;
+}
+
+/* The modal draws its own close button in the top bar. */
+.recipe-cook-modal .modal-close-button,
+.recipe-cook-modal > .modal-header,
+.recipe-cook-modal > .modal-title {
+	display: none;
+}
+
+.recipe-cook {
+	position: relative;
+	flex: 1;
+	min-height: 0;
 	display: flex;
-	gap: 10px;
+	flex-direction: column;
+	padding: 0;
+	overflow: hidden;
+}
+
+.recipe-cook-top {
+	display: flex;
 	align-items: center;
-	flex-wrap: wrap;
+	gap: var(--size-4-1);
+	padding: var(--size-4-2) var(--size-4-2) 0;
+	padding-top: max(var(--size-4-2), env(safe-area-inset-top));
 }
 
-.recipe-note .recipe-note-ai-input,
-.markdown-preview-view.recipe-note .recipe-note-ai-input {
-	flex: 1 1 420px;
-	min-height: 38px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-	border-radius: 999px;
-	padding: 8px 14px;
-	font-size: 0.92rem;
+.recipe-cook-title {
+	flex: 1;
+	min-width: 0;
+	text-align: center;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
-.recipe-note .recipe-note-ai-input:focus,
-.markdown-preview-view.recipe-note .recipe-note-ai-input:focus {
-	outline: none;
-	border-color: var(--interactive-accent);
-	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+.recipe-cook-icon {
+	width: 44px;
+	height: 44px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 
-.recipe-note .recipe-note-action-button,
-.markdown-preview-view.recipe-note .recipe-note-action-button {
-	appearance: none;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	border-radius: 999px;
-	padding: 10px 14px;
-	font-size: 0.92rem;
-	font-weight: 600;
-	cursor: pointer;
-	transition: transform 0.12s, box-shadow 0.12s, background 0.12s;
+.recipe-cook-progress {
+	display: grid;
+	grid-template-columns: repeat(var(--recipe-cook-steps), minmax(0, 1fr));
+	gap: var(--size-4-1);
+	padding: var(--size-4-4) var(--size-4-5) 0;
 }
 
-.recipe-note .recipe-note-action-button:hover,
-.markdown-preview-view.recipe-note .recipe-note-action-button:hover {
-	background: var(--background-modifier-hover);
-	box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
-	transform: translateY(-1px);
+.recipe-cook-segment {
+	height: 4px;
+	border-radius: 2px;
+	background: var(--background-modifier-border);
 }
 
-.recipe-note .recipe-note-action-button.primary,
-.markdown-preview-view.recipe-note .recipe-note-action-button.primary {
+.recipe-cook-segment.is-done {
 	background: var(--interactive-accent);
-	border-color: var(--interactive-accent);
-	color: var(--text-on-accent);
 }
 
-.recipe-note .recipe-note-action-button:disabled,
-.markdown-preview-view.recipe-note .recipe-note-action-button:disabled {
-	opacity: 0.6;
-	cursor: not-allowed;
+.recipe-cook-body {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-4);
+	padding: var(--size-4-6) var(--size-4-6) 0;
+	overflow-y: auto;
+}
+
+.recipe-cook-label {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--size-4-3);
+}
+
+.recipe-cook-count {
+	color: var(--text-accent);
+	font-weight: var(--bold-weight);
+}
+
+.recipe-cook-group {
+	color: var(--text-muted);
+}
+
+.recipe-cook-step {
+	font-family: var(--font-text);
+	font-size: 1.75em;
+	line-height: 1.35;
+}
+
+.recipe-cook-step p,
+.recipe-cook-next-text p,
+.recipe-cook-sheet li p {
+	margin: 0;
+}
+
+.recipe-cook-uses {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-2);
+}
+
+.recipe-cook-caption {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.recipe-cook-pills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.recipe-cook-pill {
+	min-height: 32px;
+	display: inline-flex;
+	align-items: center;
+	padding: 0 var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+}
+
+/* Pinned to the bottom of the step area, whatever the step's length. */
+.recipe-cook-next {
+	margin-top: auto;
+	margin-bottom: var(--size-4-1);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-1);
+	padding: var(--size-4-3) var(--size-4-4);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+	background: var(--background-secondary);
+}
+
+.recipe-cook-next-text {
+	color: var(--text-muted);
+	line-height: 1.4;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.recipe-cook-foot {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	padding: var(--size-4-3) var(--size-4-4) var(--size-4-4);
+	padding-bottom: max(var(--size-4-4), env(safe-area-inset-bottom));
+}
+
+.recipe-cook-hint {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.recipe-cook-hint .svg-icon {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
+.recipe-cook-nav {
+	display: grid;
+	grid-template-columns: 1fr 2fr;
+	gap: var(--size-4-2);
+}
+
+.recipe-cook-nav button {
+	height: 56px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	font-size: 1.0625em;
+}
+
+/* The ingredients, over the step, from the list button. */
+.recipe-cook-sheet {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	background: var(--background-primary);
+	transform: translateY(100%);
+	visibility: hidden;
+	transition: transform 0.2s ease, visibility 0s 0.2s;
+}
+
+.recipe-cook-sheet.is-open {
 	transform: none;
+	visibility: visible;
+	transition: transform 0.2s ease;
+}
+
+.recipe-cook-sheet-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--size-4-2) var(--size-4-2) 0 var(--size-4-6);
+	padding-top: max(var(--size-4-2), env(safe-area-inset-top));
+}
+
+.recipe-cook-sheet-head h4 {
+	margin: 0;
+}
+
+.recipe-cook-sheet ul {
+	flex: 1;
+	overflow-y: auto;
+	margin: 0;
+	padding: var(--size-4-2) var(--size-4-6) var(--size-4-6);
+	padding-inline-start: calc(var(--size-4-6) + var(--size-4-4));
+}
+
+.recipe-cook-sheet li {
+	padding-block: var(--size-4-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.recipe-cook-sheet,
+	.recipe-cook-sheet.is-open {
+		transition: none;
+	}
+}
+
+/*
+  ============================================================
+  Cooklang View
+  ============================================================
+*/
+
+/* The recipe itself uses Obsidian's reading-mode classes and the recipe
+   note's layout classes. Only the Cooklang-specific bits are styled here. */
+.cooklang-view {
+	padding: 0;
+}
+
+.cooklang-tag {
+	margin-right: 4px;
+}
+
+.cooklang-ingredient {
+	font-weight: var(--bold-weight);
+	color: var(--text-accent);
+}
+
+.cooklang-cookware,
+.cooklang-timer {
+	font-weight: var(--bold-weight);
+}
+
+.cooklang-inline-amount {
+	color: var(--text-muted);
+}
+
+.cooklang-source-editor {
+	display: block;
+	width: 100%;
+	height: 100%;
+	padding: var(--file-margins, 24px 32px);
+	border: 0;
+	border-radius: 0;
+	resize: none;
+	background: transparent;
+	color: var(--text-normal);
+	font-family: var(--font-monospace);
+	font-size: var(--font-text-size);
+	line-height: 1.6;
+}
+
+.cooklang-source-editor:focus {
+	outline: none;
 	box-shadow: none;
 }
 
@@ -278,7 +822,7 @@
 	max-width: 85%;
 	white-space: pre-wrap;
 	word-break: break-word;
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+	box-shadow: var(--shadow-s);
 	animation: recipe-ai-bubble-in 0.18s ease-out;
 }
 
@@ -409,218 +953,6 @@
 	font-size: 0.85rem;
 	font-weight: 600;
 	color: var(--text-success, var(--text-muted));
-}
-
-.recipe-note .callout[data-callout="recipe-meta"] .callout-icon {
-	display: none;
-}
-
-.recipe-note .callout[data-callout="recipe-meta"] .callout-title {
-	font-size: 0.92rem;
-	font-weight: 700;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
-	color: var(--text-muted);
-	padding: 0.35rem 0.8rem 0.2rem;
-}
-
-.recipe-note .callout[data-callout="recipe-meta"] .callout-content {
-	padding: 0.15rem 0.8rem 0.65rem;
-	font-size: 0.98rem;
-	line-height: 1.7;
-}
-
-.markdown-preview-view.recipe-note h2,
-.markdown-preview-view.recipe-note h3,
-.recipe-note h2,
-.recipe-note h3 {
-	margin-top: 2rem;
-	margin-bottom: 0.85rem;
-	font-size: 1.1rem;
-	font-weight: 800;
-	letter-spacing: 0.03em;
-	text-transform: uppercase;
-	color: var(--text-normal);
-}
-
-.markdown-preview-view.recipe-note ul.contains-task-list,
-.recipe-note ul.contains-task-list {
-	padding-left: 0;
-	margin: 0.25rem 0 1.5rem;
-}
-
-.markdown-preview-view.recipe-note li.task-list-item,
-.recipe-note li.task-list-item {
-	list-style: none;
-	display: flex;
-	align-items: flex-start;
-	gap: 10px;
-	padding: 12px 14px;
-	margin: 0 0 10px;
-	border-radius: 14px;
-	background: var(--recipe-surface);
-	border: 1px solid var(--recipe-border);
-}
-
-.recipe-note li.task-list-item input[type="checkbox"] {
-	margin-top: 0.2rem;
-}
-
-@media (max-width: 600px) {
-	.markdown-preview-view.recipe-note .markdown-preview-sizer,
-	.markdown-source-view.mod-cm6.recipe-note .cm-contentContainer,
-	.recipe-note .markdown-preview-sizer {
-		padding-bottom: 52px;
-	}
-
-	.markdown-preview-view.recipe-note .inline-title,
-	.markdown-preview-view.recipe-note h1,
-	.recipe-note .inline-title,
-	.recipe-note h1 {
-		font-size: clamp(1.7rem, 7vw, 2.2rem);
-		margin-bottom: 0.5rem;
-	}
-
-	.recipe-note .markdown-preview-sizer > p:first-of-type {
-		font-size: 0.95rem;
-		margin-bottom: 0.9rem;
-	}
-
-	.markdown-preview-view.recipe-note img,
-	.markdown-source-view.mod-cm6.recipe-note img,
-	.recipe-note img {
-		border-radius: 18px;
-		margin: 0.8rem 0 1.1rem;
-		max-height: 300px;
-	}
-
-	.markdown-preview-view.recipe-note h2,
-	.markdown-preview-view.recipe-note h3,
-	.recipe-note h2,
-	.recipe-note h3 {
-		margin-top: 1.5rem;
-		margin-bottom: 0.65rem;
-		font-size: 1rem;
-		letter-spacing: 0.02em;
-	}
-
-	.markdown-preview-view.recipe-note li.task-list-item,
-	.recipe-note li.task-list-item {
-		gap: 8px;
-		padding: 8px 10px;
-		margin-bottom: 8px;
-		border-radius: 10px;
-		font-size: 0.92rem;
-		line-height: 1.4;
-	}
-
-	.markdown-preview-view.recipe-note li.task-list-item input[type="checkbox"],
-	.recipe-note li.task-list-item input[type="checkbox"],
-	.markdown-preview-view.recipe-note input.task-list-item-checkbox,
-	.recipe-note input.task-list-item-checkbox {
-		margin-top: 0.1rem;
-		width: 0.75rem;
-		height: 0.75rem;
-		transform: scale(0.85);
-		transform-origin: top left;
-	}
-
-	.markdown-preview-view.recipe-note .callout[data-callout="recipe-meta"],
-	.markdown-source-view.mod-cm6.recipe-note .callout[data-callout="recipe-meta"],
-	.recipe-note .callout[data-callout="recipe-meta"] {
-		border-radius: 14px;
-		padding: 4px 2px;
-		margin: 0.85rem 0 1.2rem;
-	}
-
-	.recipe-note .callout[data-callout="recipe-meta"] .callout-title {
-		font-size: 0.82rem;
-		padding: 0.3rem 0.7rem 0.2rem;
-	}
-
-	.recipe-note .callout[data-callout="recipe-meta"] .callout-content {
-		padding: 0.1rem 0.7rem 0.5rem;
-		font-size: 0.92rem;
-	}
-}
-
-.markdown-preview-view.recipe-note hr,
-.recipe-note hr {
-	border: 0;
-	height: 1px;
-	margin: 2rem 0;
-	background: linear-gradient(
-		90deg,
-		transparent,
-		var(--background-modifier-border),
-		transparent
-	);
-}
-
-.recipe-note a {
-	text-underline-offset: 0.2em;
-}
-
-/*
-  ============================================================
-  Cooklang View
-  ============================================================
-*/
-
-/* The recipe itself uses Obsidian's reading-mode classes and gets its look
-   from the theme. Only the Cooklang-specific bits are styled here. */
-.cooklang-view {
-	padding: 0;
-}
-
-.cooklang-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	margin: 0.5rem 0 1rem;
-}
-
-.cooklang-recipe img {
-	max-width: 100%;
-	border-radius: var(--radius-m);
-}
-
-.cooklang-tag {
-	margin-right: 4px;
-}
-
-.cooklang-ingredient {
-	font-weight: var(--bold-weight);
-	color: var(--text-accent);
-}
-
-.cooklang-cookware,
-.cooklang-timer {
-	font-weight: var(--bold-weight);
-}
-
-.cooklang-inline-amount {
-	color: var(--text-muted);
-}
-
-.cooklang-source-editor {
-	display: block;
-	width: 100%;
-	height: 100%;
-	padding: var(--file-margins, 24px 32px);
-	border: 0;
-	border-radius: 0;
-	resize: none;
-	background: transparent;
-	color: var(--text-normal);
-	font-family: var(--font-monospace);
-	font-size: var(--font-text-size);
-	line-height: 1.6;
-}
-
-.cooklang-source-editor:focus {
-	outline: none;
-	box-shadow: none;
 }
 
 /*
@@ -810,10 +1142,6 @@
 
 .rg-compare-modal h3 {
 	margin: 0 0 16px;
-	font-size: 15px;
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.06em;
 	color: var(--text-muted);
 }
 
@@ -969,7 +1297,7 @@
 
 .rg-compare-btn:hover {
 	background: var(--background-modifier-hover);
-	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+	box-shadow: var(--shadow-s);
 	transform: translateY(-1px);
 }
 
@@ -1036,7 +1364,7 @@
 }
 
 .rg-card:hover {
-	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+	box-shadow: var(--shadow-l);
 	transform: translateY(-2px);
 }
 

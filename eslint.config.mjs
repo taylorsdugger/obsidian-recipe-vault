@@ -20,6 +20,8 @@ export default defineConfig([
     "**/scripts/",
     "*.mjs",
     "**/*.config.ts",
+    // Other checkouts made by worktree tooling. Not this repo's source.
+    ".claude/",
   ]),
   ...obsidianmd.configs.recommended,
   {

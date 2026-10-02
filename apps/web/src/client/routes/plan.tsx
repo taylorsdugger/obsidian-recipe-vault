@@ -16,9 +16,11 @@ import {
   type RecipeSummary,
   type Slot,
 } from "../api";
+import { Icon } from "../components/icon";
 import { PlanListPreview } from "../components/plan-list-preview";
 import { RecipePhoto } from "../components/recipe-photo";
 import { RecipePicker } from "../components/recipe-picker";
+import { Sheet } from "../components/sheet";
 import { addLeftoversNextDay } from "../leftovers";
 import { navigate } from "../router";
 import { scrollContainer } from "../scroll";
@@ -29,6 +31,7 @@ import {
   dayName,
   isToday,
   mondayOf,
+  startOfDay,
   weekDaysWithPeek,
   weekLabel,
 } from "../week";
@@ -39,7 +42,8 @@ import {
  * One 56px row per meal, so the whole row is a thumb target and a seven-day
  * week still fits on a phone screen. The title wraps to two lines rather than
  * truncating - "Roasted Beet Hummus Recipe" cut to "Roasted Beet Hummus Rec..."
- * tells you less than the second line costs.
+ * tells you less than the second line costs. The slot rides on the meta line
+ * under it, so the day doesn't need a header per meal.
  */
 function EntryRow({
   entry,
@@ -52,6 +56,7 @@ function EntryRow({
   onRow,
   dragging,
   shift,
+  shiftX,
   busy,
 }: {
   entry: PlanEntry;
@@ -70,20 +75,35 @@ function EntryRow({
    * for the row being dragged, and the gap it opens for everything else.
    */
   shift: number;
+  /** Sideways travel, for the row being dragged across the desktop's week. */
+  shiftX: number;
   busy: boolean;
 }) {
   const recipe = entry.recipe;
+  // Cook time is about cooking it, so a reheat doesn't show one.
+  const meta = [
+    SLOT_LABEL[slotOf(entry)],
+    recipe && !entry.leftovers ? recipe.cookTime : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const metaLine = (
+    <span class="mt-0.5 flex items-center gap-1.5 text-note text-muted">
+      {entry.leftovers && <span class="chip-soft">Leftovers</span>}
+      <span class="truncate">{meta}</span>
+    </span>
+  );
 
   return (
     <li
       ref={(el) => onRow(entry.id, el)}
-      class={`flex items-center gap-1 ${
-        dragging ? "relative z-10 rounded-lg bg-surface shadow-md" : ""
+      class={`group flex items-center gap-1 lg:relative lg:items-stretch ${
+        dragging ? "relative z-10 rounded-xl bg-surface shadow-md" : ""
       }`}
       style={
         shift || dragging
           ? {
-              transform: `translateY(${shift}px)`,
+              transform: `translate(${shiftX}px, ${shift}px)`,
               // The row under the finger tracks it exactly; the ones opening a
               // gap for it slide, or the day snaps between orders.
               transition: dragging ? "none" : "transform 140ms ease",
@@ -101,66 +121,62 @@ function EntryRow({
         the week still scrolls normally.
       */}
       <button
-          type="button"
-          aria-label={`Move ${recipe ? recipe.title : (entry.note ?? "this meal")}. Drag it to another slot or another day, or use the arrow keys to reorder the day.`}
-          class="-ml-1 grid w-7 shrink-0 cursor-grab touch-none place-items-center self-stretch rounded-lg text-faint transition-colors active:bg-canvas active:text-muted disabled:opacity-25"
-          disabled={busy && !dragging}
-          onPointerDown={(event) => onGrab(entry, event)}
-          onPointerMove={(event) => onDrag(event)}
-          onPointerUp={onDrop}
-          onPointerCancel={onDrop}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              onMove(entry, -1);
-            }
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              onMove(entry, 1);
-            }
-          }}
-        >
-          {/* A grip. Two columns of dots is the one glyph everyone reads as
-              "pick this up". */}
-          <svg viewBox="0 0 10 16" class="h-5 w-3.5" aria-hidden="true">
-            <g fill="currentColor">
-              <circle cx="3" cy="4" r="1.1" />
-              <circle cx="7" cy="4" r="1.1" />
-              <circle cx="3" cy="8" r="1.1" />
-              <circle cx="7" cy="8" r="1.1" />
-              <circle cx="3" cy="12" r="1.1" />
-              <circle cx="7" cy="12" r="1.1" />
-            </g>
-          </svg>
-        </button>
+        type="button"
+        aria-label={`Move ${recipe ? recipe.title : entry.note ?? "this meal"}. Drag it to another slot or another day, or use the arrow keys to reorder the day.`}
+        class="-ml-1.5 grid w-6 shrink-0 cursor-grab touch-none place-items-center self-stretch rounded-lg text-faint transition-colors active:bg-canvas active:text-muted disabled:opacity-25 lg:absolute lg:top-1 lg:left-1 lg:z-10 lg:ml-0 lg:h-8 lg:bg-surface/90 lg:text-muted lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+        disabled={busy && !dragging}
+        onPointerDown={(event) => onGrab(entry, event)}
+        onPointerMove={(event) => onDrag(event)}
+        onPointerUp={onDrop}
+        onPointerCancel={onDrop}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            onMove(entry, -1);
+          }
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            onMove(entry, 1);
+          }
+        }}
+      >
+        {/* A grip. Two columns of dots is the one glyph everyone reads as
+              "pick this up". Faint, because it's a texture on the row more
+              than a thing to read. */}
+        <svg viewBox="0 0 10 16" class="h-5 w-3.5" aria-hidden="true">
+          <g fill="currentColor">
+            <circle cx="3" cy="4" r="1.1" />
+            <circle cx="7" cy="4" r="1.1" />
+            <circle cx="3" cy="8" r="1.1" />
+            <circle cx="7" cy="8" r="1.1" />
+            <circle cx="3" cy="12" r="1.1" />
+            <circle cx="7" cy="12" r="1.1" />
+          </g>
+        </svg>
+      </button>
 
       {recipe ? (
         <button
           type="button"
-          class="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 text-left"
+          class="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-1 text-left lg:flex-col lg:items-stretch lg:gap-1.5 lg:py-0"
           onClick={() => navigate(`/recipes/${recipe.id}`)}
         >
           <RecipePhoto
             src={recipe.photoUrl}
-            box="size-11 shrink-0 rounded-lg"
-            mark="size-5"
+            box="size-12 shrink-0 rounded-xl lg:h-21 lg:w-full lg:rounded-[14px]"
+            mark="size-6"
           />
           <span class="min-w-0 flex-1">
-            <span class="line-clamp-2 text-row leading-snug font-medium">
-              {entry.leftovers && <span class="text-faint">Leftovers · </span>}
+            <span class="line-clamp-2 text-row leading-snug font-semibold lg:line-clamp-3 lg:text-sm lg:leading-[1.3]">
               {recipe.title}
             </span>
-            {/* Cook time is about cooking it, so a reheat doesn't show one. */}
-            {recipe.cookTime && !entry.leftovers && (
-              <span class="mt-0.5 block text-xs text-faint">
-                {recipe.cookTime}
-              </span>
-            )}
+            {metaLine}
           </span>
         </button>
       ) : (
-        <span class="flex min-h-14 min-w-0 flex-1 items-center py-2 text-row leading-snug text-muted">
-          {entry.note}
+        <span class="flex min-h-14 min-w-0 flex-1 flex-col justify-center py-1">
+          <span class="text-row leading-snug text-muted">{entry.note}</span>
+          {metaLine}
         </span>
       )}
 
@@ -171,7 +187,7 @@ function EntryRow({
           type="button"
           aria-label="Leftovers tomorrow"
           title="Leftovers tomorrow"
-          class="icon-btn size-10 text-muted active:bg-canvas"
+          class="icon-btn size-10 text-muted active:bg-canvas lg:absolute lg:top-1 lg:z-10 lg:size-8 lg:bg-surface/90 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100 lg:right-10"
           disabled={busy}
           onClick={() => onLeftovers(entry)}
         >
@@ -194,7 +210,7 @@ function EntryRow({
       <button
         type="button"
         aria-label="Remove"
-        class="icon-btn -mr-1.5 size-10 text-faint active:bg-canvas active:text-ink"
+        class="icon-btn -mr-1.5 size-10 text-muted active:bg-canvas active:text-ink lg:absolute lg:top-1 lg:z-10 lg:size-8 lg:bg-surface/90 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100 lg:right-1 lg:mr-0"
         disabled={busy}
         onClick={() => onRemove(entry)}
       >
@@ -223,7 +239,11 @@ function Chevron({
   return (
     <svg viewBox="0 0 20 20" class={cls} aria-hidden="true">
       <path
-        d={dir === "left" ? "M12.5 4 L6.5 10 L12.5 16" : "M7.5 4 L13.5 10 L7.5 16"}
+        d={
+          dir === "left"
+            ? "M12.5 4 L6.5 10 L12.5 16"
+            : "M7.5 4 L13.5 10 L7.5 16"
+        }
         fill="none"
         stroke="currentColor"
         stroke-width="2"
@@ -234,7 +254,41 @@ function Chevron({
   );
 }
 
-/** The header over a slot. Small, faint and uppercase, like the day name. */
+/** Previous / next week, as one pill. The dock's on a phone, the header's on a desktop. */
+function WeekPager({
+  size,
+  onPrev,
+  onNext,
+}: {
+  /** The height, since the dock's is a thumb's and the header's a pointer's. */
+  size: string;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div class="flex shrink-0 items-center rounded-full border border-line bg-surface">
+      <button
+        type="button"
+        aria-label="Previous week"
+        class={`grid w-12 place-items-center rounded-l-full active:bg-canvas ${size}`}
+        onClick={onPrev}
+      >
+        <Chevron dir="left" />
+      </button>
+      <span class="px-0.5 text-sm font-semibold">Week</span>
+      <button
+        type="button"
+        aria-label="Next week"
+        class={`grid w-12 place-items-center rounded-r-full active:bg-canvas ${size}`}
+        onClick={onNext}
+      >
+        <Chevron dir="right" />
+      </button>
+    </div>
+  );
+}
+
+/** What a slot is called on a meal's meta line and on its add row. */
 const SLOT_LABEL: Record<Slot, string> = {
   breakfast: "Breakfast",
   lunch: "Lunch",
@@ -272,6 +326,8 @@ interface Drag {
   to: number;
   /** Pixels travelled, in the scroller's own coordinates rather than the viewport's. */
   dy: number;
+  /** Sideways, which only happens on the desktop, where the days are columns. */
+  dx: number;
   /** The dragged row's height, which is the size of the gap it leaves and opens. */
   height: number;
 }
@@ -315,12 +371,19 @@ function shiftOf(drag: Drag | null, key: string, index: number): number {
 interface Grab {
   /** The finger's position at that moment, in scroller coordinates. */
   y: number;
-  /** Every slot of every day, in the order they're drawn. */
+  x: number;
+  /**
+   * Every slot of every day, in the order they're drawn. On a phone they all
+   * share one column. On a desktop each day is its own, so a slot is found by
+   * its column first and its height second.
+   */
   groups: {
     key: string;
     top: number;
     bottom: number;
-    rows: { top: number; height: number }[];
+    left: number;
+    right: number;
+    rows: { top: number; height: number; left: number; width: number }[];
   }[];
 }
 
@@ -343,6 +406,8 @@ export function Plan() {
     null,
   );
   const [shopping, setShopping] = useState(false);
+  /** The "Plan a meal" sheet, which asks which day and slot before the picker. */
+  const [choosing, setChoosing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<Drag | null>(null);
 
@@ -362,6 +427,7 @@ export function Plan() {
   const grabbed = useRef<Grab | null>(null);
   /** The last place the finger was, for the edge-scroll loop to re-read. */
   const pointerY = useRef(0);
+  const pointerX = useRef(0);
   const scrolling = useRef(0);
 
   // Eight rows: the week, then a look at the Monday after it.
@@ -410,7 +476,7 @@ export function Plan() {
     // stack with every week you passed on the way.
     const thisWeek = dateKey(next) === dateKey(mondayOf(new Date()));
     window.history.replaceState(
-      {},
+      window.history.state,
       "",
       thisWeek ? "/plan" : `/plan?week=${dateKey(next)}`,
     );
@@ -549,10 +615,24 @@ export function Plan() {
         const row = rowEls.current.get(entry.id);
         if (!row) return [];
         const r = row.getBoundingClientRect();
-        return [{ top: r.top + offset, height: r.height }];
+        return [
+          {
+            top: r.top + offset,
+            height: r.height,
+            left: r.left,
+            width: r.width,
+          },
+        ];
       });
       return [
-        { key: group.key, top: box.top + offset, bottom: box.bottom + offset, rows },
+        {
+          key: group.key,
+          top: box.top + offset,
+          bottom: box.bottom + offset,
+          left: box.left,
+          right: box.right,
+          rows,
+        },
       ];
     });
   };
@@ -584,8 +664,13 @@ export function Plan() {
     }
 
     const height = row.getBoundingClientRect().height;
-    grabbed.current = { y: event.clientY + scrolled(), groups: measured };
+    grabbed.current = {
+      y: event.clientY + scrolled(),
+      x: event.clientX,
+      groups: measured,
+    };
     pointerY.current = event.clientY;
+    pointerX.current = event.clientX;
     dragRef.current = {
       id: entry.id,
       fromKey: key,
@@ -593,6 +678,7 @@ export function Plan() {
       toKey: key,
       to: from,
       dy: 0,
+      dx: 0,
       height,
     };
     setDrag(dragRef.current);
@@ -602,31 +688,55 @@ export function Plan() {
   /**
    * Work out where the held meal is now: which slot, and which place in it.
    *
-   * The test is the dragged row's own centre, not the finger's: grabbing a
+   * The test is a point on the dragged row, not the finger: grabbing a
    * two-line meal near its bottom edge would otherwise drop it into the next
    * slot a good 20px before it looked like it should.
    */
-  const applyPointer = (clientY: number) => {
+  const applyPointer = (clientX: number, clientY: number) => {
     const start = grabbed.current;
     const drag = dragRef.current;
     if (!drag || !start) return;
 
-    const first = start.groups[0];
-    const last = start.groups[start.groups.length - 1];
     const held = start.groups.find((g) => g.key === drag.fromKey)?.rows[
       drag.from
     ];
     if (!held) return;
 
-    // Clamped to the week: a meal can't be dragged off either end of it.
-    const dy = Math.max(
-      first.top - held.top,
-      Math.min(last.bottom - (held.top + held.height), clientY + scrolled() - start.y),
-    );
-    const centre = held.top + held.height / 2 + dy;
+    // Which column the meal is over. On a phone every slot is in the one
+    // column, so this keeps them all. On a desktop it's one day's three, and
+    // past the first or last column it's the nearest day.
+    const dx = clientX - start.x;
+    const across = held.left + held.width / 2 + dx;
+    const columnGap = (g: Grab["groups"][number]) =>
+      across < g.left ? g.left - across : Math.max(0, across - g.right);
+    const closest = Math.min(...start.groups.map(columnGap));
+    const column = start.groups.filter((g) => columnGap(g) === closest);
 
+    const first = column[0];
+    const last = column[column.length - 1];
+
+    // The point that decides where the meal lands. A phone row's centre, so
+    // a two-line meal grabbed near its bottom edge doesn't drop early. On a
+    // desktop card that centre is 80px below the grip under the pointer, so
+    // it's capped to a phone row's half height and stays near the pointer.
+    //
+    // Clamped to the week on that same point. Clamping the row's edges
+    // instead meant a tall card could never get it into a short empty slot
+    // at the bottom of a day, so nothing could be dropped onto an empty
+    // dinner.
+    const middle = held.top + Math.min(held.height / 2, 28);
+    const dy = Math.max(
+      first.top - middle,
+      Math.min(last.bottom - 1 - middle, clientY + scrolled() - start.y),
+    );
+    const centre = middle + dy;
+
+    // Between two slots - a day's padding, the divider - it goes to whichever
+    // is closer. A past day's empty slots draw nothing and measure zero high,
+    // so they're never a target: there'd be nothing there to show it landing.
     const over =
-      start.groups.find((g) => centre >= g.top && centre < g.bottom) ??
+      column.find((g) => centre >= g.top && centre < g.bottom) ??
+      nearest(column, centre) ??
       (centre < first.top ? first : last);
 
     // The first row whose middle the meal has passed. Falling off the end means
@@ -639,14 +749,21 @@ export function Plan() {
       }
     }
 
-    if (dy === drag.dy && to === drag.to && over.key === drag.toKey) return;
-    dragRef.current = { ...drag, dy, to, toKey: over.key };
+    if (
+      dy === drag.dy &&
+      dx === drag.dx &&
+      to === drag.to &&
+      over.key === drag.toKey
+    )
+      return;
+    dragRef.current = { ...drag, dy, dx, to, toKey: over.key };
     setDrag(dragRef.current);
   };
 
   const dragTo = (event: PointerEvent) => {
     pointerY.current = event.clientY;
-    applyPointer(event.clientY);
+    pointerX.current = event.clientX;
+    applyPointer(event.clientX, event.clientY);
   };
 
   /**
@@ -668,13 +785,14 @@ export function Plan() {
       const below = box.bottom - pointerY.current;
 
       let by = 0;
-      if (above < EDGE_PX) by = -EDGE_SPEED * (1 - Math.max(above, 0) / EDGE_PX);
+      if (above < EDGE_PX)
+        by = -EDGE_SPEED * (1 - Math.max(above, 0) / EDGE_PX);
       else if (below < EDGE_PX)
         by = EDGE_SPEED * (1 - Math.max(below, 0) / EDGE_PX);
 
       if (by) {
         scroller.scrollTop += by;
-        applyPointer(pointerY.current);
+        applyPointer(pointerX.current, pointerY.current);
       }
       scrolling.current = window.requestAnimationFrame(step);
     };
@@ -820,194 +938,262 @@ export function Plan() {
       (entry) => entry.recipe && !entry.leftovers && entry.date <= to,
     ) ?? false;
 
+  const todayStart = startOfDay(new Date());
+  const weeksAway = Math.round(
+    (monday.getTime() - mondayOf(todayStart).getTime()) / (7 * 86_400_000),
+  );
+  const title =
+    weeksAway === 0
+      ? "This week"
+      : weeksAway === 1
+        ? "Next week"
+        : weeksAway === -1
+          ? "Last week"
+          : weeksAway > 0
+            ? `In ${weeksAway} weeks`
+            : `${-weeksAway} weeks ago`;
+
   return (
-    // Clears the tab bar plus the shopping-list bar sitting above it, so the
-    // last day's "Add" is still tappable at the bottom of the scroll.
-    <div class="pb-28">
-      <header class="screen-head">
-        <div class="mx-auto flex max-w-2xl items-center gap-3 px-3 py-2">
-          {/* Real buttons, not bare glyphs. The first version was a 9px "‹"
-              in the corner of the header, which nobody could find and fewer
-              could hit. */}
-          <button
-            type="button"
-            aria-label="Previous week"
-            class="icon-btn-quiet"
-            onClick={() => goto(addDays(monday, -7))}
-          >
-            <Chevron dir="left" />
-          </button>
-          <div class="min-w-0 flex-1 text-center">
-            <h1 class="truncate text-base leading-tight font-semibold">
-              {weekLabel(monday)}
-            </h1>
-            {/* The line under the title is either a quiet "this week" or the
-                way back to it, so the header is the same height either way. */}
-            {thisWeek ? (
-              <p class="text-xs text-faint">This week</p>
-            ) : (
+    // Clears the tab bar plus the bar sitting above it, so the last day's
+    // "Add" is still tappable at the bottom of the scroll.
+    <div class="screen pb-28 lg:pb-12">
+      <header class="screen-title">
+        <div class="min-w-0">
+          <p class="flex items-baseline gap-2 text-note text-muted">
+            <span class="truncate">{weekLabel(monday)}</span>
+            {/* Paging is down in the dock, so the way back to now goes up
+                here, next to the week it's taking you away from. */}
+            {!thisWeek && (
               <button
                 type="button"
-                class="-my-1 px-2 py-1 text-xs font-medium text-accent-ink underline underline-offset-4 active:text-ink"
+                class="-my-2 shrink-0 py-2 font-semibold text-accent-ink"
                 onClick={() => goto(mondayOf(new Date()))}
               >
                 Back to this week
               </button>
             )}
+          </p>
+          <h1 class="title-display">{title}</h1>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          {/* The week's shop. Only when there's something to buy for. */}
+          {planned && (
+            <button
+              type="button"
+              class="btn-quiet shrink-0"
+              onClick={() => setShopping(true)}
+            >
+              <Icon name="cart" class="size-[18px]" />
+              Shop
+            </button>
+          )}
+          {/* The dock's controls, for a desktop that has no dock. */}
+          <div class="hidden items-center gap-2 lg:flex">
+            <WeekPager
+              size="h-11.5"
+              onPrev={() => goto(addDays(monday, -7))}
+              onNext={() => goto(addDays(monday, 7))}
+            />
+            <button
+              type="button"
+              class="btn-primary min-h-12 px-5.5 text-row"
+              disabled={busy && !drag}
+              onClick={() => setChoosing(true)}
+            >
+              <Icon name="plus" class="size-[18px]" stroke={2} />
+              Plan a meal
+            </button>
           </div>
-          <button
-            type="button"
-            aria-label="Next week"
-            class="icon-btn-quiet"
-            onClick={() => goto(addDays(monday, 7))}
-          >
-            <Chevron dir="right" />
-          </button>
         </div>
       </header>
 
-      {error && <p class="px-4 pt-3 text-sm text-red-700">{error}</p>}
+      {error && <p class="px-1 pt-1 text-sm text-danger">{error}</p>}
       {status && (
-        <p class="mx-3 mt-3 rounded-xl bg-surface px-3 py-2 text-sm text-muted">
+        <p class="mt-2 rounded-xl bg-surface px-3 py-2 text-sm text-muted">
           {status}
         </p>
       )}
 
       {/* One list, not seven cards. A week has to read as a week, and seven
-          separate cards cost 865px of scroll for 812px of screen. */}
-      {/* Capped and centred. Left full width, a 1100px row strands the remove
-          button half a screen from the meal it belongs to. */}
-      {/* Full bleed on a phone: the card's side margins and border were 26px
-          the meal titles couldn't have, and the week already fills the screen
-          edge to edge. It goes back to a card from `sm` up. */}
-      <div class="screen">
-        <ul class="card -mx-3 divide-y divide-line overflow-hidden rounded-none border-x-0 sm:mx-0 sm:rounded-2xl sm:border-x">
-          {days.map((date, index) => {
-            const key = dateKey(date);
-            const today = isToday(date);
-            // The eighth row is next week's Monday. Everything on it works the
-            // same; the label above it is what says which week you're in.
-            const peek = index === 7;
+          separate cards cost 865px of scroll for 812px of screen. An agenda:
+          the date down the left, the meals beside it. */}
+      {/* On a desktop the week is seven columns side by side, and next
+          week's Monday stays off it: the pager is right there. */}
+      <ul class="divide-y divide-line lg:mt-2 lg:grid lg:grid-cols-7 lg:items-start lg:gap-3 lg:divide-y-0">
+        {days.map((date, index) => {
+          const key = dateKey(date);
+          const today = isToday(date);
+          const past = date < todayStart;
+          // The eighth row is next week's Monday. Everything on it works the
+          // same; the label above it is what says which week you're in.
+          const peek = index === 7;
 
-            return (
-              // Keyed, because the divider makes this two siblings per day.
-              <Fragment key={key}>
-                {peek && (
-                  <li class="border-t-2 border-line">
-                    <button
-                      type="button"
-                      class="flex min-h-11 w-full items-center gap-3 px-3 text-left text-sm text-muted active:bg-canvas"
-                      onClick={() => goto(addDays(monday, 7))}
-                    >
-                      <span class="font-medium">Next week</span>
-                      <span class="h-px flex-1 bg-line" />
-                      <Chevron dir="right" class="size-4 text-faint" />
-                    </button>
-                  </li>
-                )}
-                <li class={`flex gap-2 px-3 py-2 ${today ? "bg-accent/6" : ""}`}>
-                  {/* Fixed-width date gutter, so every day lines up down the
-                      left however many meals it holds. */}
-                  <div class="w-10 shrink-0 pt-1 text-center">
-                    <div
-                      class={`label leading-none ${
-                        today ? "text-accent-ink" : "text-faint"
-                      }`}
-                    >
-                      {dayName(date)}
-                    </div>
-                    <div
-                      class={`mx-auto mt-1 grid size-8 place-items-center text-base leading-none font-semibold ${
-                        today ? "rounded-full bg-accent text-white" : "text-ink"
-                      }`}
-                    >
-                      {date.getDate()}
-                    </div>
-                  </div>
+          return (
+            // Keyed, because the divider makes this two siblings per day.
+            <Fragment key={key}>
+              {peek && (
+                <li class="lg:hidden">
+                  <button
+                    type="button"
+                    class="flex min-h-11 w-full items-center gap-3 px-1 text-left text-sm text-muted active:text-ink"
+                    onClick={() => goto(addDays(monday, 7))}
+                  >
+                    <span class="font-semibold">Next week</span>
+                    <span class="h-px flex-1 bg-line" />
+                    <Chevron dir="right" class="size-4" />
+                  </button>
+                </li>
+              )}
+              {/* Gone by. Still there to look back on and drag from, but it
+                  steps back so the eye lands on today. */}
+              <li
+                class={`grid grid-cols-[52px_minmax(0,1fr)] gap-3 py-2.5 lg:min-w-0 lg:flex-col lg:py-0 ${
+                  past ? "opacity-55" : ""
+                } ${peek ? "lg:hidden" : "lg:flex"}`}
+              >
+                {/* Fixed-width date gutter, so every day lines up down the
+                    left however many meals it holds. On a desktop it's the
+                    column's heading instead. */}
+                <div class="flex flex-col items-center gap-0.5 pt-1 lg:items-start lg:gap-1 lg:border-b lg:border-line lg:px-0.5 lg:pt-0 lg:pb-1.5">
+                  <span
+                    class={`label ${today ? "text-accent-ink" : "text-muted"}`}
+                  >
+                    {dayName(date)}
+                  </span>
+                  <span
+                    class={`grid size-[42px] place-items-center rounded-full font-display text-[1.75rem] leading-none font-medium lg:-ml-1.5 lg:size-10 lg:text-[1.6875rem] ${
+                      today ? "bg-accent-soft text-accent-ink" : ""
+                    }`}
+                  >
+                    {date.getDate()}
+                  </span>
+                </div>
 
-                  {/* Three slots, always, even when empty. The header is the
-                      only thing that says where the next meal goes, and a slot
-                      that only appeared once it had something in it would have
-                      nowhere to drop a meal into. */}
-                  <div class="min-w-0 flex-1">
-                    {SLOTS.map((slot) => {
-                      const k = groupKey(key, slot);
-                      const meals = groupOf(key, slot);
-                      return (
-                        <section
-                          key={slot}
-                          ref={(el) => registerGroup(k, el)}
-                          aria-label={`${SLOT_LABEL[slot]}, ${dayName(date)} ${dayLabel(date)}`}
-                          class={`-mx-1 rounded-lg px-1 transition-colors ${
-                            // The slot a held meal would land in. Worth saying
-                            // out loud: an empty slot has no rows to slide
-                            // aside, so without this there'd be no sign the
-                            // drop was going to land there.
-                            landingHere(k) ? "bg-accent/12" : ""
-                          }`}
-                        >
-                          {/* The header carries the add. One row does both
-                              jobs, where a header line plus an add line for
-                              each of 21 slots would have doubled the scroll. */}
-                          <div class="flex items-center justify-between">
-                            <h3 class="label text-faint">{SLOT_LABEL[slot]}</h3>
+                {/* Three slots, always, in eating order. A filled slot is just
+                    its meals; an empty one is a quiet "+ Add lunch", which is
+                    also what a dragged meal drops onto. Past days skip the add
+                    rows - nobody plans yesterday's lunch from here, and "Plan
+                    a meal" still can. */}
+                <div class="min-w-0 lg:flex lg:flex-col lg:gap-2">
+                  {SLOTS.map((slot) => {
+                    const k = groupKey(key, slot);
+                    const meals = groupOf(key, slot);
+                    return (
+                      <section
+                        key={slot}
+                        ref={(el) => registerGroup(k, el)}
+                        aria-label={`${SLOT_LABEL[slot]}, ${dayName(date)} ${dayLabel(date)}`}
+                        class={`-mx-1 rounded-xl px-1 transition-colors lg:empty:hidden ${
+                          // The slot a held meal would land in. Worth saying
+                          // out loud: an empty slot has no rows to slide
+                          // aside, so without this there'd be no sign the
+                          // drop was going to land there.
+                          landingHere(k) ? "bg-accent-soft" : ""
+                        }`}
+                      >
+                        {meals.length > 0 ? (
+                          <ul class="flex flex-col gap-0.5 lg:gap-3">
+                            {meals.map((entry, n) => (
+                              <EntryRow
+                                key={entry.id}
+                                entry={entry}
+                                onRemove={(target) => void remove(target)}
+                                onLeftovers={(target) => void leftovers(target)}
+                                onMove={(target, delta) =>
+                                  void move(target, delta)
+                                }
+                                onGrab={grab}
+                                onDrag={dragTo}
+                                onDrop={drop}
+                                onRow={registerRow}
+                                dragging={drag?.id === entry.id}
+                                shift={shiftOf(drag, k, n)}
+                                shiftX={drag?.id === entry.id ? drag.dx : 0}
+                                busy={busy}
+                              />
+                            ))}
+                          </ul>
+                        ) : (
+                          !past && (
                             <button
                               type="button"
-                              aria-label={`Add to ${SLOT_LABEL[slot].toLowerCase()}, ${dayName(date)} ${dayLabel(date)}`}
-                              class="icon-btn -mr-1.5 size-10 text-faint active:bg-canvas active:text-ink"
+                              aria-label={`Add ${SLOT_LABEL[slot].toLowerCase()}, ${dayName(date)} ${dayLabel(date)}`}
+                              class="add-inline w-full lg:min-h-10 lg:justify-center lg:gap-1.5 lg:rounded-xl lg:border lg:border-dashed lg:border-line lg:text-note"
                               disabled={busy && !drag}
                               onClick={() => setPicking({ date, slot })}
                             >
-                              <span class="add-inline-mark" aria-hidden="true">
-                                +
-                              </span>
+                              <Icon name="plus" class="size-4" stroke={2} />
+                              Add {SLOT_LABEL[slot].toLowerCase()}
                             </button>
-                          </div>
+                          )
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              </li>
+            </Fragment>
+          );
+        })}
+      </ul>
 
-                          {meals.length > 0 && (
-                            <ul class="divide-y divide-line/70 pb-1">
-                              {meals.map((entry, n) => (
-                                <EntryRow
-                                  key={entry.id}
-                                  entry={entry}
-                                  onRemove={(target) => void remove(target)}
-                                  onLeftovers={(target) => void leftovers(target)}
-                                  onMove={(target, delta) => void move(target, delta)}
-                                  onGrab={grab}
-                                  onDrag={dragTo}
-                                  onDrop={drop}
-                                  onRow={registerRow}
-                                  dragging={drag?.id === entry.id}
-                                  shift={shiftOf(drag, k, n)}
-                                  busy={busy}
-                                />
-                              ))}
-                            </ul>
-                          )}
-                        </section>
-                      );
-                    })}
-                  </div>
-                </li>
-              </Fragment>
-            );
-          })}
-        </ul>
+      {/* Paging and adding, down by the thumb. The arrows used to sit in the
+          header, a long reach on a phone held in one hand. */}
+      <div class="action-bar lg:hidden">
+        <div class="mx-auto flex w-full max-w-2xl items-center gap-2">
+          <WeekPager
+            size="h-13"
+            onPrev={() => goto(addDays(monday, -7))}
+            onNext={() => goto(addDays(monday, 7))}
+          />
+          <button
+            type="button"
+            class="btn-primary flex-1"
+            disabled={busy && !drag}
+            onClick={() => setChoosing(true)}
+          >
+            <Icon name="plus" class="size-[18px]" stroke={2} />
+            Plan a meal
+          </button>
+        </div>
       </div>
 
-      {/* Above the tab bar, same place the recipe screen puts its send button. */}
-      {planned && (
-        <div class="action-bar">
-          <div class="mx-auto w-full max-w-2xl">
-            <button
-              type="button"
-              class="btn-primary w-full"
-              onClick={() => setShopping(true)}
-            >
-              Shopping list for this week
-            </button>
-          </div>
-        </div>
+      {choosing && (
+        <Sheet title="Plan a meal" onClose={() => setChoosing(false)}>
+          {/* Any day and any slot, including a second dinner or a past day,
+              which the add rows in the week don't offer. */}
+          <ul class="divide-y divide-line">
+            {days.slice(0, 7).map((date) => (
+              <li key={dateKey(date)} class="flex items-center gap-3 py-2">
+                <span class="w-14 shrink-0">
+                  <span
+                    class={`label block ${
+                      isToday(date) ? "text-accent-ink" : "text-muted"
+                    }`}
+                  >
+                    {dayName(date)}
+                  </span>
+                  <span class="text-sm font-semibold">{dayLabel(date)}</span>
+                </span>
+                <span class="grid flex-1 grid-cols-3 gap-1.5">
+                  {SLOTS.map((slot) => (
+                    <button
+                      key={slot}
+                      type="button"
+                      class="pill justify-center px-2 text-note"
+                      onClick={() => {
+                        setChoosing(false);
+                        setPicking({ date, slot });
+                      }}
+                    >
+                      {SLOT_LABEL[slot]}
+                    </button>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Sheet>
       )}
 
       {picking && (
@@ -1016,7 +1202,9 @@ export function Plan() {
           onPick={(recipe: RecipeSummary) =>
             void addTo(picking.date, picking.slot, { recipeId: recipe.id })
           }
-          onNote={(text) => void addTo(picking.date, picking.slot, { note: text })}
+          onNote={(text) =>
+            void addTo(picking.date, picking.slot, { note: text })
+          }
           onClose={() => setPicking(null)}
         />
       )}
@@ -1034,6 +1222,27 @@ export function Plan() {
       )}
     </div>
   );
+}
+
+/**
+ * The slot closest to a point, for when it's in a gap between two. Slots
+ * that measured nothing are skipped.
+ */
+function nearest(
+  groups: Grab["groups"],
+  y: number,
+): Grab["groups"][number] | undefined {
+  let best: Grab["groups"][number] | undefined;
+  let gap = Infinity;
+  for (const group of groups) {
+    if (group.bottom - group.top < 1) continue;
+    const d = y < group.top ? group.top - y : Math.max(0, y - group.bottom);
+    if (d < gap) {
+      gap = d;
+      best = group;
+    }
+  }
+  return best;
 }
 
 /**

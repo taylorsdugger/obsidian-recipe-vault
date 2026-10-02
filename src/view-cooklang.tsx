@@ -1,12 +1,19 @@
 import { Keymap, TextFileView, WorkspaceLeaf, setIcon } from "obsidian";
 import type { Menu } from "obsidian";
+import type { CooklangToken } from "@recipe-vault/core";
 import { createRoot } from "react-dom/client";
 import {
   cooklangToJsonLd,
   parseCooklang,
   readRecipeVaultState,
 } from "@recipe-vault/core";
-import { CooklangRecipe } from "./components/CooklangRecipe";
+import {
+  CooklangRecipe,
+  amountText,
+  ingredientText,
+} from "./components/CooklangRecipe";
+import { CookModeModal } from "./modal-cook";
+import { tabScrollTop } from "./recipe-note-layout";
 import * as c from "./constants";
 import type RecipeVault from "./main";
 import {
@@ -30,6 +37,12 @@ export class CooklangView extends TextFileView {
   private modeAction: HTMLElement;
   /** Ticked ingredients, by their place in the ingredient list. */
   private checked = new Set<number>();
+  /** The Kitchen layout's Ingredients / Steps switch. */
+  private tab: "ingredients" | "steps" = "ingredients";
+  /** Where each Kitchen tab was scrolled to when it was last left. */
+  private tabScroll: Partial<Record<"ingredients" | "steps", number>> = {};
+  /** The layout the last render drew, so a resize only re-renders on a change. */
+  private layout: "rail" | "kitchen" = "rail";
 
   constructor(leaf: WorkspaceLeaf, plugin: RecipeVault) {
     super(leaf);
@@ -72,6 +85,8 @@ export class CooklangView extends TextFileView {
     if (clear) {
       this.mode = "preview";
       this.checked = new Set();
+      this.tab = "ingredients";
+      this.tabScroll = {};
     }
     this.render();
   }
@@ -138,6 +153,80 @@ export class CooklangView extends TextFileView {
     this.render();
   }
 
+  /** Whichever of the recipe and the view is the one scrolling. */
+  private scroller(): HTMLElement {
+    const root = this.contentEl.querySelector<HTMLElement>(".cooklang-recipe");
+    return root && root.scrollHeight > root.clientHeight
+      ? root
+      : this.contentEl;
+  }
+
+  private setTab(tab: "ingredients" | "steps"): void {
+    if (tab === this.tab) return;
+    this.tabScroll[this.tab] = this.scroller().scrollTop;
+    this.tab = tab;
+    this.render();
+    window.requestAnimationFrame(() => {
+      const scroller = this.scroller();
+      const role = tab === "ingredients" ? "ingredients" : "instructions";
+      scroller.scrollTop = tabScrollTop(
+        scroller,
+        this.contentEl.querySelector(`[data-recipe-section="${role}"]`),
+        this.tabScroll[tab],
+        this.contentEl.querySelector<HTMLElement>(".recipe-tabs")
+          ?.offsetHeight ?? 0,
+      );
+    });
+  }
+
+  /** Re-render after the layout setting changes. */
+  refreshLayout(): void {
+    this.render();
+  }
+
+  /** A narrow enough pane gets the Kitchen layout, so a resize can switch it. */
+  onResize(): void {
+    if (this.layoutKind() !== this.layout) this.render();
+  }
+
+  private layoutKind(): "rail" | "kitchen" {
+    const width = this.contentEl.clientWidth;
+    return width === 0 ? this.layout : this.plugin.recipeLayoutKind(width);
+  }
+
+  /** The steps one at a time, with each step's own ingredients beside it. */
+  openCookMode(): void {
+    const recipe = parseCooklang(this.data);
+    const steps = recipe.sections.flatMap((section) =>
+      section.steps.map((step) => {
+        // A .cook step says exactly which ingredients it uses, so there's
+        // nothing to guess, unlike a note's steps.
+        const uses = step.tokens
+          .filter(
+            (t): t is Extract<CooklangToken, { type: "ingredient" }> =>
+              t.type === "ingredient",
+          )
+          .map((t) => [amountText(t), t.name].filter(Boolean).join(" "));
+        return {
+          text: step.text,
+          group: section.name,
+          uses: [...new Set(uses)],
+        };
+      }),
+    );
+    if (steps.length === 0) return;
+    const file = this.file;
+    new CookModeModal(this.app, {
+      title: file?.basename ?? "Recipe",
+      steps,
+      ingredients: recipe.ingredients.map(ingredientText),
+      renderText: (text, el) => el.setText(text),
+      onMarkMade: file
+        ? () => void this.plugin.markRecipeMade(file)
+        : undefined,
+    }).open();
+  }
+
   private async addCheckedToList(): Promise<void> {
     if (!this.file) return;
     const lines = this.checkedIngredients();
@@ -170,6 +259,7 @@ export class CooklangView extends TextFileView {
       return;
     }
 
+    this.layout = this.layoutKind();
     const recipe = parseCooklang(this.data);
     const summary = cooklangToJsonLd(recipe, { name: this.file?.basename });
     const linked =
@@ -209,6 +299,10 @@ export class CooklangView extends TextFileView {
         }}
         onAddToList={() => void this.addCheckedToList()}
         onEdit={() => this.setMode("source")}
+        onCook={() => this.openCookMode()}
+        layout={this.layout}
+        tab={this.tab}
+        onTab={(tab) => this.setTab(tab)}
         linkFor={linkFor}
         onOpenLink={(path, event) => {
           // Cmd/Ctrl-click opens it in a new tab, like any other link.

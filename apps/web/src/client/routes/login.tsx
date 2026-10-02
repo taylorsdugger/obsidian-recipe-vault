@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 
 import { api } from "../api";
+import { AppIcon } from "../components/logo";
 
 /** One household, one password. No accounts (locked decision 3). */
 export function Login({ onSignedIn }: { onSignedIn: () => void }) {
@@ -28,18 +29,19 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
         class="w-full max-w-xs space-y-4"
         onSubmit={(event) => void submit(event)}
       >
-        <h1 class="text-center text-2xl font-semibold">Recipe Vault</h1>
+        <AppIcon class="mx-auto size-16" />
+        <h1 class="title-display text-center">Recipe Vault</h1>
         <input
-          class="field min-h-12"
+          class="field-round"
           type="password"
           autocomplete="current-password"
           placeholder="Password"
           value={password}
           onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
         />
-        {error && <p class="text-center text-sm text-red-700">{error}</p>}
+        {error && <p class="text-center text-sm text-danger">{error}</p>}
         <button
-          class="btn-primary min-h-12 w-full"
+          class="btn-primary w-full"
           type="submit"
           disabled={busy || password.length === 0}
         >

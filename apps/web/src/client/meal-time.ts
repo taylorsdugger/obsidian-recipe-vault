@@ -63,3 +63,33 @@ export function nextMeal(
 export function sameMealTime(a: MealTime, b: MealTime): boolean {
   return dateKey(a.day) === dateKey(b.day) && a.slot === b.slot;
 }
+
+/**
+ * What's planned after the meal home is built around, in the order it'll be
+ * eaten: anything else in the same slot, the rest of that day, then the days
+ * after. The "Next up" strip under the hero.
+ *
+ * Meals earlier the same day are left out. At dinner time, breakfast has
+ * been eaten and isn't next for anything.
+ */
+export function mealsAfter(
+  entries: PlanEntry[],
+  hero: PlanEntry | null,
+  day: string,
+  slot: Slot,
+  limit: number,
+): PlanEntry[] {
+  const from = SLOTS.indexOf(slot);
+  const order = (entry: PlanEntry) => SLOTS.indexOf(slotOf(entry));
+  return (
+    entries
+      .filter(
+        (entry) =>
+          entry !== hero &&
+          (entry.date > day || (entry.date === day && order(entry) >= from)),
+      )
+      // `sort` is stable, so the plan's own order holds within a slot.
+      .sort((a, b) => a.date.localeCompare(b.date) || order(a) - order(b))
+      .slice(0, limit)
+  );
+}

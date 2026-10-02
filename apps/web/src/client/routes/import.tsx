@@ -97,8 +97,13 @@ export function Import() {
   };
 
   return (
-    <div class="screen space-y-4">
-      <h1 class="text-xl font-semibold">Import a recipe</h1>
+    <div class="screen space-y-4 pb-8">
+      <header class="screen-title">
+        <div class="min-w-0">
+          <p class="truncate text-note text-muted">From a link or the vault</p>
+          <h1 class="title-display">Import</h1>
+        </div>
+      </header>
 
       {format && (
         <div class="flex items-center gap-2">
@@ -124,7 +129,7 @@ export function Import() {
 
       <form class="flex gap-2" onSubmit={lookUp}>
         <input
-          class="field min-w-0 flex-1"
+          class="field-round flex-1"
           type="url"
           inputMode="url"
           placeholder="https://…"
@@ -132,7 +137,7 @@ export function Import() {
           onInput={(e) => setUrl((e.target as HTMLInputElement).value)}
         />
         <button
-          class="btn-primary shrink-0"
+          class="btn-primary min-h-13 shrink-0"
           type="submit"
           disabled={busy || url.trim().length === 0}
         >
@@ -140,7 +145,7 @@ export function Import() {
         </button>
       </form>
 
-      {error && <p class="text-sm text-red-700">{error}</p>}
+      {error && <p class="text-sm text-danger">{error}</p>}
 
       {!preview && <VaultImport />}
 
@@ -158,7 +163,9 @@ export function Import() {
               />
             )}
             <div class="space-y-2 px-4">
-              <h2 class="font-medium">{name}</h2>
+              <h2 class="font-display text-xl leading-tight font-medium">
+                {name}
+              </h2>
               {asText(recipe.author) && (
                 <p class="text-sm text-muted">{asText(recipe.author)}</p>
               )}

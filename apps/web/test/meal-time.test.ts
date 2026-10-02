@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PlanEntry } from "../src/client/api";
-import { mealTime, nextMeal } from "../src/client/meal-time";
+import { mealTime, mealsAfter, nextMeal } from "../src/client/meal-time";
 import { dateKey } from "../src/client/week";
 
 function at(hours: number, minutes = 0) {
@@ -84,5 +84,41 @@ describe("nextMeal", () => {
   it("reads an old slotless row as dinner", () => {
     const old = entry("", { title: "Tacos" });
     expect(nextMeal([old], day, "lunch")).toBe(old);
+  });
+});
+
+describe("mealsAfter", () => {
+  it("runs from the hero's slot through the following days, in eating order", () => {
+    const breakfast = entry("breakfast", { title: "Oats" });
+    const hero = entry("lunch", { title: "Soup" });
+    const dinner = entry("dinner", { title: "Curry" });
+    const tomorrowLunch = entry("lunch", { date: "2026-09-29", title: "Wraps" });
+    const tomorrowBreakfast = entry("breakfast", {
+      date: "2026-09-29",
+      title: "Eggs",
+    });
+
+    const after = mealsAfter(
+      [tomorrowLunch, dinner, breakfast, hero, tomorrowBreakfast],
+      hero,
+      "2026-09-28",
+      "lunch",
+      3,
+    );
+    expect(after.map((e) => e.recipe?.title)).toEqual([
+      "Curry",
+      "Eggs",
+      "Wraps",
+    ]);
+  });
+
+  it("keeps a second meal in the hero's own slot", () => {
+    const hero = entry("dinner", { title: "Curry" });
+    const side = entry("dinner", { title: "Naan" });
+    expect(
+      mealsAfter([hero, side], hero, "2026-09-28", "dinner", 3).map(
+        (e) => e.recipe?.title,
+      ),
+    ).toEqual(["Naan"]);
   });
 });
