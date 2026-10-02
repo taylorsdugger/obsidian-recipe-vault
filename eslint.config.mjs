@@ -18,6 +18,10 @@ export default defineConfig([
     "**/scripts/",
     "*.mjs",
     "**/*.config.ts",
+    // Other checkouts made by `cg worktree:add`-style tooling, and wrangler's
+    // generated bundles. Neither is this repo's source.
+    ".claude/",
+    "**/.wrangler/",
   ]),
   ...obsidianmd.configs.recommended,
   {
@@ -48,5 +52,12 @@ export default defineConfig([
         },
       ],
     },
+  },
+  {
+    // The Worker's bindings (D1Database, R2Bucket, Fetcher) are ambient types
+    // from @cloudflare/workers-types. TypeScript already checks names exist,
+    // and no-undef can't see type-only globals.
+    files: ["apps/web/src/worker/**/*.ts"],
+    rules: { "no-undef": "off" },
   },
 ]);
