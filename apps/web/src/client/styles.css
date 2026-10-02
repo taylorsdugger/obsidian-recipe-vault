@@ -1,9 +1,30 @@
 @import "tailwindcss";
 
 /*
+ * Newsreader, self-hosted so the installed PWA still has its titles offline.
+ * One variable file for both weights the app uses, latin only. The service
+ * worker precaches it with the rest of the shell (`globPatterns` picks up
+ * woff2), and `swap` means a cold load shows Georgia for a beat rather than
+ * blank titles.
+ */
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 500 600;
+  font-display: swap;
+  src: url("/fonts/newsreader.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/*
  * A small palette rather than raw Tailwind greys. Warm neutrals because the
  * screens are mostly food photography, and the amber from the app icon as the
  * one accent. Everything else is spacing and type.
+ *
+ * `faint` is about 2.6:1 on the canvas. It's for disabled and decorative
+ * things only - anything someone has to read is `muted` or darker.
  */
 @theme {
   --color-canvas: oklch(0.98 0.004 85);
@@ -14,18 +35,79 @@
   --color-faint: oklch(0.68 0.01 75);
   --color-accent: oklch(0.72 0.16 65);
   --color-accent-ink: oklch(0.42 0.12 60);
+  /* A selected row, today's date, the active tab. */
+  --color-accent-soft: oklch(0.95 0.035 80);
+  /* Text on an ink background. Ink turns light in dark mode, so white on it
+     would vanish - this turns dark with it. */
+  --color-on-ink: oklch(0.99 0.003 85);
+  /* Errors. A red-700 that stays readable once the canvas goes dark. */
+  --color-danger: oklch(0.5 0.19 27);
+
+  /* Screen titles, recipe titles and cook-mode step text. Nothing else. */
+  --font-display: "Newsreader", Georgia, serif;
 
   /*
-   * Three sizes Tailwind's scale doesn't have, each replacing a value that
-   * had been written as an arbitrary `text-[15px]` in a handful of places.
-   * Everything else uses xs / sm / base / lg / xl / 2xl as it comes.
+   * Sizes Tailwind's scale doesn't have, each replacing a value that had been
+   * written as an arbitrary `text-[15px]` in a handful of places. Everything
+   * else uses xs / sm / base / lg / xl / 2xl as it comes.
    */
-  --text-micro: 0.625rem; /* 10px - the uppercase labels over a day or a state */
+  --text-micro: 0.625rem; /* 10px - the smallest uppercase labels */
+  --text-caption: 0.6875rem; /* 11px - tab labels, aisle and day headers */
   --text-note: 0.8125rem; /* 13px - inline affordances, secondary to a row */
   --text-row: 0.9375rem; /* 15px - the title of a row in a list */
+  --text-step: 1.0625rem; /* 17px - a step you read from across the counter */
+}
+
+/* The browser's own bits - scrollbars, the date picker, autofill - follow
+   whichever palette is showing. */
+:root {
+  color-scheme: light dark;
 }
 
 @layer base {
+  /*
+   * Dark mode is the same tokens with different values, so no component has
+   * a dark variant of its own. `data-theme` wins either way when it's set;
+   * without it the phone's setting decides.
+   */
+  :root[data-theme="dark"] {
+    --color-canvas: oklch(0.18 0.006 65);
+    --color-surface: oklch(0.225 0.007 65);
+    --color-line: oklch(0.31 0.008 65);
+    --color-ink: oklch(0.94 0.008 85);
+    --color-muted: oklch(0.72 0.012 75);
+    --color-faint: oklch(0.56 0.01 75);
+    --color-accent: oklch(0.76 0.15 68);
+    --color-accent-ink: oklch(0.84 0.11 75);
+    --color-accent-soft: oklch(0.29 0.05 65);
+    --color-on-ink: oklch(0.18 0.006 65);
+    --color-danger: oklch(0.72 0.16 25);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --color-canvas: oklch(0.18 0.006 65);
+      --color-surface: oklch(0.225 0.007 65);
+      --color-line: oklch(0.31 0.008 65);
+      --color-ink: oklch(0.94 0.008 85);
+      --color-muted: oklch(0.72 0.012 75);
+      --color-faint: oklch(0.56 0.01 75);
+      --color-accent: oklch(0.76 0.15 68);
+      --color-accent-ink: oklch(0.84 0.11 75);
+      --color-accent-soft: oklch(0.29 0.05 65);
+      --color-on-ink: oklch(0.18 0.006 65);
+      --color-danger: oklch(0.72 0.16 25);
+    }
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
   html,
   body,
   #app {
@@ -59,22 +141,42 @@
    * One page shell. Screens used to disagree about this - two capped at
    * max-w-2xl and four had no cap at all, so on a desktop the plan sat in a
    * neat column while the shopping list ran the full width of the window.
+   *
+   * From `lg` every screen gets the same 1024px column, since that's where
+   * the desktop layouts (the week as seven columns, the list as two) start.
    */
   .screen {
-    @apply mx-auto w-full max-w-2xl px-3 py-3;
+    @apply mx-auto w-full max-w-2xl px-4 py-3 lg:max-w-5xl lg:px-8 lg:pt-9;
   }
 
   /*
-   * The gallery is the one screen that earns more width: it's a grid, and at
-   * max-w-2xl its four columns are 150px each. Same shell otherwise.
+   * The gallery is the one screen that earns more width under `lg`: it's a
+   * grid, and at max-w-2xl its four columns are 150px each.
    */
   .screen-wide {
-    @apply mx-auto w-full max-w-5xl px-3 py-3;
+    @apply mx-auto w-full max-w-5xl px-4 py-3 lg:px-8 lg:pt-9;
   }
 
-  /* A screen's top bar. Sticky so it survives the scroll on a long list. */
-  .screen-head {
-    @apply sticky top-0 z-10 border-b border-line bg-canvas/95 backdrop-blur;
+  /*
+   * A tab's header: a muted line of context over a big serif title. The
+   * context is the part that changes - the date, the week, the count - so it
+   * sits where the eye lands first. Clear of the notch in the installed app,
+   * where the status bar draws over the page.
+   */
+  .screen-title {
+    @apply flex items-end justify-between gap-3 px-1 pb-2;
+    padding-top: calc(0.5rem + env(safe-area-inset-top));
+  }
+
+  .title-display {
+    @apply font-display text-4xl leading-[1.05] font-medium tracking-[-0.01em] lg:text-[2.5rem];
+  }
+
+  /* A desktop has no notch, and the screen already pads its own top. */
+  @media (width >= 64rem) {
+    .screen-title {
+      padding-top: 0;
+    }
   }
 
   .card {
@@ -82,24 +184,38 @@
   }
 
   /* A pill of metadata: meal type, cook time, how often it's been made. */
-  /* On the recipe sheet the background is canvas, so a chip needs the surface
-     colour and a hairline to read as a pill rather than as loose text. */
   .chip {
     @apply inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-muted;
   }
 
-  /* Tailwind 4 won't @apply one custom class inside another, so the shared
-     button rules are spelled out in both rather than composed. */
+  /* The small filled tag on a row, like "Leftovers" on the plan. */
+  .chip-soft {
+    @apply inline-flex h-5 shrink-0 items-center rounded-full bg-accent-soft px-[7px] text-caption font-bold text-accent-ink;
+  }
+
+  /*
+   * The one big thing on a screen. A full pill at 54px, because it's what the
+   * thumb is reaching for from the bottom of the phone. Inline next to a field
+   * it shrinks back to a row's height with `min-h-11`.
+   *
+   * Tailwind 4 won't @apply one custom class inside another, so the shared
+   * button rules are spelled out in both rather than composed.
+   */
   .btn-primary {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-ink px-4 text-sm font-medium text-white transition-colors active:bg-ink/90 disabled:opacity-40;
+    @apply inline-flex min-h-[54px] items-center justify-center gap-2 rounded-full bg-ink px-5 text-base font-semibold text-on-ink transition-colors active:bg-ink/90 disabled:opacity-40;
   }
 
   .btn-quiet {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium text-ink transition-colors active:bg-canvas disabled:opacity-40;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-line bg-surface px-4 text-sm font-medium text-ink transition-colors active:bg-canvas disabled:opacity-40;
   }
 
   .field {
-    @apply min-h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-base placeholder:text-faint focus:border-accent focus:outline-none;
+    @apply min-h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-base text-ink placeholder:text-muted focus:border-accent focus:outline-none;
+  }
+
+  /* The field that lives in the action bar, docked by the thumb. */
+  .field-round {
+    @apply h-13 w-full min-w-0 rounded-full border border-line bg-surface px-5 text-base text-ink placeholder:text-muted focus:border-accent focus:outline-none;
   }
 
   /*
@@ -112,45 +228,47 @@
   }
 
   /*
-   * An icon button that has to be found, not just hit: the week's previous
-   * and next arrows. A full 44px square with a hairline and a surface, so it
-   * reads as a button at a glance rather than a stray glyph in the header.
+   * A round button over a photo or at the top of cook mode: back, more,
+   * close. 44px, on the surface colour so it reads against any picture.
    */
-  .icon-btn-quiet {
-    @apply grid size-11 shrink-0 place-items-center rounded-xl border border-line bg-surface text-ink transition-colors active:bg-canvas disabled:opacity-40;
+  .icon-btn-round {
+    @apply grid size-11 shrink-0 place-items-center rounded-full border border-line bg-surface text-ink transition-colors active:bg-canvas disabled:opacity-40;
   }
 
   /*
-   * The quiet "+ something" line. Deliberately not a button-looking button:
-   * it repeats once per day on the plan, and seven real buttons read as a
-   * to-do list rather than a week. It's still a thumb-sized row, and the plus
-   * sits in a small ring so there's something to aim at.
+   * The quiet "+ Add lunch" line. Deliberately not a button-looking button:
+   * it repeats down the plan, and a column of real buttons reads as a to-do
+   * list rather than a week. It's still a thumb-sized row.
    */
   .add-inline {
-    @apply flex min-h-10 items-center gap-2 text-sm text-muted transition-colors active:text-ink disabled:opacity-40;
+    @apply flex min-h-11 items-center gap-2 text-sm text-muted transition-colors active:text-ink disabled:opacity-40;
   }
 
-  .add-inline-mark {
-    @apply grid size-6 shrink-0 place-items-center rounded-full border border-dashed border-faint text-base leading-none;
-  }
-
-  /* The small uppercase label over a day, or on a state like "leftovers". */
+  /* The small uppercase label over a day, an aisle, or a state. */
   .label {
-    @apply text-micro font-medium tracking-wide uppercase;
+    @apply text-caption font-bold tracking-[0.08em] uppercase;
   }
 
   /*
-   * The bar that sits above the tab bar holding a screen's one main action:
-   * send to list, shop for the week. Its contents cap like a screen does, or
-   * on a desktop the button runs the whole width of the window.
+   * The bar that sits above the tab bar holding a screen's one main action,
+   * or its docked field. Its contents cap like a screen does, or on a desktop
+   * the button runs the whole width of the window.
    *
    * The offset is the tab bar's height plus the phone's home-indicator inset,
    * so on an iPhone it clears the bar rather than sitting half behind it. From
-   * `md` up the tab bar is a 14rem sidebar, and the bar starts to its right.
+   * `md` up the tab bar is a 232px sidebar, and the bar starts to its right.
+   * From `lg` each screen puts its action in its header instead, and hides
+   * the bar with `lg:hidden`.
    */
   .action-bar {
-    @apply fixed inset-x-0 z-10 border-t border-line bg-surface/95 p-3 backdrop-blur md:left-56;
-    bottom: calc(3.5rem + env(safe-area-inset-bottom));
+    @apply fixed inset-x-0 z-10 border-t border-line bg-canvas/95 px-4 pt-2 pb-2.5 backdrop-blur md:left-58;
+    bottom: calc(3.75rem + env(safe-area-inset-bottom));
+  }
+
+  /* On a pushed screen there's no tab bar under it, so it takes the inset. */
+  .action-bar-pushed {
+    bottom: 0;
+    padding-bottom: calc(0.625rem + env(safe-area-inset-bottom));
   }
 
   @media (width >= 48rem) {
@@ -161,20 +279,41 @@
 
   /* A toggle in a row of them: the gallery's sort. */
   .pill {
-    @apply rounded-full border border-line bg-surface px-3 py-1.5 text-sm text-muted transition-colors;
+    @apply inline-flex h-10 shrink-0 items-center rounded-full border border-line bg-surface px-4 text-sm font-semibold text-ink transition-colors;
   }
 
   .pill-on {
-    @apply rounded-full border border-ink bg-ink px-3 py-1.5 text-sm text-white transition-colors;
+    @apply inline-flex h-10 shrink-0 items-center rounded-full border border-ink bg-ink px-4 text-sm font-semibold text-on-ink transition-colors;
   }
 
   /*
-   * Checkboxes are the whole interaction on both of these screens, so they get
-   * a real box instead of the 13px native one, and the row around them is the
-   * hit area.
+   * Two-way switch: Ingredients / Steps. The track is the line colour and the
+   * chosen half lifts out of it as the surface, so it reads as one control
+   * rather than two buttons that happen to touch.
+   */
+  .segmented {
+    @apply grid grid-cols-2 gap-0.5 rounded-full bg-line p-[3px];
+  }
+
+  .segmented > .pill,
+  .segmented > .pill-on {
+    @apply h-12 justify-center rounded-full border-0 px-2 text-row;
+  }
+
+  .segmented > .pill {
+    @apply bg-transparent font-medium text-muted;
+  }
+
+  .segmented > .pill-on {
+    @apply bg-surface font-semibold text-ink;
+  }
+
+  /*
+   * Checkboxes are the whole interaction on the list and the ingredients, so
+   * they get a real box instead of the 13px native one.
    */
   .check {
-    @apply relative grid size-6 shrink-0 place-items-center rounded-md border-2 border-line bg-surface transition-colors;
+    @apply relative grid size-6.5 shrink-0 place-items-center rounded-md border-2 border-line bg-surface transition-colors;
   }
 
   .check:checked {
@@ -183,7 +322,87 @@
 
   .check:checked::after {
     content: "";
-    @apply absolute h-2 w-3.5 rotate-[-45deg] border-b-2 border-l-2 border-white;
+    @apply absolute h-2 w-3.5 rotate-[-45deg] border-b-2 border-l-2 border-on-ink;
     margin-top: -0.15rem;
+  }
+
+  /*
+   * The row around a checkbox. A <label>, so the whole row toggles it rather
+   * than the 26px box, and it tints once it's ticked so a picked row can be
+   * found at a glance down a long list.
+   */
+  .check-row {
+    @apply flex min-h-14 cursor-pointer items-center gap-3.5 rounded-xl px-2 transition-colors has-[:checked]:bg-accent-soft;
+  }
+
+  /* The active tab's icon sits in this. Inactive tabs are just the glyph. */
+  .tab-pill {
+    @apply grid h-7.5 w-14 place-items-center rounded-full bg-accent-soft text-accent-ink;
+  }
+
+  /*
+   * The PDF's page. Always printed light whatever the app's theme is, so it
+   * carries the light tokens itself instead of reading the dark ones off :root.
+   */
+  .recipe-print {
+    --color-ink: oklch(0.24 0.01 65);
+    --color-muted: oklch(0.45 0.012 70);
+    --color-line: oklch(0.88 0.006 85);
+    --color-accent: oklch(0.72 0.16 65);
+    --color-accent-ink: oklch(0.42 0.12 60);
+    color-scheme: light;
+    background: #fff;
+    color: var(--color-ink);
+  }
+
+  /*
+   * Cook mode. Over everything, tab bar and sidebar included: it's the whole
+   * screen or it isn't hands-free. Clear of the notch and the home indicator.
+   */
+  .cook {
+    @apply fixed inset-0 z-30 flex flex-col bg-canvas text-ink;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /*
+   * The next step, pinned to the bottom of the step area. Two lines is enough
+   * to know whether to reach for the pan now, without reading ahead.
+   */
+  .cook-next {
+    @apply mt-auto flex flex-col gap-1.5 rounded-[20px] border border-line bg-surface px-4 py-3.5;
+  }
+}
+
+/*
+ * Printing is only ever the PDF. Outside any layer on purpose: unlayered rules
+ * beat Tailwind's utilities, so `.print-only` stays hidden on screen even with
+ * `flex` on it.
+ */
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: letter;
+    margin: 0.55in;
+  }
+
+  #app {
+    display: none !important;
+  }
+
+  /* The share sheet locks the body's scroll, which would cut the print off at
+     one screen's height. */
+  html,
+  body {
+    height: auto;
+    overflow: visible !important;
+    background: #fff;
+  }
+
+  .print-only {
+    display: flex;
   }
 }

@@ -52,7 +52,7 @@ export function VaultImport() {
     }
   };
 
-  if (error) return <p class="text-sm text-red-700">{error}</p>;
+  if (error) return <p class="text-sm text-danger">{error}</p>;
   if (!status) return null;
 
   return (
@@ -72,7 +72,7 @@ export function VaultImport() {
       </button>
       {progress && <p class="text-sm text-muted">{progress}</p>}
       {!progress && syncedAt > 0 && (
-        <p class="text-sm text-faint">
+        <p class="text-sm text-muted">
           Last synced {new Date(syncedAt).toLocaleTimeString()}.
         </p>
       )}

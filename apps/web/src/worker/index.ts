@@ -7,6 +7,7 @@ import { importRoutes } from "./routes/import";
 import { listRoutes } from "./routes/list";
 import { planRoutes } from "./routes/plan";
 import { recipeRoutes } from "./routes/recipes";
+import { sharedRoutes, shareRoutes } from "./routes/share";
 import { settingsRoutes } from "./settings";
 import { vaultRoutes } from "./routes/vault";
 import { PARSE_OPTIONS as HEALTH_PARSE_OPTIONS } from "./parse-options";
@@ -57,6 +58,9 @@ const api = new Hono<AppBindings>()
     return c.json({ signedIn: false });
   });
 
+// A recipe someone was sent a link to. Outside the cookie on purpose.
+api.route("/shared", sharedRoutes);
+
 // Everything past this point needs the cookie.
 api.use("/recipes/*", requireAuth);
 api.use("/plan/*", requireAuth);
@@ -66,6 +70,7 @@ api.use("/vault/*", requireAuth);
 api.use("/settings/*", requireAuth);
 
 api.route("/recipes", recipeRoutes);
+api.route("/recipes", shareRoutes);
 api.route("/plan", planRoutes);
 api.route("/list", listRoutes);
 api.route("/import", importRoutes);

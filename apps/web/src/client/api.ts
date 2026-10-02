@@ -159,6 +159,25 @@ export interface PlanListItem {
 
 export type RecipeSort = "alpha" | "recent" | "made" | "quick";
 
+/**
+ * A recipe as a public link shows it, and as the PDF prints it. No times made,
+ * no last cooked: the share sheet says those aren't shared.
+ */
+export interface PublicRecipe {
+  title: string;
+  mealType: string | null;
+  cookTime: string | null;
+  author: string | null;
+  sourceUrl: string | null;
+  photoUrl: string | null;
+  ingredients: string[];
+  steps: string[];
+  notes: string[];
+}
+
+/** Thrown by `api.shared` when the link was turned off, or never existed. */
+export class LinkOff extends Error {}
+
 export const api = {
   session: () => request<{ signedIn: boolean }>("/session"),
   login: (password: string) =>
@@ -185,8 +204,7 @@ export const api = {
     }),
 
   /** What recipes imported in the app are saved as. */
-  recipeFormat: () =>
-    request<{ recipeFormat: RecipeFormat }>("/settings"),
+  recipeFormat: () => request<{ recipeFormat: RecipeFormat }>("/settings"),
 
   setRecipeFormat: (recipeFormat: RecipeFormat) =>
     request<{ recipeFormat: RecipeFormat }>("/settings", {
@@ -242,6 +260,24 @@ export const api = {
       `/recipes/${id}/made`,
       { method: "POST", body: JSON.stringify({ date: dateKey(new Date()) }) },
     ),
+
+  /** The recipe's public link token, or null while it's off. */
+  share: (id: string) =>
+    request<{ token: string | null }>(`/recipes/${id}/share`),
+
+  startShare: (id: string) =>
+    request<{ token: string }>(`/recipes/${id}/share`, { method: "POST" }),
+
+  stopShare: (id: string) =>
+    request<{ token: null }>(`/recipes/${id}/share`, { method: "DELETE" }),
+
+  /** The public page's fetch. Needs no cookie. */
+  shared: async (token: string) => {
+    const res = await window.fetch(`/api/shared/${encodeURIComponent(token)}`);
+    if (res.status === 404) throw new LinkOff();
+    if (!res.ok) throw new Error(`Request failed (${res.status})`);
+    return res.json<{ recipe: PublicRecipe }>();
+  },
 
   plan: (from: string, to: string) =>
     request<{ entries: PlanEntry[] }>(
