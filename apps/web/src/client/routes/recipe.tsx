@@ -9,7 +9,7 @@ import { api, type PublicRecipe, type RecipeDetail } from "../api";
 import { CookMode } from "../components/cook-mode";
 import { Icon } from "../components/icon";
 import { PhotoViewer } from "../components/photo-viewer";
-import { BowlMark } from "../components/recipe-photo";
+import { PotMark } from "../components/logo";
 import { ShareSheet } from "../components/share-sheet";
 import { Sheet } from "../components/sheet";
 import { madeToday, shortDate, spaced } from "../format";
@@ -455,7 +455,7 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
               </button>
             ) : (
               <div class="grid h-55 place-items-center rounded-3xl bg-linear-to-b from-surface to-canvas">
-                <BowlMark class="size-14 text-faint/45" />
+                <PotMark class="size-14 text-faint/45" />
               </div>
             )}
             <div class="flex items-center justify-between gap-3 pt-1">
@@ -528,7 +528,7 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
             </button>
           ) : (
             <div class="grid size-full place-items-center bg-linear-to-b from-surface to-canvas">
-              <BowlMark class="size-14 text-faint/45" />
+              <PotMark class="size-14 text-faint/45" />
             </div>
           )}
 

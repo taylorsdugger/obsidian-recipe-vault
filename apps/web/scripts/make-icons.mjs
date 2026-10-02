@@ -14,12 +14,14 @@ import { fileURLToPath } from "node:url";
 
 const OUT = fileURLToPath(new URL("../public/", import.meta.url));
 
-const BG = [23, 23, 23]; // neutral-900, same as the buttons in the app
-const BOWL = [250, 250, 250];
-const STEAM = [245, 158, 11]; // amber, the one bit of warmth
+// Logo C5 from the redesign canvas: an ink pot on the app's amber, its lid
+// tipped open. Both colours are the app's own tokens (accent and ink) turned
+// into sRGB, so the icon matches the sidebar mark drawn from them.
+const BG = [231, 140, 8]; // --color-accent, oklch(0.72 0.16 65)
+const INK = [35, 30, 26]; // --color-ink, oklch(0.24 0.01 65)
 
 // ---- signed distance fields ----------------------------------------------
-// Each returns the distance from (x, y) to the shape's edge: negative inside.
+// Distance from (x, y) to the shape's edge: negative inside.
 
 function sdRoundedRect(x, y, cx, cy, halfW, halfH, r) {
   const dx = Math.abs(x - cx) - (halfW - r);
@@ -28,82 +30,53 @@ function sdRoundedRect(x, y, cx, cy, halfW, halfH, r) {
   return outside + Math.min(Math.max(dx, dy), 0) - r;
 }
 
-function sdCircle(x, y, cx, cy, r) {
-  return Math.hypot(x - cx, y - cy) - r;
-}
-
 /**
- * Cheap ellipse field: squash the space, measure a circle, unsquash. Not an
- * exact distance, but the error is well under a pixel at these radii and it
- * only ever feeds a `< 0` test and the anti-aliasing ramp.
+ * The canvas's `rect(x, y, w, h, r)`, optionally turned `deg` about a pivot.
+ * The point is turned back the other way rather than the box turned forward,
+ * which keeps the field exact.
  */
-function sdEllipse(x, y, cx, cy, rx, ry) {
-  return (Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * Math.min(rx, ry);
-}
-
-/** Distance to a line segment thickened by `r` — a rounded stroke. */
-function sdCapsule(x, y, ax, ay, bx, by, r) {
-  const pax = x - ax;
-  const pay = y - ay;
-  const bax = bx - ax;
-  const bay = by - ay;
-  const h = Math.min(1, Math.max(0, (pax * bax + pay * bay) / (bax * bax + bay * bay)));
-  return Math.hypot(pax - bax * h, pay - bay * h) - r;
-}
-
-/** A polyline thickened by a radius tapering `r0` -> `r1` along its length. */
-function sdStroke(x, y, pts, r0, r1) {
-  let d = Infinity;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const t = i / (pts.length - 2 || 1);
-    const r = r0 + (r1 - r0) * t;
-    const p = pts[i];
-    const q = pts[i + 1];
-    d = Math.min(d, sdCapsule(x, y, p[0], p[1], q[0], q[1], r));
+function box(x, y, w, h, r, pivot) {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  if (!pivot) {
+    return (px, py) => sdRoundedRect(px, py, cx, cy, w / 2, h / 2, r);
   }
-  return d;
-}
-
-/**
- * A rising wisp: a sine wobble on the way up, so it curls rather than points.
- * Built once at module scope - `paint` runs sixteen times per pixel, and
- * rebuilding these there is twelve million throwaway arrays per icon.
- */
-function wisp(x0, y0, height, amp, phase, steps = 20) {
-  const pts = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    pts.push([x0 + amp * Math.sin(phase + t * Math.PI * 1.5), y0 - height * t]);
-  }
-  return pts;
+  const [ox, oy, deg] = pivot;
+  const a = (-deg * Math.PI) / 180;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  return (px, py) => {
+    const dx = px - ox;
+    const dy = py - oy;
+    return sdRoundedRect(
+      ox + dx * cos - dy * sin,
+      oy + dx * sin + dy * cos,
+      cx,
+      cy,
+      w / 2,
+      h / 2,
+      r,
+    );
+  };
 }
 
 // ---- the glyph ------------------------------------------------------------
-// A bowl of something hot. Three things earn their specific values here, and
-// all three were wrong in the first version of this icon:
-//
-//   The rim is flush with the bowl. It runs to `RX - RIM` so the capsule's
-//   cap lands exactly on the bowl's edge. A rim overhanging a rounded body is
-//   a lid or a tray, which is what the old one read as.
-//
-//   The bowl is an ellipse cut at its centre, not a circle cut below one.
-//   Cutting a circle low does give a deeper bowl, but its widest point ends up
-//   under the rim, so it bulges out past it - the same fault, mirrored.
-//
-//   The steam starts at the rim and curls. Detached marks don't read as coming
-//   off anything, and three straight strokes fanned symmetrically read as rays.
-//   Staggering the heights gives the group a centre.
+// In the canvas's 100-unit box, numbers copied from its `potFun` mark so the
+// two stay comparable. The lid and its knob tip 6 degrees about the lid's
+// left end, like it's been nudged open to check on something.
 
-const RX = 0.28;
-const RY = 0.3;
-const CY = 0.52;
-const RIM = 0.036;
+const LID_TIP = [18, 41, -6];
 
-const WISPS = [
-  { pts: wisp(0.36, 0.45, 0.17, 0.03, 0.55), r0: 0.028, r1: 0.016 },
-  { pts: wisp(0.5, 0.46, 0.25, 0.036, 0), r0: 0.031, r1: 0.017 },
-  { pts: wisp(0.64, 0.45, 0.19, -0.03, -0.55), r0: 0.028, r1: 0.016 },
+const POT = [
+  box(44, 24, 12, 8, 3, LID_TIP), // knob
+  box(18, 33, 64, 8, 4, LID_TIP), // lid
+  box(22, 44, 56, 42, 11), // body
+  box(10, 50, 14, 8, 4), // left handle
+  box(76, 50, 14, 8, 4), // right handle
 ];
+
+/** The glare down the pot's left side, cut back to the background. */
+const GLARE = box(30, 52, 5, 15, 2.5);
 
 /**
  * Drawn in a unit square so the same geometry works at every size. `scale`
@@ -111,17 +84,12 @@ const WISPS = [
  * a circle by the launcher.
  */
 function paint(u, v, scale, rounded) {
-  // Move to glyph space: centred on the middle of the canvas, then scaled.
-  const x = 0.5 + (u - 0.5) / scale;
-  const y = 0.5 + (v - 0.5) / scale;
+  // Move to glyph space: centred on the middle of the canvas, then scaled,
+  // then into the canvas's 100-unit box.
+  const x = (0.5 + (u - 0.5) / scale) * 100;
+  const y = (0.5 + (v - 0.5) / scale) * 100;
 
-  for (const { pts, r0, r1 } of WISPS) {
-    if (sdStroke(x, y, pts, r0, r1) < 0) return STEAM;
-  }
-
-  const bowl = Math.max(sdEllipse(x, y, 0.5, CY, RX, RY), CY - y);
-  const rim = sdCapsule(x, y, 0.5 - (RX - RIM), CY, 0.5 + (RX - RIM), CY, RIM);
-  if (Math.min(bowl, rim) < 0) return BOWL;
+  if (GLARE(x, y) >= 0 && POT.some((shape) => shape(x, y) < 0)) return INK;
 
   // A maskable icon bleeds to the edge; a plain one gets its own rounded square.
   if (!rounded) return BG;

@@ -3,7 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import { api, LinkOff, type PublicRecipe } from "../api";
 import { CookMode } from "../components/cook-mode";
 import { Icon } from "../components/icon";
-import { BowlMark } from "../components/recipe-photo";
+import { AppIcon, PotMark } from "../components/logo";
 import { spaced, sourceHost } from "../format";
 import { back, navigate, replace } from "../router";
 import { useWakeLock } from "../wake-lock";
@@ -70,13 +70,6 @@ export function Shared({
   const startCooking = () => navigate(`${home}/cook`);
   const photo = recipe.photoUrl && !broken ? recipe.photoUrl : null;
   const host = recipe.sourceUrl ? sourceHost(recipe.sourceUrl) : null;
-
-  const brand = (mark: string) => (
-    <span
-      aria-hidden="true"
-      class={`shrink-0 rounded-[5px] bg-accent ${mark}`}
-    />
-  );
 
   const meta = (
     <div class="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-sm text-muted lg:gap-x-4">
@@ -152,7 +145,7 @@ export function Shared({
       <div
         class={`grid place-items-center bg-linear-to-b from-surface to-canvas ${box}`}
       >
-        <BowlMark class="size-14 text-faint/45" />
+        <PotMark class="size-14 text-faint/45" />
       </div>
     );
 
@@ -163,7 +156,7 @@ export function Shared({
       <div class="hidden min-h-full flex-col lg:flex">
         <header class="flex h-[72px] shrink-0 items-center gap-4 border-b border-line bg-surface px-10">
           <span class="flex flex-1 items-center gap-2.5 text-sm text-muted">
-            {brand("size-[22px] rounded-[7px]")}
+            <AppIcon class="size-[22px]" />
             Shared from
             <span class="font-display text-lg font-semibold text-ink">
               Recipe Vault
@@ -215,7 +208,7 @@ export function Shared({
       {/* Phone: one half at a time behind the switch, like the recipe screen. */}
       <div class="mx-auto max-w-2xl lg:hidden">
         <div class="flex h-12 items-center gap-2 px-5 pt-[env(safe-area-inset-top)] text-note text-muted">
-          {brand("size-4")}
+          <AppIcon class="size-4" />
           Shared from Recipe Vault
         </div>
         {photoBox(

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 
 import { api } from "../api";
+import { AppIcon } from "./logo";
 import { navigate } from "../router";
 import { SYNCED_EVENT } from "../sync";
 
@@ -93,7 +94,7 @@ export function TabBar({ path, pushed }: { path: string; pushed: boolean }) {
       class={`${pushed ? "hidden md:flex" : "flex"} shrink-0 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:order-first md:w-58 md:flex-col md:gap-1 md:border-t-0 md:border-r md:px-3.5 md:py-6`}
     >
       <div class="hidden items-center gap-2.5 px-2.5 pb-5.5 md:flex">
-        <span aria-hidden="true" class="size-7 rounded-lg bg-accent" />
+        <AppIcon class="size-7" />
         <span class="font-display text-[1.3125rem] font-semibold">
           Recipe Vault
         </span>
