@@ -198,6 +198,31 @@ export const Keymap = {
   isModEvent: (): boolean => false,
 };
 
+export class Component {
+  load(): void {}
+  unload(): void {}
+  onload(): void {}
+  onunload(): void {}
+  addChild<T>(child: T): T {
+    return child;
+  }
+  removeChild<T>(child: T): T {
+    return child;
+  }
+  registerEvent(): void {}
+  registerDomEvent(): void {}
+}
+
+export const MarkdownRenderer = {
+  render: (): Promise<void> => Promise.resolve(),
+};
+
+export const Platform = { isMobile: false, isPhone: false };
+
+export function debounce<T extends (...args: any[]) => void>(fn: T): T {
+  return fn;
+}
+
 export class WorkspaceLeaf {}
 export class App {}
 export class MarkdownView {}

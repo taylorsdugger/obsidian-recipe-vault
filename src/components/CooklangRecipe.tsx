@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import { setIcon } from "obsidian";
 import { formatIsoDuration } from "@recipe-vault/core";
 import type {
   CooklangIngredient,
@@ -21,6 +23,12 @@ interface CooklangRecipeProps {
   onMarkMade: () => void;
   onAddToList: () => void;
   onEdit: () => void;
+  onCook: () => void;
+  /** `rail` lays out in two columns once the pane is wide enough. */
+  layout: "rail" | "kitchen";
+  /** The Kitchen layout's Ingredients / Steps switch. */
+  tab: "ingredients" | "steps";
+  onTab: (tab: "ingredients" | "steps") => void;
   /** Where a recipe reference points in the vault, or null if nowhere. */
   linkFor: (reference: string) => string | null;
   onOpenLink: (path: string, event: MouseEvent) => void;
@@ -65,7 +73,7 @@ function RecipeLink({
 }
 
 /** "2 tbsp", or "" when the file gives no amount. */
-function amountText(item: { quantity: string; unit?: string }): string {
+export function amountText(item: { quantity: string; unit?: string }): string {
   return [item.quantity, item.unit].filter(Boolean).join(" ");
 }
 
@@ -85,7 +93,7 @@ function siteName(url: string): string {
 }
 
 /** "1/2 cup milk, warmed", the same line a recipe note gets. */
-function ingredientText(ingredient: CooklangIngredient): string {
+export function ingredientText(ingredient: CooklangIngredient): string {
   const line = [amountText(ingredient), ingredient.name]
     .filter(Boolean)
     .join(" ");
@@ -120,14 +128,16 @@ function IngredientItem({
           checked={checked}
           onChange={onToggle}
         />
-        {amount && `${amount} `}
-        <RecipeLink
-          name={ingredient.name}
-          reference={ingredient.recipe}
-          linkFor={linkFor}
-          onOpenLink={onOpenLink}
-        />
-        {ingredient.prep && `, ${ingredient.prep}`}
+        <span className="recipe-item-text">
+          {amount && `${amount} `}
+          <RecipeLink
+            name={ingredient.name}
+            reference={ingredient.recipe}
+            linkFor={linkFor}
+            onOpenLink={onOpenLink}
+          />
+          {ingredient.prep && `, ${ingredient.prep}`}
+        </span>
       </li>
     );
   }
@@ -142,7 +152,7 @@ function IngredientItem({
         checked={checked}
         onChange={onToggle}
       />
-      {ingredientText(ingredient)}
+      <span className="recipe-item-text">{ingredientText(ingredient)}</span>
     </li>
   );
 }
@@ -187,7 +197,23 @@ function Token({
   }
 }
 
-/** A `.cook` file laid out like a recipe note made from the default template. */
+/** An Obsidian (lucide) icon. */
+function Icon({ name }: { name: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (ref.current) setIcon(ref.current, name);
+  }, [name]);
+  return <span className="recipe-button-icon" ref={ref} />;
+}
+
+/**
+ * A `.cook` file laid out like a recipe note made from the default template,
+ * with the same class names, so the same css gives it the rail on a wide
+ * pane and the Kitchen layout on a phone.
+ *
+ * The hero and ingredients render twice: once in the rail, once in the
+ * single column. CSS shows whichever fits the pane.
+ */
 export function CooklangRecipe({
   recipe,
   summary,
@@ -198,6 +224,10 @@ export function CooklangRecipe({
   onMarkMade,
   onAddToList,
   onEdit,
+  onCook,
+  layout,
+  tab,
+  onTab,
   linkFor,
   onOpenLink,
 }: CooklangRecipeProps) {
@@ -230,149 +260,286 @@ export function CooklangRecipe({
   ];
   const shownFacts = facts.filter(([, value]) => value);
   const isEmpty = recipe.sections.length === 0 && recipe.notes.length === 0;
+  const kitchen = layout === "kitchen";
+  const stepCount = recipe.sections.reduce((n, s) => n + s.steps.length, 0);
 
-  // Laid out like the default note template, with Obsidian's own reading-mode
-  // classes, so the vault's theme styles it the same as a recipe note.
+  const hero = imageSrc ? (
+    <div className="recipe-hero">
+      <img src={imageSrc} alt={name} />
+    </div>
+  ) : null;
+
+  const ingredientList = (
+    <ul className="contains-task-list">
+      {recipe.ingredients.map((ingredient, i) => (
+        <IngredientItem
+          key={i}
+          ingredient={ingredient}
+          checked={checked.has(i)}
+          onToggle={() => onToggle(i)}
+          linkFor={linkFor}
+          onOpenLink={onOpenLink}
+        />
+      ))}
+    </ul>
+  );
+
+  const addText =
+    checked.size > 0
+      ? kitchen
+        ? `Add ${checked.size} to list`
+        : `Add ${checked.size} to shopping list`
+      : kitchen
+        ? "Add to list"
+        : "Add checked to shopping list";
+
+  /**
+   * The whole row ticks, like a note's rows do. A link inside it still
+   * opens instead.
+   */
+  const toggleRow = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (!target || target.closest("a, input, button")) return;
+    target
+      .closest("li.task-list-item")
+      ?.querySelector<HTMLInputElement>("input.task-list-item-checkbox")
+      ?.click();
+  };
+
+  // Obsidian's own reading-mode classes, so the vault's theme styles it the
+  // same as a recipe note.
   return (
-    <div className="markdown-preview-view markdown-rendered is-readable-line-width cooklang-recipe">
-      <div className="markdown-preview-sizer markdown-preview-section">
-        <h1>
-          {url ? (
-            <a
-              className="external-link"
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {name}
-            </a>
-          ) : (
-            name
-          )}
-        </h1>
+    <div
+      className={[
+        "markdown-preview-view markdown-rendered is-readable-line-width",
+        "cooklang-recipe recipe-note",
+        kitchen ? "recipe-layout-kitchen" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-recipe-tab={kitchen ? tab : undefined}
+      onClick={toggleRow}
+    >
+      {kitchen && (
+        <div className="recipe-tabs">
+          <div
+            className="recipe-tabs-track"
+            role="tablist"
+            aria-label="Recipe sections"
+          >
+            {(
+              [
+                ["ingredients", "Ingredients", recipe.ingredients.length],
+                ["steps", "Steps", stepCount],
+              ] as const
+            ).map(([key, label, count]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                className="recipe-tab"
+                aria-selected={tab === key}
+                onClick={() => onTab(key)}
+              >
+                <span>{label}</span>
+                <span className="recipe-tab-count">{count || ""}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="recipe-tabs-cook"
+            onClick={onCook}
+            disabled={stepCount === 0}
+          >
+            <Icon name="flame" />
+            <span className="recipe-button-text">Cook</span>
+          </button>
+        </div>
+      )}
 
-        <div className="cooklang-actions">
-          <button type="button" className="mod-cta" onClick={onMarkMade}>
-            Mark as made
+      <div className="recipe-layout">
+        {!kitchen && (
+          <aside className="recipe-rail">
+            {hero}
+            {recipe.ingredients.length > 0 && (
+              <>
+                <div className="recipe-rail-head">
+                  <h3>Ingredients</h3>
+                  <span className="recipe-rail-count">
+                    {checked.size} of {recipe.ingredients.length} picked
+                  </span>
+                </div>
+                <div className="recipe-rail-list">{ingredientList}</div>
+              </>
+            )}
+          </aside>
+        )}
+
+        <div className="markdown-preview-sizer markdown-preview-section recipe-main">
+          <h1>
+            {url ? (
+              <a
+                className="external-link"
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {name}
+              </a>
+            ) : (
+              name
+            )}
+          </h1>
+
+          {hero && <div data-recipe-section="hero">{hero}</div>}
+
+          {description && <p>{description}</p>}
+
+          {(shownFacts.length > 0 || url || tags.length > 0) && (
+            <div data-recipe-section="meta">
+              <div className="callout" data-callout="recipe-meta">
+                <div className="callout-title">
+                  <div className="callout-title-inner">At a Glance</div>
+                </div>
+                <div className="callout-content">
+                  <div className="recipe-meta-grid">
+                    {shownFacts.map(([label, value]) => (
+                      <div key={label} className="recipe-meta-item">
+                        <strong>{label}</strong>: {value}
+                      </div>
+                    ))}
+                    {url && (
+                      <div className="recipe-meta-item">
+                        <strong>Source</strong>:{" "}
+                        <a
+                          className="external-link"
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {siteName(url)}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                  {tags.length > 0 && (
+                    <p>
+                      {tags.map((tag) => (
+                        <span key={tag} className="tag cooklang-tag">
+                          #{tag}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="recipe-note-actions">
+            <button type="button" onClick={onMarkMade}>
+              <Icon name="circle-check" />
+              <span className="recipe-button-text">Mark as made</span>
+            </button>
+            <button
+              type="button"
+              className="mod-cta"
+              disabled={checked.size === 0}
+              onClick={onAddToList}
+            >
+              <Icon name="shopping-cart" />
+              <span className="recipe-button-text">{addText}</span>
+            </button>
+            <button type="button" onClick={onCook} disabled={stepCount === 0}>
+              <Icon name="flame" />
+              <span className="recipe-button-text">Cook</span>
+            </button>
+            <button type="button" onClick={onEdit}>
+              <Icon name="pencil" />
+              <span className="recipe-button-text">Edit</span>
+            </button>
+          </div>
+
+          {isEmpty && <p>No steps yet. Edit the file to add some.</p>}
+
+          {recipe.ingredients.length > 0 && (
+            <div data-recipe-section="ingredients">
+              <h3>Ingredients</h3>
+              {ingredientList}
+            </div>
+          )}
+
+          {recipe.cookware.length > 0 && (
+            <div data-recipe-section="cookware">
+              <h3>Cookware</h3>
+              <ul>
+                {recipe.cookware.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {recipe.sections.length > 0 && (
+            <div data-recipe-section="instructions">
+              <h3>Instructions</h3>
+              {recipe.sections.map((section, s) => (
+                <div key={s}>
+                  {section.name && <h4>{section.name}</h4>}
+                  <ul>
+                    {section.steps.map((step, i) => (
+                      <li key={i}>
+                        {step.tokens.map((token, t) => (
+                          <Token
+                            key={t}
+                            token={token}
+                            linkFor={linkFor}
+                            onOpenLink={onOpenLink}
+                          />
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {recipe.notes.length > 0 && (
+            <div data-recipe-section="notes">
+              <h3>Notes</h3>
+              <blockquote>
+                {recipe.notes.map((note, i) => (
+                  <p key={i}>{note}</p>
+                ))}
+              </blockquote>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {kitchen && (
+        <div className="recipe-dock">
+          <button
+            type="button"
+            className="recipe-dock-icon"
+            aria-label="Mark as made"
+            onClick={onMarkMade}
+          >
+            <Icon name="circle-check" />
           </button>
           <button
             type="button"
+            className="mod-cta recipe-add-button"
             disabled={checked.size === 0}
             onClick={onAddToList}
           >
-            {checked.size > 0
-              ? `Add ${checked.size} to shopping list`
-              : "Add checked to shopping list"}
-          </button>
-          <button type="button" onClick={onEdit}>
-            Edit
+            <Icon name="shopping-cart" />
+            <span className="recipe-button-text">{addText}</span>
           </button>
         </div>
-
-        {imageSrc && <img src={imageSrc} alt={name} />}
-
-        {description && <p>{description}</p>}
-
-        {(shownFacts.length > 0 || url || tags.length > 0) && (
-          <div className="callout" data-callout="recipe-meta">
-            <div className="callout-title">
-              <div className="callout-title-inner">At a Glance</div>
-            </div>
-            <div className="callout-content">
-              {shownFacts.map(([label, value]) => (
-                <p key={label}>
-                  <strong>{label}</strong>: {value}
-                </p>
-              ))}
-              {url && (
-                <p>
-                  <strong>Source</strong>:{" "}
-                  <a
-                    className="external-link"
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {siteName(url)}
-                  </a>
-                </p>
-              )}
-              {tags.length > 0 && (
-                <p>
-                  {tags.map((tag) => (
-                    <span key={tag} className="tag cooklang-tag">
-                      #{tag}
-                    </span>
-                  ))}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {isEmpty && <p>No steps yet. Edit the file to add some.</p>}
-
-        {recipe.ingredients.length > 0 && (
-          <>
-            <h3>Ingredients</h3>
-            <ul className="contains-task-list">
-              {recipe.ingredients.map((ingredient, i) => (
-                <IngredientItem
-                  key={i}
-                  ingredient={ingredient}
-                  checked={checked.has(i)}
-                  onToggle={() => onToggle(i)}
-                  linkFor={linkFor}
-                  onOpenLink={onOpenLink}
-                />
-              ))}
-            </ul>
-          </>
-        )}
-
-        {recipe.cookware.length > 0 && (
-          <>
-            <h3>Cookware</h3>
-            <ul>
-              {recipe.cookware.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </>
-        )}
-
-        {recipe.sections.length > 0 && <h3>Instructions</h3>}
-        {recipe.sections.map((section, s) => (
-          <div key={s}>
-            {section.name && <h4>{section.name}</h4>}
-            <ul>
-              {section.steps.map((step, i) => (
-                <li key={i}>
-                  {step.tokens.map((token, t) => (
-                    <Token
-                      key={t}
-                      token={token}
-                      linkFor={linkFor}
-                      onOpenLink={onOpenLink}
-                    />
-                  ))}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-
-        {recipe.notes.length > 0 && (
-          <>
-            <h3>Notes</h3>
-            <blockquote>
-              {recipe.notes.map((note, i) => (
-                <p key={i}>{note}</p>
-              ))}
-            </blockquote>
-          </>
-        )}
-      </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,11 @@ import RecipeVault from "./main";
 import * as c from "./constants";
 
 export interface PluginSettings {
+  /**
+   * How a recipe looks on a phone. Classic is the one scrolling page.
+   * Kitchen splits it into Ingredients and Steps with a bar at the bottom.
+   */
+  mobileRecipeLayout: "classic" | "kitchen";
   folder: string;
   /** What new recipes are saved as. Existing files stay in their format. */
   recipeFormat: "markdown" | "cooklang";
@@ -50,6 +55,7 @@ const AI_MODEL_PRESETS: Array<{ id: string; label: string }> = [
 const AI_MODEL_OTHER = "__other__";
 
 export const DEFAULT_SETTINGS: PluginSettings = {
+  mobileRecipeLayout: "classic",
   folder: "Recipes",
   recipeFormat: "markdown",
   saveInActiveFile: false,
@@ -215,6 +221,23 @@ export class SettingsTab extends PluginSettingTab {
     );
 
     return [
+      {
+        name: "Recipe layout on small screens",
+        desc: "Classic is the recipe as one scrolling page. Kitchen splits it into Ingredients and Steps tabs, with bigger rows to tap and a bar at the bottom for adding to your list. Kitchen is used on phones and tablets, and on desktop when a recipe's pane is narrower than about 640px. On a wide pane the ingredients always sit in a column beside the steps.",
+        render: (setting) => {
+          setting.addDropdown((dropdown) => {
+            dropdown.addOption("classic", "Classic");
+            dropdown.addOption("kitchen", "Kitchen");
+            dropdown.setValue(this.plugin.settings.mobileRecipeLayout);
+            dropdown.onChange(async (value) => {
+              this.plugin.settings.mobileRecipeLayout =
+                value === "kitchen" ? "kitchen" : "classic";
+              await this.plugin.saveSettings();
+              this.plugin.applyRecipeLayoutSetting();
+            });
+          });
+        },
+      },
       {
         name: "Recipe save folder",
         desc: "Default recipe import location. If empty, recipe will be imported in the Vault root.",

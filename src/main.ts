@@ -1,8 +1,11 @@
 import {
-  App,
+  MarkdownRenderer,
   MarkdownView,
   MarkdownPostProcessorContext,
+  MarkdownSectionInformation,
+  Platform,
   Plugin,
+  debounce,
   Notice,
   requestUrl,
   normalizePath,
@@ -29,6 +32,26 @@ import {
   thumbPathForImage,
 } from "./utils/recipeLoader";
 import { PhotoRecipeModal } from "./modal-photo-recipe";
+import { CookModeModal } from "./modal-cook";
+import {
+  RecipeNoteLayout,
+  buildRecipeActions,
+  gridMetaCallout,
+  isIngredientList,
+  wrapTaskText,
+} from "./recipe-note-layout";
+import type { RecipeActions, RecipeLayoutKind } from "./recipe-note-layout";
+import {
+  RecipeOutline,
+  cookSteps,
+  countChecked,
+  holdsActions,
+  ingredientLines,
+  ingredientsForStep,
+  recipeOutline,
+  sectionRole,
+  takeCheckedIngredients,
+} from "./recipe-structure";
 import { ConfirmModal } from "./modal-confirm";
 import {
   PickRecipeFileModal,
@@ -86,12 +109,6 @@ interface IngredientIndexEntry {
   cook?: CooklangIndexInfo;
 }
 
-type CommandExecutorApp = App & {
-  commands: {
-    executeCommandById(commandId: string): boolean;
-  };
-};
-
 /** Vault augmented with the (untyped) attachment-path helper Obsidian exposes. */
 type VaultWithAttachments = Vault & {
   getAvailablePathForAttachments(
@@ -131,12 +148,6 @@ export default class RecipeVault extends Plugin {
 
   /** Set while a folder import runs, so a second one can't start on top. */
   private folderImportRunning = false;
-
-  private executeCommand(commandId: string): boolean {
-    return (
-      this.app as unknown as CommandExecutorApp
-    ).commands.executeCommandById(commandId);
-  }
 
   private hasRecipeNoteCssClass(value: unknown): boolean {
     return Array.isArray(value)
@@ -318,155 +329,219 @@ export default class RecipeVault extends Plugin {
     );
   }
 
-  private injectRecipeActions(
+  /** The parsed outline of a note's text, kept for the last few texts seen. */
+  private outlineCache = new Map<string, RecipeOutline>();
+
+  private outlineOf(text: string): RecipeOutline {
+    let outline = this.outlineCache.get(text);
+    if (!outline) {
+      outline = recipeOutline(text);
+      // Reading view hands over the same text once per section, so a tiny
+      // cache saves re-parsing the note for every one of them.
+      if (this.outlineCache.size > 8) this.outlineCache.clear();
+      this.outlineCache.set(text, outline);
+    }
+    return outline;
+  }
+
+  /**
+   * Tag each reading-view section with its part of the recipe, so the css
+   * can lay the note out by role instead of guessing from headings. Done
+   * per section at render time, which survives reading view dropping
+   * sections from the dom as you scroll.
+   */
+  private processRecipeSection(
     el: HTMLElement,
     context: MarkdownPostProcessorContext,
   ): void {
-    const container =
-      el.closest(".markdown-preview-sizer") ??
-      el.querySelector(".markdown-preview-sizer") ??
-      el.closest(".markdown-preview-view");
-    if (!(container instanceof HTMLElement)) {
-      return;
-    }
-
     const file = this.app.vault.getAbstractFileByPath(context.sourcePath);
-    if (!(file instanceof TFile)) {
+    if (!(file instanceof TFile) || !this.isRecipeFile(file)) return;
+    const info = context.getSectionInfo(el);
+    if (info) {
+      this.lastNoteText.set(file.path, info.text);
+      this.tagRecipeSection(el, file, info);
       return;
     }
 
-    const previewRoot = container.closest(
-      ".markdown-preview-view, .markdown-source-view.mod-cm6",
-    );
-    const hasRecipeClassOnView =
-      previewRoot instanceof HTMLElement &&
-      previewRoot.classList.contains("recipe-note");
-
-    if (!this.isRecipeFile(file) && !hasRecipeClassOnView) {
+    // Null for anything that isn't one section of a whole note, which then
+    // just lays out in the single column. But reading view also hands over a
+    // section it's re-rendering after an edit (a tick, say) before it can say
+    // which lines it covers. An ingredient list missed that way would show up
+    // in the main column next to the rail, so it's recognised by its lines,
+    // and anything else gets another try once reading view has caught up.
+    const known = this.lastNoteText.get(file.path);
+    if (known && isIngredientList(el, known)) {
+      el.dataset.recipeSection = "ingredients";
+      wrapTaskText(el);
       return;
     }
-
-    if (container.dataset.recipeActionsInjected === context.sourcePath) {
-      return;
-    }
-
-    container.dataset.recipeActionsInjected = context.sourcePath;
-
-    window.setTimeout(() => {
-      if (!container.isConnected) {
-        return;
-      }
-
-      this.insertRecipeActions(container, file);
-    }, 0);
+    const retry = (tries: number) => {
+      const later = context.getSectionInfo(el);
+      if (later) this.tagRecipeSection(el, file, later);
+      else if (tries > 0) window.setTimeout(() => retry(tries - 1), 50);
+    };
+    window.requestAnimationFrame(() => retry(3));
   }
 
-  private insertRecipeActions(container: HTMLElement, file: TFile): void {
-    const existing = container.querySelector(".recipe-note-actions");
-    if (existing) {
+  /** The last full text reading view showed for each recipe note. */
+  private lastNoteText = new Map<string, string>();
+
+  private tagRecipeSection(
+    el: HTMLElement,
+    file: TFile,
+    info: MarkdownSectionInformation,
+  ): void {
+    const outline = this.outlineOf(info.text);
+    const role = sectionRole(outline, info.lineStart, info.lineEnd);
+    if (role) el.dataset.recipeSection = role;
+    if (role === "meta") gridMetaCallout(el);
+    if (role === "ingredients") wrapTaskText(el);
+
+    if (
+      holdsActions(outline, info.lineStart, info.lineEnd) &&
+      !el.querySelector(".recipe-note-actions")
+    ) {
+      const checked = outline.ingredients
+        ? countChecked(info.text, outline.ingredients)
+        : 0;
+      el.append(buildRecipeActions(file, this.recipeActions, checked));
+    }
+  }
+
+  /** What the recipe buttons do, wherever they're drawn. */
+  readonly recipeActions: RecipeActions = {
+    markMade: (file) => void this.markRecipeMade(file),
+    addToList: (file) => void this.addCheckedIngredientsFromNote(file),
+    askAi: (file) => void this.askAiToRefineRecipe(file, ""),
+    cook: (file) => void this.openCookMode(file),
+  };
+
+  /**
+   * Which reading-view layout a recipe gets. Kitchen, when it's turned on,
+   * goes to a phone or tablet, and to a desktop pane about as narrow as one.
+   * `width` is the pane's, or 0 when it can't be measured (a background tab),
+   * which never counts as narrow.
+   */
+  recipeLayoutKind(width: number): RecipeLayoutKind {
+    if (this.settings.mobileRecipeLayout !== "kitchen") return "rail";
+    if (Platform.isMobile) return "kitchen";
+    return width > 0 && width < c.KITCHEN_MAX_WIDTH ? "kitchen" : "rail";
+  }
+
+  private recipeLayouts = new WeakMap<MarkdownView, RecipeNoteLayout>();
+
+  /**
+   * Give every open recipe note in reading view its layout, and take it off
+   * any view that's moved to another file, gone to editing, or needs the
+   * other layout after a settings change.
+   */
+  refreshRecipeLayouts(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      if (leaf.view instanceof MarkdownView) this.syncRecipeLayout(leaf.view);
+    }
+  }
+
+  /** After the layout setting changes. A `.cook` view draws its own. */
+  applyRecipeLayoutSetting(): void {
+    this.refreshRecipeLayouts();
+    for (const leaf of this.app.workspace.getLeavesOfType(
+      c.VIEW_TYPE_COOKLANG,
+    )) {
+      if (leaf.view instanceof CooklangView) leaf.view.refreshLayout();
+    }
+  }
+
+  private syncRecipeLayout(view: MarkdownView): void {
+    const file = view.file;
+    const fm = file
+      ? this.app.metadataCache.getFileCache(file)?.frontmatter
+      : undefined;
+    const current = this.recipeLayouts.get(view);
+    // A hidden pane measures 0 wide. It keeps the layout it has rather than
+    // flipping to the other one until it's shown again.
+    const width = view.contentEl.clientWidth;
+    const kind =
+      width === 0 && current ? current.kind : this.recipeLayoutKind(width);
+    const wanted =
+      file &&
+      view.getMode() === "preview" &&
+      this.hasRecipeNoteCssClass(fm?.cssclasses)
+        ? kind
+        : null;
+    if (current && (current.file !== file || current.kind !== wanted)) {
+      view.removeChild(current);
+      this.recipeLayouts.delete(view);
+    }
+    if (file && wanted && !this.recipeLayouts.has(view)) {
+      const layout = new RecipeNoteLayout(
+        this,
+        view,
+        file,
+        wanted,
+        this.recipeActions,
+      );
+      this.recipeLayouts.set(view, layout);
+      view.addChild(layout);
+    }
+  }
+
+  /**
+   * Send a note's ticked ingredients to the shopping list and untick them.
+   * Works from reading view too, since it goes through the file rather than
+   * the editor.
+   */
+  async addCheckedIngredientsFromNote(file: TFile): Promise<void> {
+    let checked: string[] = [];
+    await this.app.vault.process(file, (content) => {
+      const taken = takeCheckedIngredients(content);
+      checked = taken.checked;
+      return checked.length > 0 ? taken.text : content;
+    });
+    if (checked.length === 0) {
+      new Notice("No checked ingredients found.");
       return;
     }
+    await this.addToShoppingList(checked, file.basename);
+  }
 
-    const actions = createDiv({ cls: "recipe-note-actions" });
-
-    const markMadeButton = actions.createEl("button", {
-      cls: ["recipe-note-action-button", "primary"],
-      text: "Mark as made",
-      attr: { type: "button" },
-    });
-    markMadeButton.addEventListener("click", () => {
-      void (async () => {
-        await this.app.workspace.openLinkText(file.path, "", false);
-        this.executeCommand(`${this.manifest.id}:${c.CMD_MARK_MADE}`);
-      })();
-    });
-
-    const shoppingListButton = actions.createEl("button", {
-      cls: "recipe-note-action-button",
-      text: "Add ingredients to shopping list",
-      attr: { type: "button" },
-    });
-    shoppingListButton.addEventListener("click", () => {
-      void (async () => {
-        await this.app.workspace.openLinkText(file.path, "", false);
-        this.executeCommand(
-          `${this.manifest.id}:${c.CMD_ADD_TO_SHOPPING_LIST}`,
+  /** The recipe's steps one at a time, from a note or a `.cook` file. */
+  async openCookMode(file: TFile): Promise<void> {
+    if (isCooklangFile(file)) {
+      const view = this.app.workspace
+        .getLeavesOfType(c.VIEW_TYPE_COOKLANG)
+        .map((leaf) => leaf.view)
+        .find(
+          (v): v is CooklangView =>
+            v instanceof CooklangView && v.file === file,
         );
-      })();
-    });
-
-    const aiControls = actions.createDiv({ cls: "recipe-note-ai-controls" });
-
-    const aiPromptInput = aiControls.createEl("input", {
-      cls: "recipe-note-ai-input",
-      attr: {
-        type: "text",
-        placeholder: "Ask AI: swap ingredients, tweak steps, simplify prep...",
-      },
-    });
-
-    const aiPromptButton = aiControls.createEl("button", {
-      cls: "recipe-note-action-button",
-      text: "Ask AI",
-      attr: { type: "button" },
-    });
-
-    let aiRequestInFlight = false;
-    const runAiRefine = async () => {
-      const prompt = aiPromptInput.value.trim();
-      if (!prompt) {
-        new Notice("Enter a short edit request before asking AI.");
-        return;
-      }
-      if (aiRequestInFlight) {
-        return;
-      }
-
-      aiPromptInput.value = "";
-      aiRequestInFlight = true;
-      aiPromptButton.disabled = true;
-      aiPromptButton.textContent = "Asking...";
-
-      try {
-        await this.askAiToRefineRecipe(file, prompt);
-      } finally {
-        aiRequestInFlight = false;
-        aiPromptButton.disabled = false;
-        aiPromptButton.textContent = "Ask AI";
-      }
-    };
-
-    aiPromptButton.addEventListener("click", () => {
-      void runAiRefine();
-    });
-
-    aiPromptInput.addEventListener("keydown", (event: KeyboardEvent) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        void runAiRefine();
-      }
-    });
-
-    const targetHeading = Array.from(
-      container.querySelectorAll<HTMLElement>("h2, h3, h4"),
-    ).find((heading) =>
-      heading.textContent?.toLowerCase().includes("ingredients"),
-    );
-
-    if (targetHeading && targetHeading.parentElement) {
-      targetHeading.parentElement.insertBefore(actions, targetHeading);
+      view?.openCookMode();
       return;
     }
-
-    const title = container.querySelector("h1, .inline-title");
-    const heroImage = container.querySelector("img");
-    const insertAfter = heroImage ?? title;
-
-    if (insertAfter?.parentElement) {
-      insertAfter.parentElement.insertBefore(actions, insertAfter.nextSibling);
-    } else {
-      container.prepend(actions);
+    const text = await this.app.vault.read(file);
+    const outline = recipeOutline(text);
+    if (!outline.instructions) {
+      new Notice("This recipe has no steps to cook from.");
+      return;
     }
+    const ingredients = outline.ingredients
+      ? ingredientLines(text, outline.ingredients)
+      : [];
+    const steps = cookSteps(text, outline.instructions).map((step) => ({
+      ...step,
+      uses: ingredientsForStep(step.text, ingredients),
+    }));
+    if (steps.length === 0) {
+      new Notice("No steps found in this recipe.");
+      return;
+    }
+    new CookModeModal(this.app, {
+      title: file.basename,
+      steps,
+      ingredients,
+      renderText: (markdown, el, owner) =>
+        void MarkdownRenderer.render(this.app, markdown, el, file.path, owner),
+      onMarkMade: () => void this.markRecipeMade(file),
+    }).open();
   }
 
   /** Ingredient lines for a note path, for the gallery search (loadRecipes). */
@@ -772,23 +847,6 @@ export default class RecipeVault extends Plugin {
     return legacy || defaultModel;
   }
 
-  private queueInjectActiveRecipeActions(): void {
-    window.setTimeout(() => {
-      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!view?.file) return;
-
-      if (!this.isRecipeFile(view.file)) return;
-      if (view.getMode() === "source") return;
-
-      const container =
-        view.containerEl.querySelector(".markdown-preview-sizer") ??
-        view.containerEl.querySelector(".markdown-preview-view");
-      if (!(container instanceof HTMLElement)) return;
-
-      this.insertRecipeActions(container, view.file);
-    }, 0);
-  }
-
   onload() {
     // Obsidian types `onload` as returning void, and the setup here is async,
     // so the body lives in `init` and this just kicks it off.
@@ -805,26 +863,21 @@ export default class RecipeVault extends Plugin {
     });
 
     this.registerMarkdownPostProcessor((el, context) => {
-      this.injectRecipeActions(el, context);
+      this.processRecipeSection(el, context);
     });
 
+    // Mode switches and file changes all come through one of these. A
+    // front matter change can turn a note into a recipe, or stop it being one.
+    const refreshLayouts = debounce(() => this.refreshRecipeLayouts(), 10);
     this.registerEvent(
-      this.app.workspace.on("active-leaf-change", () => {
-        this.queueInjectActiveRecipeActions();
-      }),
+      this.app.workspace.on("active-leaf-change", refreshLayouts),
     );
-
-    this.registerEvent(
-      this.app.workspace.on("file-open", () => {
-        this.queueInjectActiveRecipeActions();
-      }),
-    );
-
-    this.registerEvent(
-      this.app.workspace.on("layout-change", () => {
-        this.queueInjectActiveRecipeActions();
-      }),
-    );
+    this.registerEvent(this.app.workspace.on("file-open", refreshLayouts));
+    this.registerEvent(this.app.workspace.on("layout-change", refreshLayouts));
+    // Dragging a pane divider or the window edge can cross the Kitchen width.
+    this.registerEvent(this.app.workspace.on("resize", refreshLayouts));
+    this.registerEvent(this.app.metadataCache.on("changed", refreshLayouts));
+    this.app.workspace.onLayoutReady(refreshLayouts);
 
     // Register the Recipe Gallery view
     this.registerView(
@@ -951,6 +1004,19 @@ export default class RecipeVault extends Plugin {
       },
     });
 
+    this.addCommand({
+      id: c.CMD_COOK_MODE,
+      name: "Start cook mode",
+      checkCallback: (checking) => {
+        const file =
+          this.app.workspace.getActiveViewOfType(MarkdownView)?.file ??
+          this.app.workspace.getActiveViewOfType(CooklangView)?.file;
+        if (!file || !this.isRecipeFile(file)) return false;
+        if (!checking) void this.openCookMode(file);
+        return true;
+      },
+    });
+
     // Command to add checked ingredients to a shopping list file
     this.addCommand({
       id: c.CMD_ADD_TO_SHOPPING_LIST,
@@ -975,38 +1041,7 @@ export default class RecipeVault extends Plugin {
           new Notice("No active recipe file open.");
           return;
         }
-
-        const content = await this.app.vault.read(view.file);
-        const lines = content.split("\n");
-        const recipeName = view.file.basename;
-
-        // Find the Ingredients section and collect checked items
-        let inIngredients = false;
-        const checked: string[] = [];
-        const newLines = lines.map((line) => {
-          if (/^#{1,4}\s+Ingredients/i.test(line)) {
-            inIngredients = true;
-            return line;
-          }
-          if (inIngredients && /^#{1,4}\s/.test(line)) {
-            inIngredients = false;
-          }
-          if (inIngredients && /^- \[x\]/i.test(line)) {
-            checked.push(line.replace(/^- \[x\]\s*/i, "").trim());
-            return line.replace(/^- \[x\]/i, "- [ ]");
-          }
-          return line;
-        });
-
-        if (checked.length === 0) {
-          new Notice("No checked ingredients found.");
-          return;
-        }
-
-        // Uncheck the items in the active recipe using the editor API.
-        view.editor.setValue(newLines.join("\n"));
-
-        await this.addToShoppingList(checked, recipeName);
+        await this.addCheckedIngredientsFromNote(view.file);
       },
     });
 
