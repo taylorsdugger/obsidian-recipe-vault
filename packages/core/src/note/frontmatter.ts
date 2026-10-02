@@ -23,9 +23,36 @@ export function formatIsoDuration(duration: string): string {
     .replace("S", "s ");
 }
 
+/** The frontmatter key the default template keeps a recipe's photo under. */
+export const DEFAULT_PHOTO_PROPERTY = "photo";
+
+/**
+ * The photo property name to use. A blank name, or one with characters a key
+ * can't hold here, falls back to `photo`. `readFrontmatter` only reads keys
+ * made of letters, digits, `_` and `-`, so that's the limit.
+ */
+export function normalizePhotoProperty(raw: string | undefined): string {
+  const key = (raw ?? "").trim();
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : DEFAULT_PHOTO_PROPERTY;
+}
+
+/**
+ * A note's photo from its frontmatter: the configured property, else `photo`,
+ * so notes made before someone changed the property keep their photo.
+ */
+export function readPhotoProperty(
+  fm: Record<string, string>,
+  photoProperty?: string,
+): string {
+  const key = normalizePhotoProperty(photoProperty);
+  return (fm[key] || fm[DEFAULT_PHOTO_PROPERTY] || "").trim();
+}
+
 export interface FrontmatterOptions {
   /** How to write an image path in frontmatter. Defaults to wikilink-or-URL. */
   formatPhoto?: (imgPath: string) => string;
+  /** The key a missing photo gets added under. Defaults to `photo`. */
+  photoProperty?: string;
 }
 
 /**
@@ -37,6 +64,7 @@ export function ensureRequiredRecipeFrontmatter(
   opts: FrontmatterOptions = {},
 ): string {
   const formatPhoto = opts.formatPhoto ?? formatPhotoValue;
+  const photoProperty = normalizePhotoProperty(opts.photoProperty);
   const cookTimeValue = normalizeCookTimeValue(values.cookTime);
   const photoValue = (values.image ? formatPhoto(values.image) : "").replace(
     /"/g,
@@ -46,7 +74,7 @@ export function ensureRequiredRecipeFrontmatter(
   const requiredLines = [
     "cssclasses: recipe-note",
     `cook_time: ${cookTimeValue}`,
-    `photo: "${photoValue}"`,
+    `${photoProperty}: "${photoValue}"`,
   ];
 
   if (markdown.startsWith("---\n")) {

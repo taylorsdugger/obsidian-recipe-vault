@@ -181,6 +181,36 @@ describe("ensureRequiredRecipeFrontmatter", () => {
     );
     expect(out).toContain('photo: "url:a\\"b.jpg"');
   });
+
+  // #24: a template that keeps its photo under its own key shouldn't also
+  // get a `photo:` line.
+  it("uses the configured photo property instead of adding photo", () => {
+    const md =
+      '---\ncssclasses: recipe-note\ncook_time: 5m\nimage_url: "https://x.test/a.jpg"\n---\n# Soup\n';
+    expect(
+      ensureRequiredRecipeFrontmatter(
+        md,
+        { image: "https://x.test/a.jpg" },
+        { photoProperty: "image_url" },
+      ),
+    ).toBe(md);
+
+    const out = ensureRequiredRecipeFrontmatter(
+      "# Soup\n",
+      { image: "https://x.test/a.jpg" },
+      { photoProperty: "image_url" },
+    );
+    expect(out).toContain('image_url: "https://x.test/a.jpg"');
+    expect(out).not.toMatch(/^photo:/m);
+  });
+
+  it("falls back to photo for a blank or unusable property name", () => {
+    for (const photoProperty of ["", "  ", "my photo", "a:b"]) {
+      expect(
+        ensureRequiredRecipeFrontmatter("# Soup\n", {}, { photoProperty }),
+      ).toContain('photo: ""');
+    }
+  });
 });
 
 describe("notes section", () => {

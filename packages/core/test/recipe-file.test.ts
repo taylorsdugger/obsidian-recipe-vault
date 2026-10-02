@@ -65,6 +65,22 @@ describe("readRecipeFile", () => {
     expect(summary?.photo).toBe("assets/Leek-Soup.jpg");
   });
 
+  it("reads a note's photo from the configured property, then photo", () => {
+    const custom = '---\nimage_url: "https://x.test/a.jpg"\n---\n# Soup\n';
+    expect(
+      readRecipeFile("Recipes/Soup.md", custom, { photoProperty: "image_url" })
+        ?.photo,
+    ).toBe("https://x.test/a.jpg");
+    expect(readRecipeFile("Recipes/Soup.md", custom)?.photo).toBe("");
+
+    // A note made before the property changed still has its photo.
+    const old = '---\nphoto: "[[Recipe Images/soup.jpg]]"\n---\n# Soup\n';
+    expect(
+      readRecipeFile("Recipes/Soup.md", old, { photoProperty: "image_url" })
+        ?.photo,
+    ).toBe("Recipe Images/soup.jpg");
+  });
+
   it("falls back to the file name and says when there's no recipe", () => {
     const summary = readRecipeFile("Recipes/Empty One.cook", "");
     expect(summary?.title).toBe("Empty One");

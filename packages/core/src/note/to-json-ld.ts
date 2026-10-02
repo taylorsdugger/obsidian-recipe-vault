@@ -1,5 +1,9 @@
 import type { JsonRecord } from "../types";
-import { cookTimeToMinutes, readFrontmatter } from "./frontmatter";
+import {
+  cookTimeToMinutes,
+  readFrontmatter,
+  readPhotoProperty,
+} from "./frontmatter";
 import { findMarkdownSection, parseSectionList } from "./sections";
 
 /**
@@ -41,6 +45,8 @@ export interface NoteToJsonLdOptions {
    * treats as the title, and a hand-edited note may have no heading at all.
    */
   name?: string;
+  /** The note's photo property. Defaults to `photo`, which is also the fallback. */
+  photoProperty?: string;
 }
 
 /** Whole minutes back to an ISO 8601 duration: 90 → "PT1H30M". */
@@ -112,8 +118,9 @@ export function noteToJsonLd(
 
   // The template writes `photo` as a wikilink for vault files and a bare URL
   // for remote ones. Only the remote form is portable.
-  if (fm.photo && /^https?:\/\//i.test(fm.photo)) {
-    recipe.image = fm.photo;
+  const photo = readPhotoProperty(fm, opts.photoProperty);
+  if (photo && /^https?:\/\//i.test(photo)) {
+    recipe.image = photo;
   }
 
   // `meal_type` is a comma-separated string in frontmatter; schema.org takes

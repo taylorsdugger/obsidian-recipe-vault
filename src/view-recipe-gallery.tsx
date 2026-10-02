@@ -160,6 +160,10 @@ export class RecipeGalleryView extends ItemView {
       galleryFolder,
       (path) => this.plugin.getIngredients(path),
       (path) => this.plugin.getCooklangInfo(path),
+      {
+        photoProperty: this.plugin.photoProperty(),
+        excludePath: this.plugin.templateFilePath(),
+      },
     );
 
     // When the gallery is empty, check whether recipes are actually landing in
@@ -173,7 +177,11 @@ export class RecipeGalleryView extends ItemView {
       if (
         saveFolder &&
         normalize(saveFolder) !== normalize(galleryFolder) &&
-        getRecipeFiles(this.app.vault, saveFolder).length > 0
+        getRecipeFiles(
+          this.app.vault,
+          saveFolder,
+          this.plugin.templateFilePath(),
+        ).length > 0
       ) {
         recipesElsewhereFolder = saveFolder;
       }

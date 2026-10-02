@@ -22,7 +22,10 @@ export interface PluginSettings {
   saveImg: boolean;
   saveImgSubdir: boolean;
   recipeTemplate: string;
-  templateVersion: number;
+  /** A vault note to use as the template instead of `recipeTemplate`. */
+  recipeTemplateFile: string;
+  /** The front matter property a note keeps its photo under. */
+  photoProperty: string;
   decodeEntities: boolean;
   proxyFallback: boolean;
   debug: boolean;
@@ -67,7 +70,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   saveImg: false,
   saveImgSubdir: false,
   recipeTemplate: c.DEFAULT_TEMPLATE,
-  templateVersion: c.TEMPLATE_VERSION,
+  recipeTemplateFile: "",
+  photoProperty: "photo",
   decodeEntities: true,
   proxyFallback: false,
   debug: false,
@@ -214,9 +218,19 @@ export class SettingsTab extends PluginSettingTab {
       " for more info.",
     );
 
+    const templateFileDescription = createFragment();
+    templateFileDescription.append(
+      "A note in your vault to use as the template for new recipes. Leave it blank to use the template below. Create makes one from the template below. Keep it outside your recipe folder. See ",
+      templateFileDescription.createEl("a", {
+        href: "https://github.com/taylorsdugger/obsidian-recipe-vault#custom-templates",
+        text: "README",
+      }),
+      " for more info.",
+    );
+
     const templateDescription = createFragment();
     templateDescription.append(
-      "Here you can edit the Template for newly created files. See ",
+      "The template for new recipes when no template file is set. See ",
       templateDescription.createEl("a", {
         href: "https://github.com/taylorsdugger/obsidian-recipe-vault#custom-templates",
         text: "README",
@@ -339,6 +353,42 @@ export class SettingsTab extends PluginSettingTab {
         },
       },
       {
+        name: "Template file",
+        desc: templateFileDescription,
+        visible: () => this.plugin.settings.recipeFormat === "markdown",
+        render: (setting) => {
+          let input: TextComponent;
+          setting
+            .addText((text) => {
+              input = text;
+              text
+                .setPlaceholder("Templates/Recipe.md")
+                .setValue(this.plugin.settings.recipeTemplateFile)
+                .onChange(async (value) => {
+                  this.plugin.settings.recipeTemplateFile = value.trim();
+                  await this.plugin.saveSettings();
+                });
+            })
+            .addButton((btn) =>
+              btn.setButtonText("Browse").onClick(() => {
+                new FileSuggestModal(this.app, (path) => {
+                  void (async () => {
+                    this.plugin.settings.recipeTemplateFile = path;
+                    await this.plugin.saveSettings();
+                    input.setValue(path);
+                  })();
+                }).open();
+              }),
+            )
+            .addButton((btn) =>
+              btn.setButtonText("Create").onClick(async () => {
+                const path = await this.plugin.createTemplateFile();
+                if (path) input.setValue(path);
+              }),
+            );
+        },
+      },
+      {
         name: "Recipe template",
         desc: templateDescription,
         visible: () => this.plugin.settings.recipeFormat === "markdown",
@@ -366,6 +416,20 @@ export class SettingsTab extends PluginSettingTab {
                   await this.plugin.saveSettings();
                 });
             });
+        },
+      },
+      {
+        name: "Photo property",
+        desc: "The front matter property that holds a recipe's photo. Match what your template writes, so new notes don't get a second photo property. Blank means photo. Notes that only have photo still show their photo.",
+        render: (setting) => {
+          setting.addText((text) => {
+            text
+              .setValue(this.plugin.settings.photoProperty)
+              .onChange(async (value) => {
+                this.plugin.settings.photoProperty = value.trim();
+                await this.plugin.saveSettings();
+              });
+          });
         },
       },
       {

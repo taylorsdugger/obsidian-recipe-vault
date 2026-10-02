@@ -115,7 +115,9 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Save in currently opened file**          | Import into the active note instead of creating a new one. Markdown only                                                                                                     |
 | **Save images**                            | Download recipe images into your vault, into this folder. Leave the folder blank to use Obsidian's attachment location, or for a `.cook` file, to put the photo next to it   |
 | **Save images in subdirectories**          | Create a per-recipe subfolder under the image folder                                                                                                                         |
-| **Recipe template**                        | Handlebars template used when creating recipe notes. Markdown only                                                                                                           |
+| **Template file**                          | A note in your vault to use as the template instead of the one below. **Create** writes the current template out to a new note. Markdown only. See [Custom Templates](#-custom-templates) |
+| **Recipe template**                        | Handlebars template used when creating recipe notes, when no template file is set. Markdown only                                                                             |
+| **Photo property**                         | The frontmatter property that holds a recipe's photo (default `photo`). Set it to match your template, e.g. `image_url`, and the gallery reads that instead               |
 | **Decode entities**                        | Decodes HTML entities in imported data                                                                                                                                       |
 | **Proxy fallback for blocked imports**     | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default |
 | **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                           |
@@ -135,6 +137,18 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 ## 📝 Custom Templates
 
 Recipe Vault uses [Handlebars](https://handlebarsjs.com/guide/#simple-expressions) for note templates. The plugin assumes the recipe page includes [JSON-LD structured data](https://developers.google.com/search/docs/appearance/structured-data/recipe).
+
+### Template file
+
+You can edit the template in settings, or keep it as a note in your vault and point **Template file** at it. A file is easier to edit, it syncs with the rest of your vault, and the plugin never overwrites it.
+
+To start one, click **Create** next to **Template file**. That writes your current template to `Recipe Vault template.md` in the vault root and selects it. You can move or rename it after, just update the setting. If the file goes missing, new recipes use the template in settings and you get a notice.
+
+Some things to know:
+
+- Keep it outside your recipe folder. The plugin skips the template file itself, but other plugins that list your recipes won't know to.
+- Obsidian may flag the `{{...}}` values in the template's own properties as invalid. That only affects the template note, not the recipes made from it.
+- If your template keeps the photo under a different property, like `image_url`, set **Photo property** to match. Otherwise the plugin adds a `photo` property to every new note so the gallery can find the image.
 
 ### Built-in helpers
 
@@ -186,6 +200,8 @@ photo:
 times_made:
 last_made:
 ```
+
+If your template leaves out `cssclasses`, `cook_time` or the photo property, the plugin adds them to new notes. The gallery needs them. Your template itself is never changed.
 
 > **Tip:** Keep frontmatter starting at line 1 of your template. Obsidian requires this to parse it correctly.
 

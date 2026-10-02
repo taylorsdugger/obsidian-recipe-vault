@@ -12,6 +12,8 @@ export default defineConfig([
   globalIgnores([
     "**/node_modules/",
     "**/dist/",
+    // wrangler dev's bundle output, gitignored in apps/web.
+    "**/.wrangler/",
     "main.js",
     ".loadtest-*/",
     "**/test/",
@@ -47,6 +49,18 @@ export default defineConfig([
           ],
         },
       ],
+    },
+  },
+  {
+    // Workers runtime types from @cloudflare/workers-types. They're ambient
+    // in the worker's tsconfig, but no-undef doesn't read types.
+    files: ["apps/web/src/worker/**/*.ts"],
+    languageOptions: {
+      globals: {
+        D1Database: "readonly",
+        Fetcher: "readonly",
+        R2Bucket: "readonly",
+      },
     },
   },
 ]);
