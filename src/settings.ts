@@ -27,7 +27,10 @@ export interface PluginSettings {
   saveImg: boolean;
   saveImgSubdir: boolean;
   recipeTemplate: string;
-  templateVersion: number;
+  /** A vault note to use as the template instead of `recipeTemplate`. */
+  recipeTemplateFile: string;
+  /** The front matter property a note keeps its photo under. */
+  photoProperty: string;
   decodeEntities: boolean;
   proxyFallback: boolean;
   debug: boolean;
@@ -45,12 +48,22 @@ export interface PluginSettings {
   filterGlutenFreeWords: boolean;
 }
 
+export const DEFAULT_AI_MODEL = "google/gemini-3.5-flash-lite";
+
 const AI_MODEL_PRESETS: Array<{ id: string; label: string }> = [
-  { id: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite ($)" },
-  { id: "openai/gpt-4.1-mini", label: "GPT-4.1 Mini ($)" },
-  { id: "anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku ($)" },
-  { id: "minimax/minimax-m2.5", label: "MiniMax: MiniMax M2.5 ($)" },
+  { id: DEFAULT_AI_MODEL, label: "Gemini 3.5 Flash Lite ($)" },
+  { id: "openai/gpt-5.4-mini", label: "GPT-5.4 Mini ($)" },
+  { id: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5 ($)" },
+  { id: "minimax/minimax-m3", label: "MiniMax: MiniMax M3 ($)" },
 ];
+
+/** Old preset ids, mapped to the preset that replaced them. */
+export const LEGACY_AI_MODEL_PRESETS: Record<string, string> = {
+  "google/gemini-2.5-flash-lite": DEFAULT_AI_MODEL,
+  "openai/gpt-4.1-mini": "openai/gpt-5.4-mini",
+  "anthropic/claude-3.5-haiku": "anthropic/claude-haiku-4.5",
+  "minimax/minimax-m2.5": "minimax/minimax-m3",
+};
 
 const AI_MODEL_OTHER = "__other__";
 
@@ -63,16 +76,17 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   saveImg: false,
   saveImgSubdir: false,
   recipeTemplate: c.DEFAULT_TEMPLATE,
-  templateVersion: c.TEMPLATE_VERSION,
+  recipeTemplateFile: "",
+  photoProperty: "photo",
   decodeEntities: true,
   proxyFallback: false,
   debug: false,
   shoppingListFile: "Shopping List.md",
   recipeGalleryFolder: "",
   openRouterApiKey: "",
-  aiModelPreset: "google/gemini-2.5-flash-lite",
+  aiModelPreset: DEFAULT_AI_MODEL,
   aiCustomModelId: "",
-  aiModelId: "google/gemini-2.5-flash-lite",
+  aiModelId: DEFAULT_AI_MODEL,
   aiTimeoutMs: 45000,
   aiSystemPrompt: "",
   fillerWordsMode: "auto",
@@ -210,9 +224,19 @@ export class SettingsTab extends PluginSettingTab {
       " for more info.",
     );
 
+    const templateFileDescription = createFragment();
+    templateFileDescription.append(
+      "A note in your vault to use as the template for new recipes. Leave it blank to use the template below. Create makes one from the template below. Keep it outside your recipe folder. See ",
+      templateFileDescription.createEl("a", {
+        href: "https://github.com/taylorsdugger/obsidian-recipe-vault#custom-templates",
+        text: "README",
+      }),
+      " for more info.",
+    );
+
     const templateDescription = createFragment();
     templateDescription.append(
-      "Here you can edit the Template for newly created files. See ",
+      "The template for new recipes when no template file is set. See ",
       templateDescription.createEl("a", {
         href: "https://github.com/taylorsdugger/obsidian-recipe-vault#custom-templates",
         text: "README",
@@ -352,6 +376,42 @@ export class SettingsTab extends PluginSettingTab {
         },
       },
       {
+        name: "Template file",
+        desc: templateFileDescription,
+        visible: () => this.plugin.settings.recipeFormat === "markdown",
+        render: (setting) => {
+          let input: TextComponent;
+          setting
+            .addText((text) => {
+              input = text;
+              text
+                .setPlaceholder("Templates/Recipe.md")
+                .setValue(this.plugin.settings.recipeTemplateFile)
+                .onChange(async (value) => {
+                  this.plugin.settings.recipeTemplateFile = value.trim();
+                  await this.plugin.saveSettings();
+                });
+            })
+            .addButton((btn) =>
+              btn.setButtonText("Browse").onClick(() => {
+                new FileSuggestModal(this.app, (path) => {
+                  void (async () => {
+                    this.plugin.settings.recipeTemplateFile = path;
+                    await this.plugin.saveSettings();
+                    input.setValue(path);
+                  })();
+                }).open();
+              }),
+            )
+            .addButton((btn) =>
+              btn.setButtonText("Create").onClick(async () => {
+                const path = await this.plugin.createTemplateFile();
+                if (path) input.setValue(path);
+              }),
+            );
+        },
+      },
+      {
         name: "Recipe template",
         desc: templateDescription,
         visible: () => this.plugin.settings.recipeFormat === "markdown",
@@ -379,6 +439,20 @@ export class SettingsTab extends PluginSettingTab {
                   await this.plugin.saveSettings();
                 });
             });
+        },
+      },
+      {
+        name: "Photo property",
+        desc: "The front matter property that holds a recipe's photo. Match what your template writes, so new notes don't get a second photo property. Blank means photo. Notes that only have photo still show their photo.",
+        render: (setting) => {
+          setting.addText((text) => {
+            text
+              .setValue(this.plugin.settings.photoProperty)
+              .onChange(async (value) => {
+                this.plugin.settings.photoProperty = value.trim();
+                await this.plugin.saveSettings();
+              });
+          });
         },
       },
       {
@@ -524,7 +598,7 @@ export class SettingsTab extends PluginSettingTab {
               .onChange(async (value) => {
                 this.plugin.settings.aiCustomModelId = value.trim();
                 this.plugin.settings.aiModelId =
-                  value.trim() || "google/gemini-2.5-flash-lite";
+                  value.trim() || DEFAULT_AI_MODEL;
                 await this.plugin.saveSettings();
               });
             text.inputEl.addClass("recipe-vault-input-full");

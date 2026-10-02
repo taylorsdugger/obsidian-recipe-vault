@@ -2,6 +2,7 @@ import { cooklangToJsonLd, parseCooklang } from "../parse/cooklang";
 import {
   cookTimeToMinutes,
   readFrontmatter,
+  readPhotoProperty,
   setFrontmatterValues,
 } from "./frontmatter";
 import {
@@ -76,7 +77,16 @@ function titleFromHeading(markdown: string): string {
   return (link ? link[1] : heading[1]).trim();
 }
 
-function readMarkdown(path: string, text: string): RecipeFileSummary {
+export interface ReadRecipeFileOptions {
+  /** The note's photo property. Defaults to `photo`, which is also the fallback. */
+  photoProperty?: string;
+}
+
+function readMarkdown(
+  path: string,
+  text: string,
+  opts: ReadRecipeFileOptions,
+): RecipeFileSummary {
   const fm = readFrontmatter(text);
   const sections = parseRecipeSections(text);
   const notesRange = findMarkdownSection(text, "Notes");
@@ -87,7 +97,7 @@ function readMarkdown(path: string, text: string): RecipeFileSummary {
     title: titleFromHeading(text) || basename(path),
     author: (fm.author ?? "").trim(),
     sourceUrl: (fm.url ?? "").trim(),
-    photo: (fm.photo ?? "").trim(),
+    photo: readPhotoProperty(fm, opts.photoProperty),
     mealType: (fm.meal_type ?? "").trim(),
     cookTime,
     cookTimeMins: cookTimeToMinutes(cookTime || undefined),
@@ -173,9 +183,10 @@ function readCooklang(path: string, text: string): RecipeFileSummary {
 export function readRecipeFile(
   path: string,
   text: string,
+  opts: ReadRecipeFileOptions = {},
 ): RecipeFileSummary | null {
   const format = recipeFormatOf(path);
-  if (format === "markdown") return readMarkdown(path, text);
+  if (format === "markdown") return readMarkdown(path, text, opts);
   if (format === "cooklang") return readCooklang(path, text);
   return null;
 }

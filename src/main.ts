@@ -80,6 +80,7 @@ import {
   setRecipeHistory,
   mergeShoppingItems,
   migrateImageLink,
+  normalizePhotoProperty,
   normalizeRecipeNotes,
   noteToCooklang,
   noteToJsonLd,
@@ -297,6 +298,8 @@ export default class RecipeVault extends Plugin {
   }
 
   private isRecipeFile(file: TFile): boolean {
+    // The template file has the recipe tag and css class, but it isn't one.
+    if (this.isTemplateFile(file)) return false;
     // A .cook file is a recipe by what it is. There's no tag to look for.
     if (isCooklangFile(file)) return true;
     const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
@@ -327,6 +330,78 @@ export default class RecipeVault extends Plugin {
     return (
       normalizePath(file.path) === normalizePath(this.settings.shoppingListFile)
     );
+  }
+
+  /** The template file setting as a vault path, or "" when it's blank. */
+  templateFilePath(): string {
+    const raw = this.settings.recipeTemplateFile.trim();
+    if (!raw) return "";
+    const path = normalizePath(raw);
+    return path.toLowerCase().endsWith(".md") ? path : `${path}.md`;
+  }
+
+  private isTemplateFile(file: TFile): boolean {
+    const path = this.templateFilePath();
+    return path !== "" && normalizePath(file.path) === path;
+  }
+
+  /** The front matter key a note keeps its photo under. */
+  photoProperty(): string {
+    return normalizePhotoProperty(this.settings.photoProperty);
+  }
+
+  /**
+   * The template new notes are rendered from: the template file when one is
+   * set, else the one in settings. A template file that's gone falls back to
+   * the settings one with a notice, so an import never fails over it.
+   */
+  private async getRecipeTemplate(): Promise<string> {
+    const path = this.templateFilePath();
+    if (!path) return this.settings.recipeTemplate;
+
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) {
+      // Same patch the settings template gets on load, applied in memory so
+      // the user's file is never rewritten.
+      return migrateImageLink(await this.app.vault.cachedRead(file));
+    }
+
+    // Once per path, so a folder import doesn't stack one per recipe.
+    if (this.missingTemplateWarned !== path) {
+      this.missingTemplateWarned = path;
+      new Notice(
+        `Recipe Vault: couldn't find the template file "${path}". Using the template in settings instead.`,
+        8000,
+      );
+    }
+    return this.settings.recipeTemplate;
+  }
+
+  private missingTemplateWarned = "";
+
+  /**
+   * Write the settings template out to a new note and point the template file
+   * setting at it. Returns the new path, or null when it couldn't be written.
+   */
+  async createTemplateFile(): Promise<string | null> {
+    const base = c.TEMPLATE_FILE_DEFAULT_PATH.replace(/\.md$/, "");
+    let path = normalizePath(c.TEMPLATE_FILE_DEFAULT_PATH);
+    for (let n = 2; this.app.vault.getAbstractFileByPath(path); n++) {
+      path = normalizePath(`${base} (${n}).md`);
+    }
+
+    try {
+      await this.app.vault.create(path, this.settings.recipeTemplate);
+    } catch (err) {
+      console.error("Recipe Vault: failed to create template file", err);
+      new Notice("Recipe Vault: couldn't create the template file.");
+      return null;
+    }
+
+    this.settings.recipeTemplateFile = path;
+    await this.saveSettings();
+    new Notice(`Created ${path}. New recipes use it now.`);
+    return path;
   }
 
   /** The parsed outline of a note's text, kept for the last few texts seen. */
@@ -462,9 +537,11 @@ export default class RecipeVault extends Plugin {
     const width = view.contentEl.clientWidth;
     const kind =
       width === 0 && current ? current.kind : this.recipeLayoutKind(width);
+    // The template file carries the recipe css class, but it isn't a recipe.
     const wanted =
       file &&
       view.getMode() === "preview" &&
+      !this.isTemplateFile(file) &&
       this.hasRecipeNoteCssClass(fm?.cssclasses)
         ? kind
         : null;
@@ -685,7 +762,11 @@ export default class RecipeVault extends Plugin {
   private async refreshIngredientIndex(): Promise<void> {
     const galleryFolder = this.getGalleryFolder();
     if (!galleryFolder) return;
-    const files = getRecipeFiles(this.app.vault, galleryFolder);
+    const files = getRecipeFiles(
+      this.app.vault,
+      galleryFolder,
+      this.templateFilePath(),
+    );
     const seen = new Set<string>();
     let changed = false;
 
@@ -831,7 +912,6 @@ export default class RecipeVault extends Plugin {
   }
 
   private resolveAiModelId(): string {
-    const defaultModel = "google/gemini-2.5-flash-lite";
     const preset = this.settings.aiModelPreset?.trim();
 
     if (preset && preset !== "__other__") {
@@ -844,7 +924,7 @@ export default class RecipeVault extends Plugin {
     }
 
     const legacy = this.settings.aiModelId?.trim();
-    return legacy || defaultModel;
+    return legacy || settings.DEFAULT_AI_MODEL;
   }
 
   onload() {
@@ -1268,7 +1348,11 @@ export default class RecipeVault extends Plugin {
       id: c.CMD_BACKFILL_INGREDIENTS,
       name: "Rebuild ingredient search index",
       callback: async () => {
-        const files = getRecipeFiles(this.app.vault, this.getGalleryFolder());
+        const files = getRecipeFiles(
+          this.app.vault,
+          this.getGalleryFolder(),
+          this.templateFilePath(),
+        );
         if (files.length === 0) {
           new Notice("No recipes found in the gallery folder.");
           return;
@@ -1384,24 +1468,22 @@ export default class RecipeVault extends Plugin {
       (await this.loadData()) as Partial<settings.PluginSettings>,
     );
 
-    // Migrate saved templates that predate the current template version.
-    // When new required frontmatter fields are added, bump TEMPLATE_VERSION in constants.ts.
-    if ((this.settings.templateVersion ?? 0) < c.TEMPLATE_VERSION) {
-      this.settings.recipeTemplate = c.DEFAULT_TEMPLATE;
-      this.settings.templateVersion = c.TEMPLATE_VERSION;
-      await this.saveData(this.settings);
-      new Notice(
-        "Recipe Vault: your template was updated to include new fields (photo, cook_time, cssclasses). " +
-          "You can customise it again in Settings.",
-        8000,
-      );
-    }
-
     // The body image used to be a raw `({{image}})` link, which breaks when the
     // attachment folder has a space in it (#18). Patch just that token.
     const migrated = migrateImageLink(this.settings.recipeTemplate);
     if (migrated !== this.settings.recipeTemplate) {
       this.settings.recipeTemplate = migrated;
+      await this.saveData(this.settings);
+    }
+
+    // Presets get swapped for newer models over time. Move anyone still on a
+    // retired preset to its replacement, so the dropdown doesn't fall back to
+    // "Other (custom)" with an empty field.
+    const replacement =
+      settings.LEGACY_AI_MODEL_PRESETS[this.settings.aiModelPreset];
+    if (replacement) {
+      this.settings.aiModelPreset = replacement;
+      this.settings.aiModelId = replacement;
       await this.saveData(this.settings);
     }
   }
@@ -1450,8 +1532,8 @@ export default class RecipeVault extends Plugin {
    * This function handles all the templating of the recipes
    */
   private addRecipeToMarkdown = async (url: string): Promise<void> => {
-    const markdown = createRecipeRenderer(this.settings.recipeTemplate);
     try {
+      const markdown = createRecipeRenderer(await this.getRecipeTemplate());
       const recipes = await this.fetchRecipes(url);
 
       // Avoid creating empty notes when no recipe schema is found.
@@ -1606,11 +1688,17 @@ export default class RecipeVault extends Plugin {
           md = decodeHtmlEntities(md);
         }
 
-        md = ensureRequiredRecipeFrontmatter(md, {
-          cookTime:
-            typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
-          image: typeof recipe.image === "string" ? recipe.image : undefined,
-        });
+        md = ensureRequiredRecipeFrontmatter(
+          md,
+          {
+            cookTime:
+              typeof recipe.totalTime === "string"
+                ? recipe.totalTime
+                : undefined,
+            image: typeof recipe.image === "string" ? recipe.image : undefined,
+          },
+          { photoProperty: this.photoProperty() },
+        );
         md = ensureRecipeNotesSection(
           md,
           normalizeRecipeNotes(recipe.recipeNotes),
@@ -1656,7 +1744,7 @@ export default class RecipeVault extends Plugin {
       return;
     }
 
-    const markdown = createRecipeRenderer(this.settings.recipeTemplate);
+    const markdown = createRecipeRenderer(await this.getRecipeTemplate());
     const stub = { name };
     let md = markdown(stub);
 
@@ -1664,7 +1752,11 @@ export default class RecipeVault extends Plugin {
       md = decodeHtmlEntities(md);
     }
 
-    md = ensureRequiredRecipeFrontmatter(md, {});
+    md = ensureRequiredRecipeFrontmatter(
+      md,
+      {},
+      { photoProperty: this.photoProperty() },
+    );
 
     const folder =
       this.settings.folder !== ""
@@ -1777,7 +1869,7 @@ export default class RecipeVault extends Plugin {
         }
       }
 
-      const markdown = createRecipeRenderer(this.settings.recipeTemplate);
+      const markdown = createRecipeRenderer(await this.getRecipeTemplate());
       let md = markdown({
         ...recipe,
         json: JSON.stringify(recipe, null, 2),
@@ -1786,11 +1878,15 @@ export default class RecipeVault extends Plugin {
       if (this.settings.decodeEntities) {
         md = decodeHtmlEntities(md);
       }
-      md = ensureRequiredRecipeFrontmatter(md, {
-        cookTime:
-          typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
-        image: typeof recipe.image === "string" ? recipe.image : undefined,
-      });
+      md = ensureRequiredRecipeFrontmatter(
+        md,
+        {
+          cookTime:
+            typeof recipe.totalTime === "string" ? recipe.totalTime : undefined,
+          image: typeof recipe.image === "string" ? recipe.image : undefined,
+        },
+        { photoProperty: this.photoProperty() },
+      );
       md = ensureRecipeNotesSection(
         md,
         normalizeRecipeNotes(recipe.recipeNotes),
@@ -2387,7 +2483,10 @@ export default class RecipeVault extends Plugin {
       const fromCooklang = isCooklangFile(file);
       const recipe = fromCooklang
         ? core.cooklangToJsonLd(markdown, { name: file.basename })
-        : noteToJsonLd(markdown, { name: file.basename });
+        : noteToJsonLd(markdown, {
+            name: file.basename,
+            photoProperty: this.photoProperty(),
+          });
 
       if (!recipe.recipeIngredient && !recipe.recipeInstructions) {
         new Notice(
@@ -2402,7 +2501,10 @@ export default class RecipeVault extends Plugin {
       const body =
         format === "jsonld"
           ? JSON.stringify(recipe, null, 2)
-          : noteToCooklang(markdown, { name: file.basename });
+          : noteToCooklang(markdown, {
+              name: file.basename,
+              photoProperty: this.photoProperty(),
+            });
 
       const folder = file.parent?.path ?? "";
       const outPath = normalizePath(

@@ -92,6 +92,17 @@ describe("noteToJsonLd", () => {
     expect(noteToJsonLd(local).image).toBeUndefined();
   });
 
+  it("reads the photo from the configured property", () => {
+    const custom = NOTE.replace(
+      'photo: "https://example.com/ragu.jpg"',
+      'image_url: "https://example.com/other.jpg"',
+    );
+    expect(noteToJsonLd(custom).image).toBeUndefined();
+    expect(noteToJsonLd(custom, { photoProperty: "image_url" }).image).toBe(
+      "https://example.com/other.jpg",
+    );
+  });
+
   it("carries cooking history under its own key, not as schema.org fields", () => {
     const recipe = noteToJsonLd(NOTE);
     expect(recipe.times_made).toBeUndefined();

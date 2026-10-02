@@ -12,16 +12,16 @@ export default defineConfig([
   globalIgnores([
     "**/node_modules/",
     "**/dist/",
+    // wrangler dev's bundle output, gitignored in apps/web.
+    "**/.wrangler/",
     "main.js",
     ".loadtest-*/",
     "**/test/",
     "**/scripts/",
     "*.mjs",
     "**/*.config.ts",
-    // Other checkouts made by `cg worktree:add`-style tooling, and wrangler's
-    // generated bundles. Neither is this repo's source.
+    // Other checkouts made by worktree tooling. Not this repo's source.
     ".claude/",
-    "**/.wrangler/",
   ]),
   ...obsidianmd.configs.recommended,
   {
@@ -54,10 +54,15 @@ export default defineConfig([
     },
   },
   {
-    // The Worker's bindings (D1Database, R2Bucket, Fetcher) are ambient types
-    // from @cloudflare/workers-types. TypeScript already checks names exist,
-    // and no-undef can't see type-only globals.
+    // Workers runtime types from @cloudflare/workers-types. They're ambient
+    // in the worker's tsconfig, but no-undef doesn't read types.
     files: ["apps/web/src/worker/**/*.ts"],
-    rules: { "no-undef": "off" },
+    languageOptions: {
+      globals: {
+        D1Database: "readonly",
+        Fetcher: "readonly",
+        R2Bucket: "readonly",
+      },
+    },
   },
 ]);

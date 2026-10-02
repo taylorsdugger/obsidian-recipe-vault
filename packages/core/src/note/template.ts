@@ -3,11 +3,10 @@ import * as Handlebars from "handlebars";
 
 import { formatIsoDuration, formatPhotoValue } from "./frontmatter";
 
-/* ----------------------------- TEMPLATE VERSION --------------------------- */
-/** Increment this whenever DEFAULT_TEMPLATE gains new required fields. */
-export const TEMPLATE_VERSION = 2;
-
 /* ---------------------------- DEFAULT TEMPLATE ---------------------------- */
+// Fields the plugin needs (cssclasses, cook_time, the photo) are backfilled by
+// `ensureRequiredRecipeFrontmatter`, so a saved template never has to be reset
+// when this one gains one.
 
 export const DEFAULT_TEMPLATE = `---
 cssclasses: recipe-note
