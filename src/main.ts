@@ -1515,7 +1515,12 @@ export default class RecipeVault extends Plugin {
         return;
       }
 
-      let view = this.settings.saveInActiveFile
+      // The open note is only written to when "Save in currently opened file"
+      // is on. Otherwise the recipe goes straight into the file created below.
+      // Don't look the view up again after opening that file: another plugin
+      // (like Homepage) can keep a different note active, and the recipe
+      // would land there instead.
+      const view = this.settings.saveInActiveFile
         ? this.app.workspace.getActiveViewOfType(MarkdownView)
         : null;
 
@@ -1544,16 +1549,10 @@ export default class RecipeVault extends Plugin {
 
         // Open the newly created file
         await this.app.workspace.openLinkText(path, "", true);
-        view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      }
-
-      if (!view) {
-        new Notice("Could not open a Markdown view");
-        return;
       }
 
       // in debug, clear editor first
-      if (this.settings.debug) {
+      if (this.settings.debug && view) {
         view.editor.setValue("");
       }
 
@@ -1667,9 +1666,11 @@ export default class RecipeVault extends Plugin {
           normalizeRecipeNotes(recipe.recipeNotes),
         );
 
-        if (view.getMode() === "source") {
+        if (file) {
+          await this.app.vault.append(file, md);
+        } else if (view?.getMode() === "source") {
           view.editor.replaceSelection(md);
-        } else if (view.file) {
+        } else if (view?.file) {
           await this.app.vault.append(view.file, md);
         }
       }
