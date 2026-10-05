@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 
 import { api } from "../api";
+import { Icon } from "./icon";
 import { AppIcon } from "./logo";
 import { navigate } from "../router";
 import { SYNCED_EVENT } from "../sync";
@@ -153,6 +154,21 @@ export function TabBar({ path, pushed }: { path: string; pushed: boolean }) {
           </button>
         );
       })}
+      {/* At the foot of the sidebar. A phone gets the gear on Home instead,
+          since a fifth tab would crowd the four that get used every day. */}
+      <button
+        type="button"
+        aria-current={path === "/settings" ? "page" : undefined}
+        class={`mt-auto hidden min-h-11 items-center gap-3 rounded-xl px-3 text-row transition-colors md:flex ${
+          path === "/settings"
+            ? "bg-accent-soft font-semibold text-accent-ink"
+            : "font-medium text-ink hover:bg-canvas"
+        }`}
+        onClick={() => navigate("/settings")}
+      >
+        <Icon name="settings" />
+        <span class="flex-1 text-left">Settings</span>
+      </button>
     </nav>
   );
 }

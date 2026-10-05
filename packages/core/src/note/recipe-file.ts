@@ -1,4 +1,13 @@
+import {
+  addNoteNutrition,
+  missingRecipeFields,
+  nutritionFromFields,
+  nutritionFromJsonLd,
+  type Nutrition,
+  type PageNutrition,
+} from "../nutrition";
 import { cooklangToJsonLd, parseCooklang } from "../parse/cooklang";
+import { scaleCooklang, scaleIngredientLine } from "../scale";
 import {
   cookTimeToMinutes,
   readFrontmatter,
@@ -49,6 +58,11 @@ export interface RecipeFileSummary {
   mealType: string;
   /** Readable, like "1h 30m". */
   cookTime: string;
+  /**
+   * What the recipe makes, as written: "4", "4 servings", "12 cookies". A
+   * note's `servings` (or `yield`, `serves`), a `.cook` file's `servings`.
+   */
+  servings: string;
   cookTimeMins: number | null;
   timesMade: number;
   lastMade: string;
@@ -62,6 +76,10 @@ export interface RecipeFileSummary {
   ingredients: string[];
   instructions: string[];
   notes: string[];
+  /** Per serving: a note's `calories`, `protein` and so on. Null for none. */
+  nutrition: Nutrition | null;
+  /** How big a serving is, as the page put it: "1 of 12 fritters", or "". */
+  servingSize: string;
 }
 
 function count(value: string | undefined): number {
@@ -101,6 +119,7 @@ function readMarkdown(
     mealType: (fm.meal_type ?? "").trim(),
     cookTime,
     cookTimeMins: cookTimeToMinutes(cookTime || undefined),
+    servings: (fm.servings || fm.yield || fm.serves || "").trim(),
     timesMade: count(fm.times_made),
     lastMade: (fm.last_made ?? "").trim(),
     dateAdded: (fm.date_added ?? "").trim(),
@@ -113,6 +132,8 @@ function readMarkdown(
           false,
         )
       : [],
+    nutrition: nutritionFromFields(fm),
+    servingSize: (fm.serving_size ?? "").trim(),
   };
 }
 
@@ -127,7 +148,7 @@ function readableMinutes(mins: number): string {
 
 /** A Cooklang front matter value as one string. */
 function metaText(value: string | string[] | undefined): string {
-  return (Array.isArray(value) ? value.join(", ") : (value ?? "")).trim();
+  return (Array.isArray(value) ? value.join(", ") : value ?? "").trim();
 }
 
 function readCooklang(path: string, text: string): RecipeFileSummary {
@@ -154,13 +175,17 @@ function readCooklang(path: string, text: string): RecipeFileSummary {
     sourceUrl: typeof recipe.url === "string" ? recipe.url : "",
     // Straight from the front matter, not the JSON-LD, which only keeps a
     // url. A path like `assets/Leek-Soup.jpg` is the plugin's image folder.
-    photo:
-      (metaText(meta.image) || metaText(meta.images) || metaText(meta.picture))
-        .split(",")[0]
-        .trim(),
+    photo: (
+      metaText(meta.image) ||
+      metaText(meta.images) ||
+      metaText(meta.picture)
+    )
+      .split(",")[0]
+      .trim(),
     mealType: metaText(meta.course) || metaText(meta.category),
     cookTime: time || (cookTimeMins ? readableMinutes(cookTimeMins) : ""),
     cookTimeMins,
+    servings: typeof recipe.recipeYield === "string" ? recipe.recipeYield : "",
     timesMade: count(metaText(meta["times made"])),
     lastMade: metaText(meta["last made"]),
     dateAdded: metaText(meta["date added"]),
@@ -170,6 +195,8 @@ function readCooklang(path: string, text: string): RecipeFileSummary {
       section.steps.map((step) => step.text),
     ),
     notes: parsed.notes,
+    nutrition: nutritionFromJsonLd(recipe.nutrition),
+    servingSize: metaText(meta["serving size"]),
   };
 }
 
@@ -189,6 +216,25 @@ export function readRecipeFile(
   if (format === "markdown") return readMarkdown(path, text, opts);
   if (format === "cooklang") return readCooklang(path, text);
   return null;
+}
+
+/**
+ * A recipe's ingredient lines scaled by `factor`, in the same order
+ * `readRecipeFile` lists them. A `.cook` file scales by its markup, so an
+ * amount fixed with `=` stays put. A note scales the amount at the front of
+ * each line.
+ */
+export function scaleRecipeIngredients(
+  path: string,
+  text: string,
+  factor: number,
+): string[] {
+  if (recipeFormatOf(path) === "cooklang") {
+    const recipe = cooklangToJsonLd(scaleCooklang(parseCooklang(text), factor));
+    return (recipe.recipeIngredient as string[] | undefined) ?? [];
+  }
+  const lines = readRecipeFile(path, text)?.ingredients ?? [];
+  return lines.map((line) => scaleIngredientLine(line, factor));
 }
 
 /**
@@ -212,6 +258,26 @@ export function setRecipeHistory(
     "times made": history.timesMade,
     "last made": history.lastMade,
   });
+}
+
+/**
+ * Add what a recipe page says about nutrition to a recipe file: the numbers,
+ * the serving size, and the servings when the file doesn't have them. A
+ * note's frontmatter or a `.cook` file's front matter. Only what the file
+ * doesn't already say goes in: a number someone typed in by hand stays.
+ */
+export function addRecipeNutrition(
+  path: string,
+  text: string,
+  info: PageNutrition,
+): string {
+  if (recipeFormatOf(path) !== "cooklang") {
+    return addNoteNutrition(text, info);
+  }
+  const missing = missingRecipeFields(parseCooklang(text).metadata, info, true);
+  return Object.keys(missing).length > 0
+    ? setCooklangMetadata(text, missing)
+    : text;
 }
 
 /**

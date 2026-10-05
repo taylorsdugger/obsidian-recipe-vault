@@ -12,6 +12,7 @@ import { Login } from "./routes/login";
 import { Plan } from "./routes/plan";
 import { Recipe } from "./routes/recipe";
 import { Recipes } from "./routes/recipes";
+import { Settings } from "./routes/settings";
 import { Shared } from "./routes/shared";
 
 /** Which screen a pathname maps to. Anything unmatched falls through to Home. */
@@ -34,6 +35,9 @@ function Screen({ path }: { path: string }) {
   }
   if (path.startsWith("/import")) {
     return <Import />;
+  }
+  if (path.startsWith("/settings")) {
+    return <Settings />;
   }
   return <Home />;
 }

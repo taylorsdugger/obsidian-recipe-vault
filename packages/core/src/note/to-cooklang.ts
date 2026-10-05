@@ -3,6 +3,11 @@ import {
   parseShoppingLine,
 } from "../shopping/parse-line";
 import type { JsonRecord } from "../types";
+import {
+  nutritionFields,
+  nutritionFromJsonLd,
+  servingSizeFromJsonLd,
+} from "../nutrition";
 import { cookTimeToMinutes } from "./frontmatter";
 import {
   noteToJsonLd,
@@ -287,6 +292,13 @@ export function recipeToCooklang(recipe: JsonRecord): string {
     Array.isArray(recipe.image) ? recipe.image[0] : recipe.image,
   );
   if (/^https?:\/\//i.test(image)) add("image", image);
+  const nutrition = nutritionFromJsonLd(recipe.nutrition);
+  if (nutrition) {
+    for (const [key, value] of Object.entries(nutritionFields(nutrition))) {
+      add(key, String(value));
+    }
+  }
+  add("serving size", servingSizeFromJsonLd(recipe.nutrition));
   const history = readRecipeVaultState(recipe);
   if (history.timesMade) add("times made", String(history.timesMade));
   if (history.lastMade) add("last made", history.lastMade);

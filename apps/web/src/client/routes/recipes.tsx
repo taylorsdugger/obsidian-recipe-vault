@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { api, type RecipeSort, type RecipeSummary } from "../api";
 import { Icon } from "../components/icon";
 import { RecipeCard } from "../components/recipe-card";
+import { ToTop } from "../components/to-top";
 import { navigate } from "../router";
 import { rememberScroll, restoreScroll, scrollToTop } from "../scroll";
 import { SYNCED_EVENT } from "../sync";
@@ -196,6 +197,8 @@ export function Recipes() {
           ))}
         </div>
       )}
+
+      <ToTop />
 
       {/* Search lives at the bottom, by the thumb. It covers title, meal type
           and ingredients, so "chickpea" finds the curry. */}

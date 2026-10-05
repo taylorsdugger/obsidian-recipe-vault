@@ -4,9 +4,36 @@ The household web app. One Cloudflare Worker serves everything: Hono handles
 `/api/*`, Workers static assets serve the Vite build from `dist/`, and D1 is
 the database. See `docs/web-app-plan.md` step 2 for what goes where.
 
-It has recipes (browse, search, cook from, edit, mark made), the week plan,
-the shopping list, and URL import. Recipes and the shopping list live in the
-synced Obsidian vault, so the app and Obsidian share them.
+It has recipes (browse, search, cook from, edit, mark made, share), the week
+plan, the shopping list, and URL import. Recipes and the shopping list live in
+the synced Obsidian vault, so the app and Obsidian share them.
+
+## What's in it
+
+- **Home:** tonight's meal (or whatever's next), the next few planned meals,
+  and how much is left on the list.
+- **Plan:** the week, three slots a day. Drag a meal to another slot or day,
+  mark leftovers for tomorrow, and send the week's ingredients to the list.
+- **List:** the shopping list grouped by aisle, with a field to add to it.
+- **Recipes:** the gallery, with search and sorts.
+- **Recipe:** the ingredients to tick and send to the list, the steps, and a
+  menu for marking made, editing the note and deleting it. The screen stays
+  on while it's open.
+- **Cook mode:** one step at a time, with the ingredients that step uses and
+  the next step in view. Arrow keys move between steps on a keyboard.
+- **Share:** a public link to one recipe, and a PDF. See
+  [Share links](#share-links).
+
+A phone gets a tab bar and puts each screen's main action at the bottom, by
+the thumb. From 768px the tabs turn into a sidebar, and from 1024px each
+screen gets a desktop layout: the week as seven columns, the list as aisle
+cards, a recipe's ingredients beside its steps, and cook mode with every step
+listed beside the current one.
+
+Dark mode follows the device's setting. It's the same color tokens with
+different values in `src/client/styles.css`, so no component has its own dark
+styles. The display font, Newsreader, is self-hosted in `public/fonts/` so the
+installed app still has its titles offline.
 
 ## Running it
 
@@ -73,8 +100,8 @@ When a change adds a file to `migrations/`, run it before deploying:
 npm run db:migrate -w @recipe-vault/web
 ```
 
-`0005_settings.sql` is the latest. It adds the `settings` table that holds the
-"Save new recipes as" choice. Until it runs, imports keep saving markdown.
+`0006_recipe_shares.sql` is the latest. It adds the `recipe_shares` table
+behind share links. Until it runs, turning a share link on fails.
 
 ## The vault is the source of truth
 
@@ -143,6 +170,23 @@ dev`. `--local` turns off remote bindings. Careful with the write paths in that
 mode: they go to the real bucket. To exercise writes, run `--local` and seed
 the local bucket with `wrangler r2 object put … --local` instead (note that the
 CLI can't handle a key with spaces in it).
+
+## Share links
+
+A recipe's share sheet can turn on a public link, `/s/<token>`, that opens the
+recipe without the password. It shows the title, photo, ingredients, steps and
+notes, with a checklist and cook mode. It doesn't show anything about the
+household, like times made or when it was last cooked.
+
+A link is off until someone turns it on, so opening the share sheet never
+publishes anything. Each recipe has at most one. Turning it off deletes the
+token, and turning it back on makes a new one, so an old link stays dead.
+Deleting the recipe deletes its link too. Tokens live in D1 only, in
+`recipe_shares`.
+
+The same sheet has a PDF: it lays the recipe out for one letter page and opens
+the print dialog, where every browser offers Save as PDF. There's no PDF
+library in the bundle.
 
 ## Icons
 

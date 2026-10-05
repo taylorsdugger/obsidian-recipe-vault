@@ -31,27 +31,15 @@ export function Import() {
   const [preview, setPreview] = useState<ParsedRecipePreview[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Null until the server says, so the pills don't flash the wrong one.
+  // Null until the server says, so the line doesn't flash the wrong format.
   const [format, setFormat] = useState<RecipeFormat | null>(null);
 
   useEffect(() => {
     api
-      .recipeFormat()
+      .settings()
       .then((res) => setFormat(res.recipeFormat))
       .catch(() => setFormat("markdown"));
   }, []);
-
-  // Saved on tap, and every import from then on uses it, on every device.
-  const chooseFormat = async (next: RecipeFormat) => {
-    const before = format;
-    setFormat(next);
-    try {
-      await api.setRecipeFormat(next);
-    } catch (err) {
-      setFormat(before);
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
 
   const look = async (target: string) => {
     setBusy(true);
@@ -106,25 +94,16 @@ export function Import() {
       </header>
 
       {format && (
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-muted">Save new recipes as</span>
-          {(
-            [
-              ["markdown", "Markdown"],
-              ["cooklang", "Cooklang"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              class={format === key ? "pill-on" : "pill"}
-              aria-pressed={format === key}
-              onClick={() => void chooseFormat(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <p class="text-sm text-muted">
+          Saving as {format === "cooklang" ? "Cooklang" : "Markdown"}.{" "}
+          <button
+            type="button"
+            class="font-medium text-accent-ink underline underline-offset-2"
+            onClick={() => navigate("/settings")}
+          >
+            Change in settings
+          </button>
+        </p>
       )}
 
       <form class="flex gap-2" onSubmit={lookUp}>

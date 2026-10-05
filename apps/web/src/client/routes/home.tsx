@@ -504,13 +504,24 @@ export function Home() {
           </p>
           <h1 class="title-display">{title}</h1>
         </div>
-        <button
-          type="button"
-          class="btn-quiet shrink-0"
-          onClick={() => navigate("/import")}
-        >
-          Import
-        </button>
+        <div class="flex shrink-0 gap-2">
+          <button
+            type="button"
+            class="btn-quiet"
+            onClick={() => navigate("/import")}
+          >
+            Import
+          </button>
+          {/* The sidebar has its own way in from `md` up. */}
+          <button
+            type="button"
+            class="icon-btn-round md:hidden"
+            aria-label="Settings"
+            onClick={() => navigate("/settings")}
+          >
+            <Icon name="settings" />
+          </button>
+        </div>
       </header>
 
       {error && <p class="px-1 text-sm text-danger">{error}</p>}

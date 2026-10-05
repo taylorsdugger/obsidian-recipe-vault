@@ -163,6 +163,352 @@
 	height: var(--icon-s);
 }
 
+/* ----------------------------------------------------------- nutrition */
+
+/* Calories and macros on one line under the callout. Hidden outside the
+   note's own sizer, like the actions row, and when the recipe has none. */
+.recipe-nutrition-slot {
+	display: none;
+}
+
+.markdown-preview-view.recipe-note > .markdown-preview-sizer .recipe-nutrition-slot:not(:empty),
+.cooklang-recipe .recipe-main > .recipe-nutrition-slot:not(:empty) {
+	display: flex;
+	margin-block-start: var(--size-4-3);
+}
+
+.recipe-nutrition-slot button.recipe-nutrition {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-4-3);
+	height: auto;
+	min-height: 36px;
+	padding: 0 var(--size-4-2) 0 var(--size-4-3);
+	border: 1px solid var(--recipe-border);
+	border-radius: var(--radius-m);
+	background: var(--recipe-surface);
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: 0.875em;
+	font-weight: var(--font-normal);
+	/* Wraps between its pieces, never inside one, when the line is longer
+	   than the note is wide. */
+	flex-wrap: wrap;
+	row-gap: var(--size-2-1);
+	padding-block: var(--size-2-2);
+	white-space: nowrap;
+	text-align: start;
+	cursor: var(--cursor);
+}
+
+.recipe-nutrition-slot button.recipe-nutrition:hover {
+	background: var(--background-modifier-hover);
+	box-shadow: none;
+}
+
+.recipe-nutrition b {
+	font-weight: var(--font-semibold);
+}
+
+.recipe-nutrition-macro {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.recipe-nutrition-end {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.recipe-nutrition-per {
+	color: var(--text-muted);
+}
+
+.recipe-nutrition-chevron {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+
+.recipe-nutrition-chevron .svg-icon {
+	width: var(--icon-s);
+	height: var(--icon-s);
+	transition: transform 120ms ease;
+}
+
+.recipe-nutrition[aria-expanded="true"] .recipe-nutrition-chevron.mod-down .svg-icon {
+	transform: rotate(180deg);
+}
+
+.recipe-nutrition-short,
+.recipe-nutrition-chevron.mod-right {
+	display: none;
+}
+
+/* A narrow pane, which is every phone: the whole width, letters for the
+   macros, and a chevron that says it opens something. */
+@container recipe-pane (width < 560px) {
+	.recipe-nutrition-slot button.recipe-nutrition {
+		flex: 1;
+		min-height: 44px;
+		gap: var(--size-4-2);
+	}
+
+	.recipe-nutrition-long,
+	.recipe-nutrition-per,
+	.recipe-nutrition-chevron.mod-down {
+		display: none;
+	}
+
+	.recipe-nutrition-short {
+		display: inline;
+	}
+
+	.recipe-nutrition-end {
+		margin-inline-start: auto;
+	}
+
+	.recipe-nutrition-chevron.mod-right {
+		display: inline-flex;
+	}
+}
+
+.recipe-nutrition-dot {
+	width: 8px;
+	height: 8px;
+	flex-shrink: 0;
+	border-radius: 4px;
+	background: var(--dot-color, transparent);
+}
+
+/* The details. On the body in a popover, or in a phone's sheet, so none of
+   this can lean on `.recipe-note`. */
+.recipe-nutrition-details {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+}
+
+.popover.recipe-nutrition-popover {
+	position: fixed;
+	width: 380px;
+	max-width: calc(100vw - 16px);
+	max-height: none;
+	padding: var(--size-4-4);
+	border-radius: var(--radius-l);
+	box-shadow: var(--shadow-l);
+}
+
+.recipe-nutrition-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-4-3);
+}
+
+.recipe-nutrition-title {
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-medium);
+}
+
+.recipe-nutrition-switch {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 2px;
+	padding: 3px;
+	border-radius: var(--radius-m);
+	background: var(--background-secondary);
+}
+
+.recipe-nutrition-switch button,
+.recipe-nutrition-switch button:hover {
+	height: 28px;
+	padding: 0 var(--size-4-2);
+	border: 0;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-normal);
+}
+
+.recipe-nutrition-switch button[aria-pressed="true"] {
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+	color: var(--text-normal);
+}
+
+.recipe-nutrition-total {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.recipe-nutrition-total-value {
+	font-size: 2.25em;
+	line-height: 1;
+	font-weight: var(--font-bold);
+	font-variant-numeric: tabular-nums;
+}
+
+.recipe-nutrition-total-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-medium);
+}
+
+/* What a serving is, right under the number it explains. */
+.recipe-nutrition-note {
+	margin-top: calc(var(--size-4-2) * -1);
+	color: var(--text-muted);
+}
+
+.recipe-nutrition-bar {
+	display: flex;
+	gap: 2px;
+	height: 8px;
+}
+
+.recipe-nutrition-bar > span {
+	flex-basis: 0;
+	border-radius: 4px;
+	background: var(--dot-color);
+}
+
+.recipe-nutrition-rows {
+	display: flex;
+	flex-direction: column;
+}
+
+.recipe-nutrition-row {
+	min-height: 34px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.recipe-nutrition-row + .recipe-nutrition-row {
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.recipe-nutrition-row-label {
+	flex: 1;
+}
+
+.recipe-nutrition-row-amount {
+	font-weight: var(--font-semibold);
+	font-variant-numeric: tabular-nums;
+}
+
+.recipe-nutrition-row-percent {
+	width: 40px;
+	text-align: end;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+
+.recipe-nutrition-foot {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+/* On a phone the sheet comes up from the bottom, the way Obsidian's own
+   confirmation dialogs do there, with bigger rows for a thumb. */
+.is-phone .modal-container.recipe-nutrition-sheet-container {
+	align-items: flex-end;
+}
+
+.is-phone .modal.recipe-nutrition-sheet {
+	--modal-radius: var(--touch-radius-s) var(--touch-radius-s) 0 0;
+	--dialog-max-width: 100vw;
+	--dialog-width: 100vw;
+	margin-top: auto;
+	padding-bottom: calc(var(--safe-area-inset-bottom) + var(--size-4-4));
+}
+
+.recipe-nutrition-sheet .recipe-nutrition-details {
+	padding-inline: var(--size-4-4);
+	font-size: var(--font-ui-medium);
+}
+
+.recipe-nutrition-sheet .recipe-nutrition-head {
+	justify-content: stretch;
+}
+
+.recipe-nutrition-sheet .recipe-nutrition-switch {
+	flex: 1;
+}
+
+.recipe-nutrition-sheet .recipe-nutrition-switch button {
+	height: 36px;
+	font-size: var(--font-ui-small);
+}
+
+.recipe-nutrition-sheet .recipe-nutrition-row {
+	min-height: 44px;
+}
+
+/* --------------------------------------------------------------- scale */
+
+/* Minus, what the recipe makes now, plus. Hidden unless it's on a recipe's
+   own ingredients, for the same reason as the actions row: an embed of the
+   note gets one from the post-processor too. */
+.recipe-scale {
+	display: none;
+}
+
+.markdown-preview-view.recipe-note > .markdown-preview-sizer .recipe-scale,
+.recipe-rail .recipe-scale,
+.cooklang-recipe .recipe-scale {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-1);
+	margin-block: var(--size-4-2) 0;
+	padding: 2px;
+	border: 1px solid var(--recipe-border);
+	border-radius: var(--radius-m);
+	background: var(--background-primary);
+}
+
+.recipe-scale .recipe-scale-step {
+	width: 32px;
+	height: 32px;
+	padding: 0;
+}
+
+.recipe-scale .recipe-scale-label,
+.recipe-scale .recipe-scale-label:hover {
+	min-width: 5.5em;
+	height: 32px;
+	padding: 0 var(--size-4-2);
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-weight: var(--font-semibold);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Disabled only means "already as written". It still reads as the label. */
+.recipe-scale .recipe-scale-label:disabled {
+	opacity: 1;
+	cursor: default;
+}
+
+.recipe-scale .recipe-scale-label.is-scaled {
+	color: var(--text-accent);
+}
+
+.recipe-scale-factor {
+	margin-inline-start: var(--size-2-3);
+	color: var(--text-muted);
+	font-weight: var(--font-normal);
+}
+
 /* ---------------------------------------------------- ingredient rows */
 
 /* The same list in three places: the note's own Ingredients section, the
@@ -544,8 +890,8 @@
 
 .recipe-cook-step {
 	font-family: var(--font-text);
-	font-size: 1.75em;
-	line-height: 1.35;
+	font-size: 1.3em;
+	line-height: 1.5;
 }
 
 .recipe-cook-step p,

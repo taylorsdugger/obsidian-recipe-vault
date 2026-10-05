@@ -5,6 +5,13 @@ import {
   TFile,
   setIcon,
 } from "obsidian";
+import {
+  scaleIngredientLine,
+  scaleLabel,
+  servingsOf,
+  stepScale,
+  yieldLabel,
+} from "@recipe-vault/core";
 import type RecipeVault from "./main";
 import {
   RecipeOutline,
@@ -116,6 +123,118 @@ export function wrapTaskText(root: HTMLElement): void {
       if (!keep(node)) span.appendChild(node);
     }
     input.after(span);
+  });
+}
+
+/**
+ * Minus, what the recipe makes now, plus. With servings in the note it moves
+ * a serving at a time and says "Serves 6"; without, it goes through ½×, 1×,
+ * 1½×, 2× and so on. The middle puts it back to as written.
+ *
+ * The factor lives on the element, so `syncScaleControl` can bring a control
+ * up to date wherever it was drawn without redrawing it.
+ */
+export function buildScaleControl(
+  servings: string,
+  factor: number,
+  onChange: (factor: number) => void,
+): HTMLElement {
+  const el = createDiv({
+    cls: "recipe-scale",
+    attr: { role: "group", "aria-label": "Scale recipe" },
+  });
+  el.dataset.servings = servings;
+  const base = servingsOf(servings);
+  const current = () => Number(el.dataset.factor) || 1;
+
+  const down = el.createEl("button", {
+    cls: "recipe-scale-step clickable-icon",
+    attr: { type: "button", "aria-label": "Scale down" },
+  });
+  setIcon(down, "minus");
+  const label = el.createEl("button", {
+    cls: "recipe-scale-label",
+    attr: { type: "button" },
+  });
+  const up = el.createEl("button", {
+    cls: "recipe-scale-step clickable-icon",
+    attr: { type: "button", "aria-label": "Scale up" },
+  });
+  setIcon(up, "plus");
+
+  down.addEventListener("click", () =>
+    onChange(stepScale(current(), -1, base)),
+  );
+  up.addEventListener("click", () => onChange(stepScale(current(), 1, base)));
+  label.addEventListener("click", () => onChange(1));
+  syncScaleControl(el, factor);
+  return el;
+}
+
+/** Bring a control from `buildScaleControl` up to `factor`. */
+export function syncScaleControl(el: HTMLElement, factor: number): void {
+  el.dataset.factor = String(factor);
+  const servings = el.dataset.servings ?? "";
+  const base = servingsOf(servings);
+  const scaled = factor !== 1;
+  const text = yieldLabel(servings, factor) || scaleLabel(factor);
+
+  const label = el.querySelector<HTMLButtonElement>(".recipe-scale-label");
+  if (label) {
+    label.empty();
+    label.createSpan({ text });
+    if (scaled && base !== null) {
+      label.createSpan({
+        cls: "recipe-scale-factor",
+        text: scaleLabel(factor),
+      });
+    }
+    label.disabled = !scaled;
+    label.setAttribute(
+      "aria-label",
+      scaled ? `${text}. Reset to as written` : text,
+    );
+    label.toggleClass("is-scaled", scaled);
+  }
+  const [down, up] = Array.from(
+    el.querySelectorAll<HTMLButtonElement>(".recipe-scale-step"),
+  );
+  if (down) down.disabled = stepScale(factor, -1, base) === factor;
+  if (up) up.disabled = stepScale(factor, 1, base) === factor;
+}
+
+/** What each rendered ingredient's text said before any scaling touched it. */
+const writtenText = new WeakMap<Text, string>();
+
+function firstText(node: Node): Text | null {
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      if (child.textContent?.trim()) return child as Text;
+      continue;
+    }
+    const found = firstText(child);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Scale the amounts in rendered ingredient rows. Only the row's first piece
+ * of text changes, which is where the amount is, so a link or a bold word
+ * later in the line stays as Obsidian drew it. The note itself isn't touched:
+ * a scale is for tonight, not the recipe.
+ */
+export function scaleRenderedIngredients(
+  root: HTMLElement,
+  factor: number,
+): void {
+  root.querySelectorAll(".recipe-item-text").forEach((span) => {
+    const text = firstText(span);
+    if (!text) return;
+    const written = writtenText.get(text) ?? text.data;
+    writtenText.set(text, written);
+    const next = scaleIngredientLine(written, factor);
+    if (text.data !== next) text.data = next;
   });
 }
 
@@ -320,7 +439,7 @@ export class RecipeNoteLayout extends Component {
       }
       if (isIngredientList(child, this.text)) {
         child.dataset.recipeSection = "ingredients";
-        wrapTaskText(child);
+        this.plugin.prepareIngredientSection(child, this.file);
       }
     }
   }
@@ -443,6 +562,7 @@ export class RecipeNoteLayout extends Component {
       const head = next.createDiv({ cls: "recipe-rail-head" });
       head.createEl("h3", { text: "Ingredients" });
       head.createSpan({ cls: "recipe-rail-count" });
+      next.append(this.plugin.recipeScaleControl(this.file));
       const list = next.createDiv({ cls: "recipe-rail-list" });
       await MarkdownRenderer.render(
         this.plugin.app,
@@ -460,6 +580,11 @@ export class RecipeNoteLayout extends Component {
           ? el.remove()
           : el.removeAttribute("data-recipe-section"),
       );
+    // The list's own post-processing may have added a control of its own.
+    next
+      .querySelectorAll(".recipe-rail-list .recipe-scale")
+      .forEach((el) => el.remove());
+    scaleRenderedIngredients(next, this.plugin.recipeScale(this.file));
 
     if (!this.live || gen !== this.railGen) {
       owner.unload();

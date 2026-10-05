@@ -4,7 +4,6 @@ import {
   countChecked,
   holdsActions,
   ingredientLines,
-  ingredientsForStep,
   recipeOutline,
   sectionRole,
   setTaskLine,
@@ -160,36 +159,6 @@ describe("cookSteps", () => {
     expect(cookSteps(md, recipeOutline(md).instructions!).map((s) => s.text)).toEqual([
       "Mix it.",
       "Bake it.",
-    ]);
-  });
-});
-
-describe("ingredientsForStep", () => {
-  const lines = [
-    "4 cloves garlic, minced",
-    "1 tbsp fresh ginger, grated",
-    "1 green chili, slit",
-    "1 tsp ground cumin",
-    "3 tbsp neutral oil",
-    "Salt and pepper",
-    "2 cans (15 oz) chickpeas, drained",
-  ];
-
-  it("matches names with amounts, units and prep stripped", () => {
-    expect(
-      ingredientsForStep("Stir in the garlic, ginger and chili, then the cumin.", lines),
-    ).toEqual(["4 cloves garlic", "1 tbsp fresh ginger", "1 green chili", "1 tsp ground cumin"]);
-  });
-
-  it("matches whole words only", () => {
-    expect(ingredientsForStep("Bring to a boil.", lines)).toEqual([]);
-  });
-
-  it("matches plurals and each half of a pair", () => {
-    expect(ingredientsForStep("Season with pepper.", lines)).toEqual(["Salt and pepper"]);
-    expect(ingredientsForStep("Fry the chickpea in oil.", lines)).toEqual([
-      "3 tbsp neutral oil",
-      "2 cans (15 oz) chickpeas",
     ]);
   });
 });

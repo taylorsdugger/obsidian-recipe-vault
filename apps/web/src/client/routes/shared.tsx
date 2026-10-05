@@ -1,8 +1,10 @@
+import { scaleIngredientLine, scaleLabel } from "@recipe-vault/core/scale";
 import { useEffect, useState } from "preact/hooks";
 
 import { api, LinkOff, type PublicRecipe } from "../api";
 import { CookMode } from "../components/cook-mode";
 import { Icon } from "../components/icon";
+import { ScaleControl } from "../components/scale-control";
 import { AppIcon, PotMark } from "../components/logo";
 import { spaced, sourceHost } from "../format";
 import { back, navigate, replace } from "../router";
@@ -30,6 +32,8 @@ export function Shared({
   const [tab, setTab] = useState<Tab>("ingredients");
   const [broken, setBroken] = useState(false);
   const [cookStep, setCookStep] = useState(0);
+  /** A double batch, say. The link has no servings, so it's a multiplier. */
+  const [scale, setScale] = useState(1);
   const screenAwake = useWakeLock();
 
   useEffect(() => {
@@ -96,9 +100,22 @@ export function Shared({
 
   // Ticked here means "got it out", and nothing is sent anywhere. Unchecked
   // state, so it resets on a reload, which is fine for one evening's cooking.
+  const ingredients = recipe.ingredients.map((line) =>
+    scaleIngredientLine(line, scale),
+  );
+  const scaleControl = (cls: string) =>
+    ingredients.length > 0 && (
+      <ScaleControl
+        factor={scale}
+        servings=""
+        onChange={setScale}
+        class={cls}
+      />
+    );
+
   const ingredientList = (row: string, text: string) => (
     <ul class="-mx-2 flex flex-col">
-      {recipe.ingredients.map((line, i) => (
+      {ingredients.map((line, i) => (
         <li key={`${line}-${i}`}>
           <label class={`check-row ${row}`}>
             <input type="checkbox" class="check appearance-none" />
@@ -191,6 +208,7 @@ export function Shared({
             <div class="flex items-baseline justify-between pt-1">
               <h2 class="font-display text-2xl font-medium">Ingredients</h2>
             </div>
+            {scaleControl("self-start")}
             {ingredientList("min-h-[46px] py-1", "text-row")}
           </aside>
           <div class="flex max-w-[62ch] flex-col gap-3.5">
@@ -231,7 +249,10 @@ export function Shared({
             </a>
           )}
           {tab === "ingredients" ? (
-            ingredientList("min-h-[52px] py-1", "text-base")
+            <>
+              {scaleControl("mb-3")}
+              {ingredientList("min-h-[52px] py-1", "text-base")}
+            </>
           ) : (
             <>
               {stepList("gap-4")}
@@ -282,9 +303,13 @@ export function Shared({
 
       {cooking && recipe.steps.length > 0 && (
         <CookMode
-          title={recipe.title}
+          title={
+            scale === 1
+              ? recipe.title
+              : `${recipe.title} · ${scaleLabel(scale)}`
+          }
           steps={recipe.steps}
-          ingredients={recipe.ingredients}
+          ingredients={ingredients}
           step={cookStep}
           screenAwake={screenAwake}
           onStep={setCookStep}

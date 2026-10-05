@@ -42,6 +42,11 @@
   --color-on-ink: oklch(0.99 0.003 85);
   /* Errors. A red-700 that stays readable once the canvas goes dark. */
   --color-danger: oklch(0.5 0.19 27);
+  /* Protein, carbs and fat: the nutrition strip's dots, bar and rows. Blue
+     against orange, so they tell apart by lightness too, not hue alone. */
+  --color-protein: #2a78d6;
+  --color-carbs: #eb6834;
+  --color-fat: #1baf7a;
 
   /* Screen titles, recipe titles and cook-mode step text. Nothing else. */
   --font-display: "Newsreader", Georgia, serif;
@@ -82,6 +87,9 @@
     --color-accent-soft: oklch(0.29 0.05 65);
     --color-on-ink: oklch(0.18 0.006 65);
     --color-danger: oklch(0.72 0.16 25);
+    --color-protein: #3987e5;
+    --color-carbs: #d95926;
+    --color-fat: #199e70;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -97,6 +105,9 @@
       --color-accent-soft: oklch(0.29 0.05 65);
       --color-on-ink: oklch(0.18 0.006 65);
       --color-danger: oklch(0.72 0.16 25);
+      --color-protein: #3987e5;
+      --color-carbs: #d95926;
+      --color-fat: #199e70;
     }
   }
 
@@ -277,6 +288,39 @@
     }
   }
 
+  /*
+   * The gallery's back-to-top button. Bottom right, just above the docked
+   * search on a phone, and in the corner once the search moves up into the
+   * header. Slides down out of sight rather than popping.
+   */
+  .to-top {
+    @apply fixed right-4 z-10 size-12 shadow-[0_6px_20px_oklch(0_0_0/0.14)] transition-[translate,opacity] duration-200 ease-out;
+    bottom: calc(3.75rem + env(safe-area-inset-bottom) + 5rem);
+  }
+
+  .to-top[data-shown="false"] {
+    @apply pointer-events-none translate-y-4 opacity-0;
+  }
+
+  @media (width >= 48rem) {
+    .to-top {
+      bottom: 5.75rem;
+    }
+  }
+
+  @media (width >= 64rem) {
+    .to-top {
+      @apply right-8;
+      bottom: 2rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .to-top {
+      @apply transition-opacity;
+    }
+  }
+
   /* A toggle in a row of them: the gallery's sort. */
   .pill {
     @apply inline-flex h-10 shrink-0 items-center rounded-full border border-line bg-surface px-4 text-sm font-semibold text-ink transition-colors;
@@ -333,6 +377,23 @@
    */
   .check-row {
     @apply flex min-h-14 cursor-pointer items-center gap-3.5 rounded-xl px-2 transition-colors has-[:checked]:bg-accent-soft;
+  }
+
+  /*
+   * An on/off switch on the settings screen. A real checkbox drawn as a track
+   * and a knob, so it keeps the keyboard and screen reader behaviour for free.
+   */
+  .switch {
+    @apply relative h-7 w-12 shrink-0 cursor-pointer appearance-none rounded-full bg-line transition-colors checked:bg-accent;
+  }
+
+  .switch::after {
+    content: "";
+    @apply absolute top-0.5 left-0.5 size-6 rounded-full bg-white shadow-sm transition-transform;
+  }
+
+  .switch:checked::after {
+    @apply translate-x-5;
   }
 
   /* The active tab's icon sits in this. Inactive tabs are just the glyph. */

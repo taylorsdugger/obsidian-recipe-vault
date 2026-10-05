@@ -5,6 +5,7 @@ import {
   readPhotoProperty,
 } from "./frontmatter";
 import { findMarkdownSection, parseSectionList } from "./sections";
+import { nutritionFromFields, nutritionToJsonLd } from "../nutrition";
 
 /**
  * Vault-only state that rides along with an exported recipe.
@@ -152,6 +153,11 @@ export function noteToJsonLd(
   // dropping it would lose the notes on a round trip.
   const notes = sectionItems(markdown, "Notes", false);
   if (notes.length > 0) recipe.recipeNotes = notes;
+
+  const nutrition = nutritionFromFields(fm);
+  if (nutrition) {
+    recipe.nutrition = nutritionToJsonLd(nutrition, fm.serving_size ?? "");
+  }
 
   const vaultState: RecipeVaultState = {};
   const timesMade = Number(fm.times_made);

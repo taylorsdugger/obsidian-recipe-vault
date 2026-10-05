@@ -26,6 +26,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export type RecipeFormat = "markdown" | "cooklang";
 
+/** What the settings screen changes. Mirrors the worker's `AppSettings`. */
+export interface AppSettings {
+  recipeFormat: RecipeFormat;
+  stripFillerWords: boolean;
+  stripVeganWords: boolean;
+}
+
 /** A recipe as the list endpoint returns it. */
 export interface RecipeSummary {
   id: string;
@@ -203,13 +210,14 @@ export const api = {
       body: JSON.stringify({ url }),
     }),
 
-  /** What recipes imported in the app are saved as. */
-  recipeFormat: () => request<{ recipeFormat: RecipeFormat }>("/settings"),
+  /** The household's import settings, shared by every device. */
+  settings: () => request<AppSettings>("/settings"),
 
-  setRecipeFormat: (recipeFormat: RecipeFormat) =>
-    request<{ recipeFormat: RecipeFormat }>("/settings", {
+  /** Change any of them. Hands back all of them as saved. */
+  updateSettings: (patch: Partial<AppSettings>) =>
+    request<AppSettings>("/settings", {
       method: "PUT",
-      body: JSON.stringify({ recipeFormat }),
+      body: JSON.stringify(patch),
     }),
 
   importSave: (recipe: ParsedRecipePreview) =>

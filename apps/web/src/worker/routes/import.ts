@@ -1,13 +1,16 @@
 import { Hono } from "hono";
 import {
+  addNoteNutrition,
   createRecipeRenderer,
   DEFAULT_TEMPLATE,
   ensureRecipeNotesSection,
   ensureRequiredRecipeFrontmatter,
   fetchRecipes,
   normalizeRecipeNotes,
+  recipeNutritionInfo,
   recipeToCooklang,
   type FetchOptions,
+  type ParseOptions,
   type ParsedRecipe,
 } from "@recipe-vault/core";
 
@@ -16,8 +19,8 @@ import { indexNote } from "../db/index-recipe";
 import { deriveRecipeFields } from "../db/recipe-row";
 import type { AppBindings } from "../env";
 import { workerHttpPort } from "../http";
-import { PARSE_OPTIONS } from "../parse-options";
-import { getRecipeFormat } from "../settings";
+import { parseOptions } from "../parse-options";
+import { getSettings } from "../settings";
 import { freeKeyFor, writeNote } from "../vault-store";
 import { wait } from "../wait";
 
@@ -38,8 +41,9 @@ renderRecipe({});
 
 /**
  * Render one parsed recipe to a note the same way the plugin does: template,
- * then the required-frontmatter backfill, then the notes section. Skipping
- * either of the last two would produce a note the plugin can't read back.
+ * then the required-frontmatter backfill and nutrition, then the notes
+ * section. Skipping the backfill or the notes would produce a note the plugin
+ * can't read back.
  */
 export function recipeToMarkdown(recipe: ParsedRecipe): string {
   let md = renderRecipe({
@@ -56,6 +60,7 @@ export function recipeToMarkdown(recipe: ParsedRecipe): string {
     },
     { formatPhoto: (path) => path },
   );
+  md = addNoteNutrition(md, recipeNutritionInfo(recipe));
 
   return ensureRecipeNotesSection(md, normalizeRecipeNotes(recipe.recipeNotes));
 }
@@ -64,8 +69,7 @@ export function recipeToMarkdown(recipe: ParsedRecipe): string {
  * `proxyFallback` is on because Worker egress comes from Cloudflare IPs, which
  * some blogs block the same way they block Obsidian mobile.
  */
-const IMPORT_OPTIONS: FetchOptions = {
-  ...PARSE_OPTIONS,
+const FETCH_OPTIONS: Omit<FetchOptions, keyof ParseOptions> = {
   proxyFallback: true,
   retryDelayMs: 500,
   sleep: wait,
@@ -85,8 +89,14 @@ export const importRoutes = new Hono<AppBindings>()
       return c.json({ error: "Give me a recipe URL." }, 400);
     }
 
+    // The title is cleaned here, at preview, by the settings screen's
+    // switches. What's saved is whatever the preview showed.
+    const settings = await getSettings(db(c.env.DB));
     try {
-      const recipes = await fetchRecipes(url, workerHttpPort, IMPORT_OPTIONS);
+      const recipes = await fetchRecipes(url, workerHttpPort, {
+        ...parseOptions(settings),
+        ...FETCH_OPTIONS,
+      });
       if (recipes.length === 0) {
         return c.json(
           { error: "No recipe data was found on that page." },
@@ -119,7 +129,7 @@ export const importRoutes = new Hono<AppBindings>()
     // A .cook file keeps the photo as a url in its front matter, the same as
     // the app's notes do (locked decision 7).
     const database = db(c.env.DB);
-    const format = await getRecipeFormat(database);
+    const { recipeFormat: format } = await getSettings(database);
     const ext = format === "cooklang" ? "cook" : "md";
     const markdown =
       format === "cooklang"

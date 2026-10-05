@@ -10,7 +10,7 @@ import { recipeRoutes } from "./routes/recipes";
 import { sharedRoutes, shareRoutes } from "./routes/share";
 import { settingsRoutes } from "./settings";
 import { vaultRoutes } from "./routes/vault";
-import { PARSE_OPTIONS as HEALTH_PARSE_OPTIONS } from "./parse-options";
+import { parseOptions } from "./parse-options";
 
 /** A one-recipe page, parsed by /api/health to prove the parser still runs. */
 const HEALTH_FIXTURE =
@@ -30,7 +30,7 @@ const api = new Hono<AppBindings>()
       const recipes = parseRecipesFromHtml(
         HEALTH_FIXTURE,
         new URL("https://example.com/recipe"),
-        HEALTH_PARSE_OPTIONS,
+        parseOptions({ stripFillerWords: true, stripVeganWords: true }),
       );
       parser = recipes[0]?.name === "Soup";
     } catch {

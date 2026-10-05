@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { setIcon } from "obsidian";
-import { formatIsoDuration } from "@recipe-vault/core";
+import {
+  formatIsoDuration,
+  scaleLabel,
+  servingsOf,
+  stepScale,
+  yieldLabel,
+} from "@recipe-vault/core";
 import type {
   CooklangIngredient,
   CooklangRecipe as ParsedCooklang,
@@ -20,6 +26,11 @@ interface CooklangRecipeProps {
   /** Ticked ingredients, by their place in `recipe.ingredients`. */
   checked: Set<number>;
   onToggle: (index: number) => void;
+  /** How much of the recipe `recipe` is already scaled to. */
+  scale: number;
+  /** The servings as written, before scaling, or "". */
+  servings: string;
+  onScale: (factor: number) => void;
   onMarkMade: () => void;
   onAddToList: () => void;
   onEdit: () => void;
@@ -32,6 +43,8 @@ interface CooklangRecipeProps {
   /** Where a recipe reference points in the vault, or null if nowhere. */
   linkFor: (reference: string) => string | null;
   onOpenLink: (path: string, event: MouseEvent) => void;
+  /** Draws the nutrition strip into its slot, the same one a note gets. */
+  mountNutrition: (slot: HTMLElement) => void;
 }
 
 interface LinkProps {
@@ -198,12 +211,80 @@ function Token({
 }
 
 /** An Obsidian (lucide) icon. */
+/**
+ * Where the nutrition strip goes. The plugin draws it, popover and all, so
+ * it's the same strip as a note's rather than a copy of it in jsx.
+ */
+function NutritionSlot({ mount }: { mount: (slot: HTMLElement) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) mount(ref.current);
+  });
+  return <div className="recipe-nutrition-slot" ref={ref} />;
+}
+
 function Icon({ name }: { name: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (ref.current) setIcon(ref.current, name);
   }, [name]);
   return <span className="recipe-button-icon" ref={ref} />;
+}
+
+/**
+ * Minus, what the recipe makes now, plus. The same control and classes a
+ * recipe note gets from `buildScaleControl`.
+ */
+function ScaleControl({
+  factor,
+  servings,
+  onChange,
+}: {
+  factor: number;
+  servings: string;
+  onChange: (factor: number) => void;
+}) {
+  const base = servingsOf(servings);
+  const scaled = factor !== 1;
+  const text = yieldLabel(servings, factor) || scaleLabel(factor);
+  const down = stepScale(factor, -1, base);
+  const up = stepScale(factor, 1, base);
+  return (
+    <div className="recipe-scale" role="group" aria-label="Scale recipe">
+      <button
+        type="button"
+        className="recipe-scale-step clickable-icon"
+        aria-label="Scale down"
+        disabled={down === factor}
+        onClick={() => onChange(down)}
+      >
+        <Icon name="minus" />
+      </button>
+      <button
+        type="button"
+        className={
+          scaled ? "recipe-scale-label is-scaled" : "recipe-scale-label"
+        }
+        aria-label={scaled ? `${text}. Reset to as written` : text}
+        disabled={!scaled}
+        onClick={() => onChange(1)}
+      >
+        <span>{text}</span>
+        {scaled && base !== null && (
+          <span className="recipe-scale-factor">{scaleLabel(factor)}</span>
+        )}
+      </button>
+      <button
+        type="button"
+        className="recipe-scale-step clickable-icon"
+        aria-label="Scale up"
+        disabled={up === factor}
+        onClick={() => onChange(up)}
+      >
+        <Icon name="plus" />
+      </button>
+    </div>
+  );
 }
 
 /**
@@ -221,6 +302,9 @@ export function CooklangRecipe({
   imageSrc,
   checked,
   onToggle,
+  scale,
+  servings,
+  onScale,
   onMarkMade,
   onAddToList,
   onEdit,
@@ -230,6 +314,7 @@ export function CooklangRecipe({
   onTab,
   linkFor,
   onOpenLink,
+  mountNutrition,
 }: CooklangRecipeProps) {
   const name = asText(summary.name);
   const description = asText(summary.description);
@@ -268,6 +353,10 @@ export function CooklangRecipe({
       <img src={imageSrc} alt={name} />
     </div>
   ) : null;
+
+  const scaleControl = (
+    <ScaleControl factor={scale} servings={servings} onChange={onScale} />
+  );
 
   const ingredientList = (
     <ul className="contains-task-list">
@@ -370,6 +459,7 @@ export function CooklangRecipe({
                     {checked.size} of {recipe.ingredients.length} picked
                   </span>
                 </div>
+                {scaleControl}
                 <div className="recipe-rail-list">{ingredientList}</div>
               </>
             )}
@@ -437,6 +527,8 @@ export function CooklangRecipe({
             </div>
           )}
 
+          <NutritionSlot mount={mountNutrition} />
+
           <div className="recipe-note-actions">
             <button type="button" onClick={onMarkMade}>
               <Icon name="circle-check" />
@@ -466,6 +558,7 @@ export function CooklangRecipe({
           {recipe.ingredients.length > 0 && (
             <div data-recipe-section="ingredients">
               <h3>Ingredients</h3>
+              {scaleControl}
               {ingredientList}
             </div>
           )}

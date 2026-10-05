@@ -19,6 +19,16 @@ export interface PluginSettings {
    * Kitchen splits it into Ingredients and Steps with a bar at the bottom.
    */
   mobileRecipeLayout: "classic" | "kitchen";
+  /**
+   * Start a recipe's properties folded away. Nutrition adds seven of them,
+   * which pushed the recipe itself down the page.
+   */
+  collapseRecipeProperties: boolean;
+  /**
+   * Calories and macros: the line under At a Glance, nutrition properties on
+   * import, and the commands that fetch them. Off unless someone wants it.
+   */
+  showNutrition: boolean;
   folder: string;
   /** What new recipes are saved as. Existing files stay in their format. */
   recipeFormat: "markdown" | "cooklang";
@@ -69,6 +79,8 @@ const AI_MODEL_OTHER = "__other__";
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   mobileRecipeLayout: "classic",
+  collapseRecipeProperties: true,
+  showNutrition: false,
   folder: "Recipes",
   recipeFormat: "markdown",
   saveInActiveFile: false,
@@ -259,6 +271,35 @@ export class SettingsTab extends PluginSettingTab {
               await this.plugin.saveSettings();
               this.plugin.applyRecipeLayoutSetting();
             });
+          });
+        },
+      },
+      {
+        name: "Show nutrition",
+        desc: "Calories, protein, carbs and fat for each serving, under At a Glance. New imports get them from the recipe page, and Fetch missing nutrition from source pages fills in recipes you already have. Off by default.",
+        render: (setting) => {
+          setting.addToggle((toggle) => {
+            toggle
+              .setValue(this.plugin.settings.showNutrition)
+              .onChange(async (value) => {
+                this.plugin.settings.showNutrition = value;
+                await this.plugin.saveSettings();
+                this.plugin.applyNutritionSetting();
+              });
+          });
+        },
+      },
+      {
+        name: "Collapse properties on recipes",
+        desc: "Fold a recipe's properties away when you open it, so the recipe comes first. Click Properties to open them. They fold again the next time you open the recipe.",
+        render: (setting) => {
+          setting.addToggle((toggle) => {
+            toggle
+              .setValue(this.plugin.settings.collapseRecipeProperties)
+              .onChange(async (value) => {
+                this.plugin.settings.collapseRecipeProperties = value;
+                await this.plugin.saveSettings();
+              });
           });
         },
       },

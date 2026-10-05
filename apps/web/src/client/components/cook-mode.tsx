@@ -1,6 +1,7 @@
+// Deep import, like the recipe screen's: the core barrel pulls in cheerio.
+import { ingredientsForSteps } from "@recipe-vault/core/note/step-ingredients";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import { ingredientsForStep } from "../cook";
 import { useScrollLock } from "../scroll";
 import { Icon } from "./icon";
 import { Sheet } from "./sheet";
@@ -46,10 +47,11 @@ export function CookMode({
   const n = Math.min(Math.max(step, 0), steps.length - 1);
   const last = n === steps.length - 1;
   const text = steps[n] ?? "";
-  const uses = useMemo(
-    () => ingredientsForStep(text, ingredients),
-    [text, ingredients],
+  const usesBySteps = useMemo(
+    () => ingredientsForSteps(steps, ingredients),
+    [steps, ingredients],
   );
+  const uses = usesBySteps[n] ?? [];
 
   // Big enough to read from across the counter, but a long step at that size
   // turns into a wall of display type. Past a couple of lines it steps down.

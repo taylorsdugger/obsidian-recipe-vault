@@ -38,6 +38,16 @@
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
     />
+    <!-- A theme forced on the settings screen, put on before first paint so
+         the other one doesn't flash. src/client/theme.ts owns the rest. -->
+    <script>
+      try {
+        var theme = localStorage.getItem("recipe-vault:theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.setAttribute("data-theme", theme);
+        }
+      } catch (e) {}
+    </script>
     <title>Recipe Vault</title>
   </head>
   <body>

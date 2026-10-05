@@ -2,7 +2,11 @@
 // which the parser and the renderer need on the Worker but the phone does not.
 import { parseRecipeSections } from "@recipe-vault/core/note/sections";
 import { readFrontmatter } from "@recipe-vault/core/note/frontmatter";
-import { readRecipeFile } from "@recipe-vault/core/note/recipe-file";
+import {
+  readRecipeFile,
+  scaleRecipeIngredients,
+} from "@recipe-vault/core/note/recipe-file";
+import { scaleLabel } from "@recipe-vault/core/scale";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { api, type PublicRecipe, type RecipeDetail } from "../api";
@@ -10,14 +14,24 @@ import { CookMode } from "../components/cook-mode";
 import { Icon } from "../components/icon";
 import { PhotoViewer } from "../components/photo-viewer";
 import { PotMark } from "../components/logo";
+import { ScaleControl } from "../components/scale-control";
 import { ShareSheet } from "../components/share-sheet";
 import { Sheet } from "../components/sheet";
+import {
+  NutritionDetails,
+  NutritionPopover,
+  NutritionStrip,
+} from "../components/nutrition";
 import { madeToday, shortDate, spaced } from "../format";
+import { storedRecipeLayout } from "../recipe-layout";
 import { back, navigate, replace } from "../router";
 import { scrollContainer } from "../scroll";
 import { useWakeLock } from "../wake-lock";
 
 type Tab = "ingredients" | "steps";
+
+/** Says nothing you need to act on, so it clears itself. */
+const MARKED_MADE = "Marked as made.";
 
 /**
  * One recipe. The note is the source of truth, so the sections rendered here
@@ -40,13 +54,27 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
   const [zoomed, setZoomed] = useState(false);
   const [broken, setBroken] = useState(false);
   const [tab, setTab] = useState<Tab>("ingredients");
-  const [menuOpen, setMenuOpen] = useState(false);
+  /**
+   * Kitchen or Classic on a phone, from the settings screen. Read once when
+   * the recipe opens: changing it means going to settings, which unmounts
+   * this screen anyway.
+   */
+  const [layout] = useState(storedRecipeLayout);
+  const kitchen = layout === "kitchen";
   const [sharing, setSharing] = useState(false);
+  /** The phone's nutrition sheet. The desktop's popover keeps its own. */
+  const [showNutrition, setShowNutrition] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   /** Where cook mode is up to. Kept here so closing it and coming back resumes. */
   const [cookStep, setCookStep] = useState(0);
   /** Cook mode just finished, so ask whether to count it. */
   const [offerMade, setOfferMade] = useState(false);
+  /**
+   * How much of the recipe to make: 2 for a double batch. Here rather than in
+   * the note, since it's about tonight, not the recipe. Cook mode and the
+   * list both use it.
+   */
+  const [scale, setScale] = useState(1);
 
   // Nobody taps the phone between "brown the onions" and "add the stock", and
   // a locked screen with wet hands is the whole reason this screen exists.
@@ -85,6 +113,7 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
   }, [tab]);
 
   useEffect(() => {
+    setScale(1);
     api
       .recipe(id)
       .then((res) => setRecipe(res.recipe))
@@ -92,6 +121,17 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
         setError(err instanceof Error ? err.message : String(err)),
       );
   }, [id]);
+
+  // Only clears if it's still the message showing, so an error that replaced
+  // it in the meantime stays put.
+  useEffect(() => {
+    if (status !== MARKED_MADE) return;
+    const timer = setTimeout(
+      () => setStatus((current) => (current === MARKED_MADE ? null : current)),
+      2500,
+    );
+    return () => clearTimeout(timer);
+  }, [status]);
 
   // A .cook file has no sections to find. Its ingredients come from the
   // steps' markup, and its steps read back as plain text.
@@ -118,9 +158,33 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
     () => (recipe ? readFrontmatter(recipe.markdown) : {}),
     [recipe],
   );
+  // Per serving, from a note's `calories`, `protein` and the rest, or the
+  // same names in a .cook file's front matter, with how big a serving is.
+  const { nutrition, servingSize } = useMemo(() => {
+    const summary = recipe
+      ? readRecipeFile(recipe.vaultKey ?? "recipe.md", recipe.markdown)
+      : null;
+    return {
+      nutrition: summary?.nutrition ?? null,
+      servingSize: summary?.servingSize ?? "",
+    };
+  }, [recipe]);
   const notes = useMemo(
     () => cooklang?.notes ?? notesFromMarkdown(recipe?.markdown ?? ""),
     [recipe, cooklang],
+  );
+  // The lines as they'll be cooked. A .cook file scales by its markup, so an
+  // amount fixed with `=` stays put; a note scales the amount at the front.
+  const scaledIngredients = useMemo(
+    () =>
+      recipe && scale !== 1
+        ? scaleRecipeIngredients(
+            recipe.vaultKey ?? "recipe.md",
+            recipe.markdown,
+            scale,
+          )
+        : null,
+    [recipe, scale],
   );
 
   if (error) {
@@ -141,8 +205,19 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
   }
   if (!recipe) return null;
 
-  const ingredients = sections?.recipeIngredient ?? [];
+  const written = sections?.recipeIngredient ?? [];
+  // Same length and order as written, so a tick stays on its line.
+  const ingredients =
+    scaledIngredients?.length === written.length ? scaledIngredients : written;
   const instructions = sections?.recipeInstructions ?? [];
+  const servings = cooklang
+    ? cooklang.servings
+    : (
+        frontmatter.servings ||
+        frontmatter.yield ||
+        frontmatter.serves ||
+        ""
+      ).trim();
 
   // What the link and the PDF show. The same fields the public endpoint
   // builds, so the PDF printed here matches the page someone else opens.
@@ -153,7 +228,7 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
     author: recipe.author,
     sourceUrl: recipe.sourceUrl,
     photoUrl: recipe.photoUrl,
-    ingredients,
+    ingredients: written,
     steps: instructions,
     notes,
   };
@@ -204,7 +279,7 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
         timesMade: res.timesMade,
         lastMade: res.lastMade,
       });
-      setStatus("Marked as made.");
+      setStatus(MARKED_MADE);
     } catch (err) {
       // A 409 means the note changed in the vault since this page loaded, and
       // the count lives in the note - so say so rather than failing quietly.
@@ -309,6 +384,15 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
     </ul>
   );
 
+  const scaleControl = (cls: string) => (
+    <ScaleControl
+      factor={scale}
+      servings={servings}
+      onChange={setScale}
+      class={cls}
+    />
+  );
+
   const stepList = (spacing: string) => (
     <ol class={`flex flex-col ${spacing}`}>
       {instructions.map((step, i) => (
@@ -358,7 +442,12 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
           {recipe.cookTime}
         </span>
       )}
-      {recipe.timesMade > 0 && <span>Made {recipe.timesMade}×</span>}
+      {recipe.timesMade > 0 && (
+        <span>
+          Made {recipe.timesMade}×
+          {recipe.lastMade ? `, last ${shortDate(recipe.lastMade)}` : ""}
+        </span>
+      )}
       {/* Only once the lock is actually held - saying the screen stays
           on where it doesn't would be worse than saying nothing. */}
       {screenAwake && (
@@ -370,12 +459,82 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
     </div>
   );
 
+  // Few enough that they all fit in the header, so none of them hide behind
+  // a menu. Delete still asks first, in its own sheet.
+  const headerActions = (button: string) => (
+    <>
+      <button
+        type="button"
+        class={button}
+        aria-label="Share recipe"
+        title="Share"
+        onClick={() => setSharing(true)}
+      >
+        <Icon name="share" stroke={1.9} />
+      </button>
+      <button
+        type="button"
+        class={button}
+        aria-label="Edit the note"
+        title="Edit the note"
+        onClick={() => {
+          setDraft(recipe.markdown);
+          setEditing(true);
+        }}
+      >
+        <Icon name="edit" stroke={1.9} />
+      </button>
+      {recipe.sourceUrl && (
+        <a
+          class={button}
+          href={recipe.sourceUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Open the source"
+          title="Open the source"
+        >
+          <Icon name="external" stroke={2} />
+        </a>
+      )}
+      <button
+        type="button"
+        class={button}
+        aria-label="Delete recipe"
+        title="Delete recipe"
+        onClick={() => setConfirmingDelete(true)}
+      >
+        <Icon name="trash" stroke={1.9} />
+      </button>
+    </>
+  );
+
+  const madeButton = (cls: string) => (
+    // Nobody cooks the same thing twice in one day, so once it's been marked
+    // the only thing a second tap can be is a double tap.
+    <button
+      type="button"
+      class={cls}
+      disabled={busy || alreadyMade}
+      onClick={() => void markMade()}
+    >
+      <Icon name="made" class="size-[18px]" />
+      {alreadyMade ? "Made today" : "Made it"}
+    </button>
+  );
+
+  const publishedLine = frontmatter.created && (
+    <p class="mt-8 text-xs text-muted">
+      Published {frontmatter.created.slice(0, 10)}
+    </p>
+  );
+
   const photo = recipe.photoUrl && !broken ? recipe.photoUrl : null;
   // The steps want the room more than the photo does, so the hero gives up
-  // most of its height once you've moved on to them.
+  // most of its height once you've moved on to them. Classic has no "moved
+  // on": the steps are further down the same page.
   const heroHeight = !photo
     ? "h-32"
-    : tab === "steps"
+    : kitchen && tab === "steps"
       ? "h-[150px]"
       : "h-[236px]";
 
@@ -397,31 +556,8 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
             Recipes
           </button>
           <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="icon-btn-round"
-              aria-label="Share recipe"
-              onClick={() => setSharing(true)}
-            >
-              <Icon name="share" stroke={1.9} />
-            </button>
-            <button
-              type="button"
-              class="icon-btn-round"
-              aria-label="More"
-              onClick={() => setMenuOpen(true)}
-            >
-              <Icon name="more" stroke={2.6} />
-            </button>
-            <button
-              type="button"
-              class="btn-quiet min-h-12 px-5.5 text-row font-semibold"
-              disabled={busy || alreadyMade}
-              onClick={() => void markMade()}
-            >
-              <Icon name="made" class="size-[18px]" />
-              {alreadyMade ? "Made today" : "Made it"}
-            </button>
+            {headerActions("icon-btn-round")}
+            {madeButton("btn-quiet min-h-12 px-5.5 text-row font-semibold")}
             {instructions.length > 0 && (
               <button
                 type="button"
@@ -481,7 +617,10 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
                   : "This note has no Ingredients section."}
               </p>
             ) : (
-              ingredientList("", "min-h-12 py-1")
+              <>
+                {scaleControl("self-start")}
+                {ingredientList("", "min-h-12 py-1")}
+              </>
             )}
           </aside>
 
@@ -491,6 +630,15 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
             </h1>
             {metaRow("", "Screen stays on")}
             {recipe.author && <p class="text-sm text-muted">{recipe.author}</p>}
+            {nutrition && (
+              <NutritionPopover
+                nutrition={nutrition}
+                servings={servings}
+                servingSize={servingSize}
+                scale={scale}
+                sourceUrl={recipe.sourceUrl ?? ""}
+              />
+            )}
             <h2 class="mt-3 font-display text-2xl font-medium">Steps</h2>
             {instructions.length === 0 ? (
               <p class="text-sm text-muted">
@@ -500,6 +648,7 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
               stepList("gap-4")
             )}
             {notesSection}
+            {publishedLine}
           </div>
         </div>
       </div>
@@ -544,22 +693,7 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
               <Icon name="chevron-left" stroke={2} />
             </button>
             <div class="flex gap-2">
-              <button
-                type="button"
-                class="icon-btn-round pointer-events-auto border-0"
-                aria-label="Share recipe"
-                onClick={() => setSharing(true)}
-              >
-                <Icon name="share" stroke={1.9} />
-              </button>
-              <button
-                type="button"
-                class="icon-btn-round pointer-events-auto border-0"
-                aria-label="More"
-                onClick={() => setMenuOpen(true)}
-              >
-                <Icon name="more" stroke={2.6} />
-              </button>
+              {headerActions("icon-btn-round pointer-events-auto border-0")}
             </div>
           </div>
         </div>
@@ -575,32 +709,84 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
           {recipe.author && (
             <p class="mt-1.5 text-sm text-muted">{recipe.author}</p>
           )}
+          {nutrition && (
+            <div class="mt-4">
+              <NutritionStrip
+                nutrition={nutrition}
+                servings={servings}
+                servingSize={servingSize}
+                compact
+                open={showNutrition}
+                onClick={() => setShowNutrition(true)}
+              />
+            </div>
+          )}
+          {/* The dock is already full with the switch and its one button. */}
+          {madeButton("btn-quiet mt-4 min-h-10 px-4 font-semibold")}
 
-          <div ref={tabStart} />
-          {tab === "ingredients" ? (
-            ingredients.length === 0 ? (
-              <p class="mt-5 text-sm text-muted">
-                {cooklang
-                  ? "This recipe has no ingredients marked in its steps."
-                  : "This note has no Ingredients section."}
-              </p>
-            ) : (
-              ingredientList("mt-3.5", "min-h-[54px] py-1")
-            )
-          ) : (
+          {kitchen ? (
             <>
+              <div ref={tabStart} />
+              {tab === "ingredients" ? (
+                ingredients.length === 0 ? (
+                  <p class="mt-5 text-sm text-muted">
+                    {cooklang
+                      ? "This recipe has no ingredients marked in its steps."
+                      : "This note has no Ingredients section."}
+                  </p>
+                ) : (
+                  <>
+                    {scaleControl("mt-5")}
+                    {ingredientList("mt-3", "min-h-[54px] py-1")}
+                  </>
+                )
+              ) : (
+                <>
+                  {instructions.length === 0 ? (
+                    <p class="mt-5 text-sm text-muted">
+                      This note has no Instructions section.
+                    </p>
+                  ) : (
+                    stepList("mt-5 gap-[18px]")
+                  )}
+
+                  {/* With the steps, since that's where you are when one matters. */}
+                  {notesSection}
+                </>
+              )}
+            </>
+          ) : (
+            // Classic: the whole recipe down one page, the way the plugin's
+            // Classic layout reads it.
+            <>
+              <h2 class="mt-7 font-display text-2xl font-medium">
+                Ingredients
+              </h2>
+              {ingredients.length === 0 ? (
+                <p class="mt-3 text-sm text-muted">
+                  {cooklang
+                    ? "This recipe has no ingredients marked in its steps."
+                    : "This note has no Ingredients section."}
+                </p>
+              ) : (
+                <>
+                  {scaleControl("mt-3")}
+                  {ingredientList("mt-3", "min-h-[54px] py-1")}
+                </>
+              )}
+
+              <h2 class="mt-9 font-display text-2xl font-medium">Steps</h2>
               {instructions.length === 0 ? (
-                <p class="mt-5 text-sm text-muted">
+                <p class="mt-3 text-sm text-muted">
                   This note has no Instructions section.
                 </p>
               ) : (
-                stepList("mt-5 gap-[18px]")
+                stepList("mt-4 gap-[18px]")
               )}
-
-              {/* With the steps, since that's where you are when one matters. */}
               {notesSection}
             </>
           )}
+          {publishedLine}
         </div>
 
         {/* The dock. Where the thumb already is, whichever half is showing and
@@ -608,172 +794,128 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
         <div class="action-bar action-bar-pushed">
           <div class="mx-auto w-full max-w-2xl space-y-2">
             {statusLine}
-            <div class="flex items-center gap-2">
-              <div
-                role="tablist"
-                aria-label="Recipe sections"
-                class="segmented min-w-0 flex-1"
-              >
-                {(
-                  [
-                    ["ingredients", "Ingredients"],
-                    ["steps", "Steps"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    role="tab"
-                    aria-selected={tab === key}
-                    class={tab === key ? "pill-on" : "pill"}
-                    onClick={() => showTab(key)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {/* On the ingredients, the button sends what's ticked. With
-                nothing ticked there's nothing to send, so it offers the
-                other thing you came for. */}
-              {tab === "ingredients" && checked.size > 0 ? (
-                <button
-                  type="button"
-                  class="btn-primary shrink-0"
-                  disabled={busy}
-                  aria-label={`Add ${checked.size} to the list`}
-                  onClick={() => void sendToList()}
+            {kitchen ? (
+              <div class="flex items-center gap-2">
+                <div
+                  role="tablist"
+                  aria-label="Recipe sections"
+                  class="segmented min-w-0 flex-1"
                 >
-                  <Icon name="cart" class="size-[18px]" />
-                  Add {checked.size}
-                </button>
-              ) : (
-                instructions.length > 0 && (
+                  {(
+                    [
+                      ["ingredients", "Ingredients"],
+                      ["steps", "Steps"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === key}
+                      class={tab === key ? "pill-on" : "pill"}
+                      onClick={() => showTab(key)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* On the ingredients, the button sends what's ticked. With
+                  nothing ticked there's nothing to send, so it offers the
+                  other thing you came for. */}
+                {tab === "ingredients" && checked.size > 0 ? (
                   <button
                     type="button"
                     class="btn-primary shrink-0"
-                    onClick={startCooking}
+                    disabled={busy}
+                    aria-label={`Add ${checked.size} to the list`}
+                    onClick={() => void sendToList()}
                   >
-                    <Icon name="flame" class="size-[18px]" />
-                    Cook
+                    <Icon name="cart" class="size-[18px]" />
+                    Add {checked.size}
                   </button>
-                )
-              )}
-            </div>
+                ) : (
+                  instructions.length > 0 && (
+                    <button
+                      type="button"
+                      class="btn-primary shrink-0"
+                      onClick={startCooking}
+                    >
+                      <Icon name="flame" class="size-[18px]" />
+                      Cook
+                    </button>
+                  )
+                )}
+              </div>
+            ) : (
+              // Classic has no halves to switch between, so the dock is just
+              // the two things to do: send what's ticked, and cook.
+              (checked.size > 0 || instructions.length > 0) && (
+                <div class="flex items-center gap-2">
+                  {checked.size > 0 && (
+                    <button
+                      type="button"
+                      class="btn-primary flex-1"
+                      disabled={busy}
+                      onClick={() => void sendToList()}
+                    >
+                      <Icon name="cart" class="size-[18px]" />
+                      Add {checked.size} to list
+                    </button>
+                  )}
+                  {instructions.length > 0 && (
+                    <button
+                      type="button"
+                      class={
+                        checked.size > 0
+                          ? "btn-quiet min-h-[54px] shrink-0 px-5 text-base font-semibold"
+                          : "btn-primary flex-1"
+                      }
+                      onClick={startCooking}
+                    >
+                      <Icon name="flame" class="size-[18px]" />
+                      Cook
+                    </button>
+                  )}
+                </div>
+              )
+            )}
           </div>
         </div>
       </div>
 
       {/* Overlays, outside both layouts so either one can open them. */}
-      {menuOpen && (
+      {/* Asked in a sheet rather than with `confirm()`: a system dialog
+          looks out of place in a standalone PWA, and this removes the note
+          from the vault too, so the warning needs the room to say so. */}
+      {confirmingDelete && (
         <Sheet
-          title="Recipe"
-          onClose={() => {
-            setMenuOpen(false);
-            setConfirmingDelete(false);
-          }}
-        >
-          <div class="space-y-3">
-            <ul class="card divide-y divide-line overflow-hidden">
-              <li>
-                {/* Nobody cooks the same thing twice in one day, so once it's
-                    been marked the only thing a second tap can be is a double
-                    tap. The label says why it's off rather than leaving a dead
-                    button. */}
-                <button
-                  type="button"
-                  class="flex min-h-14 w-full flex-col justify-center px-4 py-2 text-left active:bg-canvas disabled:opacity-60"
-                  disabled={busy || alreadyMade}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void markMade();
-                  }}
-                >
-                  <span class="text-row font-medium">
-                    {alreadyMade ? "Made today" : "Mark made"}
-                  </span>
-                  {recipe.timesMade > 0 && (
-                    <span class="text-note text-muted">
-                      Made {recipe.timesMade}{" "}
-                      {recipe.timesMade === 1 ? "time" : "times"}
-                      {recipe.lastMade
-                        ? `, last on ${shortDate(recipe.lastMade)}`
-                        : ""}
-                    </span>
-                  )}
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  class="flex min-h-14 w-full items-center px-4 text-left text-row font-medium active:bg-canvas"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setDraft(recipe.markdown);
-                    setEditing(true);
-                  }}
-                >
-                  Edit the note
-                </button>
-              </li>
-              {recipe.sourceUrl && (
-                <li>
-                  <a
-                    class="flex min-h-14 w-full items-center px-4 text-row font-medium active:bg-canvas"
-                    href={recipe.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open the source
-                  </a>
-                </li>
-              )}
-            </ul>
-
-            {/* Asked in the sheet rather than with `confirm()`: a system
-                dialog looks out of place in a standalone PWA, and this removes
-                the note from the vault too, so the warning needs the room to
-                say so. */}
-            {confirmingDelete ? (
-              <div class="card space-y-3 p-4">
-                <p class="text-sm">
-                  Delete “{recipe.title}”? This deletes the note from the vault
-                  as well.
-                </p>
-                <div class="flex gap-2">
-                  <button
-                    type="button"
-                    class="btn-primary min-h-11 flex-1 text-sm"
-                    disabled={busy}
-                    onClick={() => void deleteRecipe()}
-                  >
-                    Delete
-                  </button>
-                  <button
-                    type="button"
-                    class="btn-quiet"
-                    onClick={() => setConfirmingDelete(false)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
+          title="Delete recipe"
+          onClose={() => setConfirmingDelete(false)}
+          footer={
+            <div class="flex gap-2">
               <button
                 type="button"
-                class="px-1 text-sm text-danger underline underline-offset-4"
-                onClick={() => setConfirmingDelete(true)}
+                class="btn-primary flex-1"
+                disabled={busy}
+                onClick={() => void deleteRecipe()}
               >
-                Delete recipe
+                Delete
               </button>
-            )}
-
-            {frontmatter.created && (
-              <p class="px-1 text-xs text-muted">
-                Published {frontmatter.created.slice(0, 10)}
-              </p>
-            )}
-          </div>
+              <button
+                type="button"
+                class="btn-quiet min-h-[54px] px-5"
+                onClick={() => setConfirmingDelete(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          }
+        >
+          <p class="text-row text-muted">
+            Delete “{recipe.title}”? This deletes the note from the vault as
+            well.
+          </p>
         </Sheet>
       )}
 
@@ -819,6 +961,19 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
         </Sheet>
       )}
 
+      {showNutrition && nutrition && (
+        <Sheet title="Nutrition" onClose={() => setShowNutrition(false)}>
+          <NutritionDetails
+            nutrition={nutrition}
+            servings={servings}
+            servingSize={servingSize}
+            scale={scale}
+            sourceUrl={recipe.sourceUrl ?? ""}
+            title={false}
+          />
+        </Sheet>
+      )}
+
       {zoomed && photo && (
         <PhotoViewer
           src={photo}
@@ -829,7 +984,11 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
 
       {cooking && instructions.length > 0 && (
         <CookMode
-          title={recipe.title}
+          title={
+            scale === 1
+              ? recipe.title
+              : `${recipe.title} · ${scaleLabel(scale)}`
+          }
           steps={instructions}
           ingredients={ingredients}
           step={cookStep}

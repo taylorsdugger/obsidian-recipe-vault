@@ -4,8 +4,11 @@ import type { CooklangToken } from "@recipe-vault/core";
 import { createRoot } from "react-dom/client";
 import {
   cooklangToJsonLd,
+  nutritionFromFields,
   parseCooklang,
   readRecipeVaultState,
+  scaleCooklang,
+  scaleLabel,
 } from "@recipe-vault/core";
 import {
   CooklangRecipe,
@@ -125,9 +128,19 @@ export class CooklangView extends TextFileView {
     if (this.file) void this.plugin.importRecipeFromFile(this.file);
   }
 
-  /** The ticked ingredient lines, in list order. */
+  /** How much of the recipe to make. The plugin keeps it, by file. */
+  private scale(): number {
+    return this.file ? this.plugin.recipeScale(this.file) : 1;
+  }
+
+  /** The file parsed, at the recipe's current scale. */
+  private scaledRecipe() {
+    return scaleCooklang(parseCooklang(this.data), this.scale());
+  }
+
+  /** The ticked ingredient lines, in list order, at the current scale. */
   checkedIngredients(): string[] {
-    const { ingredients } = parseCooklang(this.data);
+    const { ingredients } = this.scaledRecipe();
     return [...this.checked]
       .sort((a, b) => a - b)
       .map((i) => ingredients[i])
@@ -196,7 +209,7 @@ export class CooklangView extends TextFileView {
 
   /** The steps one at a time, with each step's own ingredients beside it. */
   openCookMode(): void {
-    const recipe = parseCooklang(this.data);
+    const recipe = this.scaledRecipe();
     const steps = recipe.sections.flatMap((section) =>
       section.steps.map((step) => {
         // A .cook step says exactly which ingredients it uses, so there's
@@ -216,8 +229,10 @@ export class CooklangView extends TextFileView {
     );
     if (steps.length === 0) return;
     const file = this.file;
+    const factor = this.scale();
+    const title = file?.basename ?? "Recipe";
     new CookModeModal(this.app, {
-      title: file?.basename ?? "Recipe",
+      title: factor === 1 ? title : `${title} · ${scaleLabel(factor)}`,
       steps,
       ingredients: recipe.ingredients.map(ingredientText),
       renderText: (text, el) => el.setText(text),
@@ -260,8 +275,15 @@ export class CooklangView extends TextFileView {
     }
 
     this.layout = this.layoutKind();
-    const recipe = parseCooklang(this.data);
+    const written = parseCooklang(this.data);
+    const factor = this.scale();
+    // Scaled before anything reads it, so the list, the amounts in the
+    // steps and the servings all agree.
+    const recipe = scaleCooklang(written, factor);
     const summary = cooklangToJsonLd(recipe, { name: this.file?.basename });
+    const servings = [written.metadata.servings, written.metadata.serves]
+      .map((value) => (Array.isArray(value) ? value[0] : value))
+      .find((value) => value?.trim());
     const linked =
       typeof summary.image === "string" ? summary.image : undefined;
     // Next to the file, or in the image folder its `image:` points at.
@@ -294,6 +316,11 @@ export class CooklangView extends TextFileView {
         imageSrc={local ? this.app.vault.getResourcePath(local) : linked}
         checked={this.checked}
         onToggle={(i) => this.toggle(i)}
+        scale={factor}
+        servings={servings ?? ""}
+        onScale={(next) => {
+          if (file) this.plugin.setRecipeScale(file, next);
+        }}
         onMarkMade={() => {
           if (file) void this.plugin.markRecipeMade(file);
         }}
@@ -304,6 +331,19 @@ export class CooklangView extends TextFileView {
         tab={this.tab}
         onTab={(tab) => this.setTab(tab)}
         linkFor={linkFor}
+        mountNutrition={(slot) => {
+          // From the file as written: nutrition is per serving, so the
+          // scale doesn't touch it.
+          if (!file) return;
+          this.plugin.fillNutritionSlot(
+            slot,
+            file,
+            nutritionFromFields(written.metadata),
+            servings ?? "",
+            [written.metadata["serving size"]].flat()[0]?.trim() ?? "",
+            typeof summary.url === "string" ? summary.url : "",
+          );
+        }}
         onOpenLink={(path, event) => {
           // Cmd/Ctrl-click opens it in a new tab, like any other link.
           void this.app.workspace.openLinkText(

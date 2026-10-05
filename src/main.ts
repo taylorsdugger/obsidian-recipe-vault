@@ -36,8 +36,11 @@ import { CookModeModal } from "./modal-cook";
 import {
   RecipeNoteLayout,
   buildRecipeActions,
+  buildScaleControl,
   gridMetaCallout,
   isIngredientList,
+  scaleRenderedIngredients,
+  syncScaleControl,
   wrapTaskText,
 } from "./recipe-note-layout";
 import type { RecipeActions, RecipeLayoutKind } from "./recipe-note-layout";
@@ -47,12 +50,12 @@ import {
   countChecked,
   holdsActions,
   ingredientLines,
-  ingredientsForStep,
   recipeOutline,
   sectionRole,
   takeCheckedIngredients,
 } from "./recipe-structure";
 import { ConfirmModal } from "./modal-confirm";
+import { buildNutritionStrip } from "./recipe-nutrition";
 import {
   PickRecipeFileModal,
   isCooklangFile,
@@ -67,13 +70,18 @@ import type { ChatMessage } from "./utils/openrouter";
 import dateFormat from "dateformat";
 import * as core from "@recipe-vault/core";
 import {
+  addRecipeNutrition,
   compareByAisle,
   createRecipeRenderer,
   decodeHtmlEntities,
+  addNoteNutrition,
   ensureRecipeNotesSection,
   ensureRequiredRecipeFrontmatter,
   ingredientsFromBody,
   itemsFromIngredientLine,
+  nutritionFromFields,
+  pageNutrition,
+  recipeNutritionInfo,
   readRecipeFile,
   recipeToCooklang,
   setCooklangMetadata,
@@ -89,13 +97,24 @@ import {
   replaceRecipeSections,
   parseShoppingListMarkdown,
   removeCheckedItems,
+  ingredientsForSteps,
   renderShoppingListMarkdown,
+  scaleIngredientLine,
+  scaleLabel,
 } from "@recipe-vault/core";
 import type {
   JsonRecord,
+  Nutrition,
   ParsedRecipe,
   ShoppingItem,
 } from "@recipe-vault/core";
+
+/** A recipe the nutrition backfill will fetch for. */
+interface NutritionTarget {
+  file: TFile;
+  url: string;
+  title: string;
+}
 
 /** One recipe's entry in the persisted ingredient search index. */
 interface IngredientIndexEntry {
@@ -447,7 +466,7 @@ export default class RecipeVault extends Plugin {
     const known = this.lastNoteText.get(file.path);
     if (known && isIngredientList(el, known)) {
       el.dataset.recipeSection = "ingredients";
-      wrapTaskText(el);
+      this.prepareIngredientSection(el, file);
       return;
     }
     const retry = (tries: number) => {
@@ -470,16 +489,180 @@ export default class RecipeVault extends Plugin {
     const role = sectionRole(outline, info.lineStart, info.lineEnd);
     if (role) el.dataset.recipeSection = role;
     if (role === "meta") gridMetaCallout(el);
-    if (role === "ingredients") wrapTaskText(el);
+    if (role === "ingredients") {
+      // Every section under the heading is "ingredients": the heading
+      // itself, the list, and each group's list in a recipe that splits
+      // them up. Only the heading's gets the scale control, so there's one.
+      const start = outline.ingredients?.start ?? -1;
+      this.prepareIngredientSection(
+        el,
+        file,
+        info.lineStart <= start && start <= info.lineEnd,
+      );
+    }
 
     if (
       holdsActions(outline, info.lineStart, info.lineEnd) &&
       !el.querySelector(".recipe-note-actions")
     ) {
+      // Always there, empty or not, so nutrition added to the frontmatter
+      // later has somewhere to show up without re-rendering the note.
+      const slot = el.createDiv({ cls: "recipe-nutrition-slot" });
+      this.fillNoteNutrition(slot, file);
       const checked = outline.ingredients
         ? countChecked(info.text, outline.ingredients)
         : 0;
       el.append(buildRecipeActions(file, this.recipeActions, checked));
+    }
+  }
+
+  /**
+   * A recipe's nutrition strip, into `slot`, or nothing when it has none.
+   * Left alone when the numbers haven't changed, so a popover that's open
+   * stays open through an unrelated edit.
+   */
+  fillNutritionSlot(
+    slot: HTMLElement,
+    file: TFile,
+    nutrition: Nutrition | null,
+    servings: string,
+    servingSize: string,
+    sourceUrl: string,
+  ): void {
+    const shown = this.settings.showNutrition ? nutrition : null;
+    const key = JSON.stringify([shown, servings, servingSize, sourceUrl]);
+    if (slot.dataset.nutrition === key) return;
+    slot.dataset.nutrition = key;
+    slot.empty();
+    if (!shown) return;
+    slot.append(
+      buildNutritionStrip({
+        app: this.app,
+        nutrition: shown,
+        servings,
+        servingSize,
+        sourceUrl,
+        scale: () => this.recipeScale(file),
+      }),
+    );
+  }
+
+  /** A note's strip, from its `calories`, `protein` and the rest. */
+  private fillNoteNutrition(slot: HTMLElement, file: TFile): void {
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    const url: unknown = fm?.url;
+    const size: unknown = fm?.serving_size;
+    this.fillNutritionSlot(
+      slot,
+      file,
+      nutritionFromFields(fm),
+      this.noteServings(file),
+      typeof size === "string" ? size.trim() : "",
+      typeof url === "string" ? url.trim() : "",
+    );
+  }
+
+  /** Show or hide the nutrition line on every open recipe. */
+  applyNutritionSetting(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (view instanceof MarkdownView && view.file) {
+        this.refreshNoteNutrition(view.file);
+      }
+    }
+    for (const leaf of this.app.workspace.getLeavesOfType(
+      c.VIEW_TYPE_COOKLANG,
+    )) {
+      if (leaf.view instanceof CooklangView) leaf.view.refreshLayout();
+    }
+  }
+
+  /** After a frontmatter edit, bring every open view of the note along. */
+  private refreshNoteNutrition(file: TFile): void {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof MarkdownView) || view.file !== file) continue;
+      view.previewMode.containerEl
+        .querySelectorAll<HTMLElement>(".recipe-nutrition-slot")
+        .forEach((slot) => this.fillNoteNutrition(slot, file));
+    }
+  }
+
+  /**
+   * An ingredient section as reading view drew it, made into the recipe's:
+   * each row's text in its own span and the amounts at the recipe's current
+   * scale. With `withControl`, the scale control goes in under the heading.
+   */
+  prepareIngredientSection(
+    el: HTMLElement,
+    file: TFile,
+    withControl = false,
+  ): void {
+    wrapTaskText(el);
+    if (withControl && !el.querySelector(".recipe-scale")) {
+      const control = this.recipeScaleControl(file);
+      const heading = el.querySelector("h1, h2, h3, h4, h5, h6");
+      if (heading) heading.after(control);
+      else el.prepend(control);
+    }
+    scaleRenderedIngredients(el, this.recipeScale(file));
+  }
+
+  /**
+   * How much of each recipe to make, by path: 2 for a double batch. Kept for
+   * the session rather than in the file, since it's about tonight, not the
+   * recipe. Anything left out is 1x.
+   */
+  private recipeScales = new Map<string, number>();
+
+  recipeScale(file: TFile): number {
+    return this.recipeScales.get(file.path) ?? 1;
+  }
+
+  /** A note's `servings` (or `yield`, `serves`), as written. */
+  private noteServings(file: TFile): string {
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    const value: unknown = fm?.servings ?? fm?.yield ?? fm?.serves;
+    if (typeof value === "number") return String(value);
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  /** The scale control for a note, set to its current scale. */
+  recipeScaleControl(file: TFile): HTMLElement {
+    return buildScaleControl(
+      this.noteServings(file),
+      this.recipeScale(file),
+      (factor) => this.setRecipeScale(file, factor),
+    );
+  }
+
+  /**
+   * Scale a recipe, and bring every open view of it along: the amounts in a
+   * note's reading view and its rail, every scale control, and a `.cook` view.
+   */
+  setRecipeScale(file: TFile, factor: number): void {
+    if (factor === 1) this.recipeScales.delete(file.path);
+    else this.recipeScales.set(file.path, factor);
+
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof MarkdownView) || view.file !== file) continue;
+      const root = view.previewMode.containerEl;
+      root
+        .querySelectorAll<HTMLElement>(
+          '[data-recipe-section="ingredients"], .recipe-rail',
+        )
+        .forEach((el) => scaleRenderedIngredients(el, factor));
+      root
+        .querySelectorAll<HTMLElement>(".recipe-scale")
+        .forEach((el) => syncScaleControl(el, factor));
+    }
+    for (const leaf of this.app.workspace.getLeavesOfType(
+      c.VIEW_TYPE_COOKLANG,
+    )) {
+      if (leaf.view instanceof CooklangView && leaf.view.file === file) {
+        leaf.view.refreshLayout();
+      }
     }
   }
 
@@ -512,8 +695,66 @@ export default class RecipeVault extends Plugin {
    */
   refreshRecipeLayouts(): void {
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
-      if (leaf.view instanceof MarkdownView) this.syncRecipeLayout(leaf.view);
+      if (!(leaf.view instanceof MarkdownView)) continue;
+      this.syncRecipeLayout(leaf.view);
+      this.collapseRecipeProperties(leaf.view);
     }
+  }
+
+  /**
+   * The file each view is showing, and whether its properties have been
+   * folded since it opened there.
+   */
+  private propertiesFolded = new WeakMap<
+    MarkdownView,
+    { path: string; done: boolean }
+  >();
+
+  /**
+   * Fold a recipe's properties when it opens, once per opening, so the
+   * recipe is what you see first. Done the way clicking Properties does it,
+   * and saved with the note's folds the same way, so going between reading
+   * and editing keeps it folded. Open it and it stays open until the next
+   * time the recipe is opened.
+   *
+   * The properties panel isn't in Obsidian's public api, so every piece of it
+   * is checked first. If a later version changes it, this does nothing.
+   */
+  private collapseRecipeProperties(view: MarkdownView): void {
+    const file = view.file;
+    if (!file || !this.settings.collapseRecipeProperties) return;
+    // Every note a view shows is noted, not just recipes, so going to
+    // another note and back counts as opening the recipe again.
+    let seen = this.propertiesFolded.get(view);
+    if (seen?.path !== file.path) {
+      seen = { path: file.path, done: false };
+      this.propertiesFolded.set(view, seen);
+    }
+    if (seen.done) return;
+    // Not a recipe yet can still become one while it's open: an import
+    // opens an empty note and writes the recipe into it after.
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (
+      this.isTemplateFile(file) ||
+      !this.hasRecipeNoteCssClass(fm?.cssclasses)
+    )
+      return;
+    seen.done = true;
+
+    const inner = view as unknown as {
+      metadataEditor?: {
+        collapsed?: unknown;
+        setCollapse?: (collapsed: boolean, animate?: boolean) => void;
+      };
+      onMarkdownFold?: () => void;
+    };
+    const panel = inner.metadataEditor;
+    if (!panel || panel.collapsed === true) return;
+    if (typeof panel.setCollapse !== "function") return;
+    // No animation: it should already be folded when the note appears.
+    // That also skips the save, so it's done after.
+    panel.setCollapse(true, false);
+    if (typeof inner.onMarkdownFold === "function") inner.onMarkdownFold();
   }
 
   /** After the layout setting changes. A `.cook` view draws its own. */
@@ -578,7 +819,12 @@ export default class RecipeVault extends Plugin {
       new Notice("No checked ingredients found.");
       return;
     }
-    await this.addToShoppingList(checked, file.basename);
+    // The amounts the note is showing, so a double batch buys double.
+    const factor = this.recipeScale(file);
+    await this.addToShoppingList(
+      checked.map((line) => scaleIngredientLine(line, factor)),
+      file.basename,
+    );
   }
 
   /** The recipe's steps one at a time, from a note or a `.cook` file. */
@@ -600,19 +846,27 @@ export default class RecipeVault extends Plugin {
       new Notice("This recipe has no steps to cook from.");
       return;
     }
-    const ingredients = outline.ingredients
-      ? ingredientLines(text, outline.ingredients)
-      : [];
-    const steps = cookSteps(text, outline.instructions).map((step) => ({
-      ...step,
-      uses: ingredientsForStep(step.text, ingredients),
-    }));
+    const factor = this.recipeScale(file);
+    const ingredients = (
+      outline.ingredients ? ingredientLines(text, outline.ingredients) : []
+    ).map((line) => scaleIngredientLine(line, factor));
+    // Matched across the whole recipe at once: which of two butters a step
+    // means depends on the steps before it.
+    const found = cookSteps(text, outline.instructions);
+    const uses = ingredientsForSteps(
+      found.map((step) => step.text),
+      ingredients,
+    );
+    const steps = found.map((step, i) => ({ ...step, uses: uses[i] }));
     if (steps.length === 0) {
       new Notice("No steps found in this recipe.");
       return;
     }
     new CookModeModal(this.app, {
-      title: file.basename,
+      title:
+        factor === 1
+          ? file.basename
+          : `${file.basename} · ${scaleLabel(factor)}`,
       steps,
       ingredients,
       renderText: (markdown, el, owner) =>
@@ -957,6 +1211,11 @@ export default class RecipeVault extends Plugin {
     // Dragging a pane divider or the window edge can cross the Kitchen width.
     this.registerEvent(this.app.workspace.on("resize", refreshLayouts));
     this.registerEvent(this.app.metadataCache.on("changed", refreshLayouts));
+    this.registerEvent(
+      this.app.metadataCache.on("changed", (file) =>
+        this.refreshNoteNutrition(file),
+      ),
+    );
     this.app.workspace.onLayoutReady(refreshLayouts);
 
     // Register the Recipe Gallery view
@@ -1340,6 +1599,29 @@ export default class RecipeVault extends Plugin {
       },
     });
 
+    // Only in the palette with nutrition turned on.
+    this.addCommand({
+      id: c.CMD_BACKFILL_NUTRITION,
+      name: "Fetch missing nutrition from source pages",
+      checkCallback: (checking) => {
+        if (!this.settings.showNutrition) return false;
+        if (!checking) void this.backfillNutrition();
+        return true;
+      },
+    });
+
+    // Only in the palette while a run is going. Still there if nutrition is
+    // turned off partway, so the run can be stopped.
+    this.addCommand({
+      id: c.CMD_STOP_NUTRITION,
+      name: "Stop fetching nutrition",
+      checkCallback: (checking) => {
+        if (!this.nutritionRun) return false;
+        if (!checking) this.nutritionRun.stopped = true;
+        return true;
+      },
+    });
+
     // Command to rebuild the in-memory ingredient search index from each note's
     // body. Also strips the legacy `recipeIngredient` frontmatter that earlier
     // versions wrote into notes (the source of the mobile Properties bloat) —
@@ -1491,6 +1773,137 @@ export default class RecipeVault extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
     this.refreshRecipeGalleryView();
+  }
+
+  /** Set while a nutrition backfill runs, so a second one can't start. */
+  private nutritionRun: { stopped: boolean } | null = null;
+
+  /**
+   * Fill in nutrition for the recipes that are missing it, from each one's
+   * source page: the numbers, how big a serving is, and how many it serves.
+   * Recipes imported before nutrition was a thing have the link but not
+   * these. Asks first: it's a page load per recipe, so a big vault takes a
+   * few minutes. Only adds, never changes a value that's there.
+   */
+  async backfillNutrition(): Promise<void> {
+    if (this.nutritionRun) {
+      new Notice("Already fetching nutrition.");
+      return;
+    }
+    const targets = await this.nutritionTargets();
+    if (targets.length === 0) {
+      new Notice(
+        "Every recipe with a source link already has its nutrition and servings.",
+      );
+      return;
+    }
+
+    const count = `${targets.length} recipe${targets.length === 1 ? "" : "s"}`;
+    new ConfirmModal(this.app, {
+      title: "Fetch missing nutrition",
+      message:
+        `${count} ${targets.length === 1 ? "has" : "have"} a source link but no nutrition, servings or serving size. ` +
+        "This loads each source page, one at a time, and adds what it finds to the frontmatter. " +
+        'Nothing that\'s already there changes. To stop partway, run "Stop fetching nutrition".',
+      confirmText: "Fetch nutrition",
+      onConfirm: () => void this.runNutritionBackfill(targets),
+    }).open();
+  }
+
+  /**
+   * Recipes in the gallery folder with a source link that are missing their
+   * nutrition, their servings, or how big a serving is.
+   */
+  private async nutritionTargets(): Promise<NutritionTarget[]> {
+    const targets: NutritionTarget[] = [];
+    for (const file of getRecipeFiles(
+      this.app.vault,
+      this.getGalleryFolder(),
+      this.templateFilePath(),
+    )) {
+      const summary = readRecipeFile(
+        file.path,
+        await this.app.vault.cachedRead(file),
+        { photoProperty: this.photoProperty() },
+      );
+      if (!summary?.isRecipe) continue;
+      if (summary.nutrition && summary.servings && summary.servingSize) {
+        continue;
+      }
+      if (!/^https?:\/\//i.test(summary.sourceUrl)) continue;
+      targets.push({ file, url: summary.sourceUrl, title: summary.title });
+    }
+    return targets;
+  }
+
+  /** The pause between source pages. Tests set it to 0. */
+  nutritionFetchGapMs = 800;
+
+  private async runNutritionBackfill(
+    targets: NutritionTarget[],
+  ): Promise<void> {
+    // Two confirm dialogs open at once would otherwise start two runs.
+    if (this.nutritionRun) return;
+    const run = { stopped: false };
+    this.nutritionRun = run;
+    const progress = new Notice("", 0);
+    // The run's own notice says how it's going. Core's per-fetch messages
+    // ("trying again…") would pile up a stack of them.
+    const options = { ...this.fetchOptions(), onProgress: undefined };
+
+    let added = 0;
+    let missing = 0;
+    let failed = 0;
+    try {
+      for (let i = 0; i < targets.length && !run.stopped; i++) {
+        const { file, url, title } = targets[i];
+        progress.setMessage(
+          `Fetching nutrition ${i + 1} of ${targets.length}: ${title}`,
+        );
+        try {
+          const recipes = await core.fetchRecipes(url, this.httpPort, options);
+          const info = pageNutrition(recipes, title);
+          let changed = false;
+          if (info) {
+            await this.app.vault.process(file, (text) => {
+              const next = addRecipeNutrition(file.path, text, info);
+              changed = next !== text;
+              return next;
+            });
+          }
+          if (changed) added++;
+          else missing++;
+        } catch (err) {
+          failed++;
+          console.warn(
+            "Recipe Vault: couldn't fetch nutrition for",
+            file.path,
+            err,
+          );
+        }
+        // A pause between pages, like the batch import, so one site isn't
+        // hit back to back.
+        if (
+          i < targets.length - 1 &&
+          !run.stopped &&
+          this.nutritionFetchGapMs
+        ) {
+          await sleep(this.nutritionFetchGapMs);
+        }
+      }
+    } finally {
+      progress.hide();
+      this.nutritionRun = null;
+    }
+
+    const parts = [
+      `Updated ${added} recipe${added === 1 ? "" : "s"}`,
+      missing
+        ? `${missing} source page${missing === 1 ? " had" : "s had"} nothing to add`
+        : "",
+      failed ? `${failed} couldn't be loaded (the console has which)` : "",
+    ].filter(Boolean);
+    new Notice(`${run.stopped ? "Stopped. " : ""}${parts.join(", ")}.`, 10000);
   }
 
   /**
@@ -1699,6 +2112,9 @@ export default class RecipeVault extends Plugin {
           },
           { photoProperty: this.photoProperty() },
         );
+        if (this.settings.showNutrition) {
+          md = addNoteNutrition(md, recipeNutritionInfo(recipe));
+        }
         md = ensureRecipeNotesSection(
           md,
           normalizeRecipeNotes(recipe.recipeNotes),
@@ -1887,6 +2303,9 @@ export default class RecipeVault extends Plugin {
         },
         { photoProperty: this.photoProperty() },
       );
+      if (this.settings.showNutrition) {
+        md = addNoteNutrition(md, recipeNutritionInfo(recipe));
+      }
       md = ensureRecipeNotesSection(
         md,
         normalizeRecipeNotes(recipe.recipeNotes),
@@ -1951,7 +2370,15 @@ export default class RecipeVault extends Plugin {
     await this.folderCheck(folder);
     const path = this.freeRecipePath(folder, safeName, "cook");
 
-    let text = opts.cooklangText ?? recipeToCooklang(recipe);
+    // A page's nutrition only goes in with nutrition turned on. A .cook file
+    // brought in as it is keeps whatever it already says.
+    let text =
+      opts.cooklangText ??
+      recipeToCooklang(
+        this.settings.showNutrition
+          ? recipe
+          : { ...recipe, nutrition: undefined },
+      );
     if (opts.sourceFile) {
       text = setCooklangMetadata(text, { "source file": opts.sourceFile });
     }
