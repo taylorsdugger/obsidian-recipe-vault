@@ -463,8 +463,10 @@
     margin: 0.55in;
   }
 
+  /* Neither needs an important flag: these are unlayered, and the rules they
+     override - `#app`'s height and the scroll lock - are in the base layer. */
   #app {
-    display: none !important;
+    display: none;
   }
 
   /* The share sheet locks the body's scroll, which would cut the print off at
@@ -472,7 +474,7 @@
   html,
   body {
     height: auto;
-    overflow: visible !important;
+    overflow: visible;
     background: #fff;
   }
 
@@ -482,9 +484,10 @@
 }
 
 /* A row that scrolls sideways under a finger, without a scrollbar under it. */
-@utility no-scrollbar {
+.no-scrollbar {
   scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
-  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

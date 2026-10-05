@@ -118,8 +118,9 @@
 .recipe-note .callout[data-callout="recipe-meta"] .callout-content > ul {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	column-gap: var(--size-4-4);
-	row-gap: var(--size-2-1);
+	/* The gap shorthand, because Obsidian's css lint reads the column-only
+	   property as multi-column layout. */
+	gap: var(--size-2-1) var(--size-4-4);
 	margin-block: var(--size-4-2);
 }
 
@@ -566,8 +567,10 @@
 /* ------------------------------------------------- wide pane: the rail */
 
 /* The breakpoint is the pane, not the window, so a split pane on a big
-   monitor still gets the single column. */
-.markdown-reading-view:has(> .markdown-preview-view.recipe-note),
+   monitor still gets the single column. The note layout tags the reading
+   view while it's mounted. A has selector here would re-check on every
+   change anywhere in the view. */
+.markdown-reading-view.is-recipe-pane,
 .cooklang-view {
 	container: recipe-pane / inline-size;
 }
@@ -599,7 +602,7 @@
 	.cooklang-recipe .recipe-layout {
 		display: grid;
 		grid-template-columns: var(--recipe-rail-width) minmax(0, 70ch);
-		column-gap: var(--recipe-gap);
+		gap: 0 var(--recipe-gap);
 		justify-content: center;
 		align-items: start;
 	}

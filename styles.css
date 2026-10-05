@@ -72,8 +72,7 @@
 .recipe-note .callout[data-callout="recipe-meta"] .recipe-meta-grid, .recipe-note .callout[data-callout="recipe-meta"] .callout-content > ul {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: var(--size-4-4);
-  row-gap: var(--size-2-1);
+  gap: var(--size-2-1) var(--size-4-4);
   margin-block: var(--size-4-2);
 }
 .recipe-note .recipe-meta-item {
@@ -404,7 +403,7 @@
 .recipe-note li.task-list-item > ul {
   flex-basis: 100%;
 }
-.markdown-reading-view:has(> .markdown-preview-view.recipe-note), .cooklang-view {
+.markdown-reading-view.is-recipe-pane, .cooklang-view {
   container: recipe-pane / inline-size;
 }
 .recipe-rail {
@@ -429,7 +428,7 @@
   .markdown-preview-view.recipe-note.has-recipe-rail,	.cooklang-recipe .recipe-layout {
     display: grid;
     grid-template-columns: var(--recipe-rail-width) minmax(0, 70ch);
-    column-gap: var(--recipe-gap);
+    gap: 0 var(--recipe-gap);
     justify-content: center;
     align-items: start;
   }

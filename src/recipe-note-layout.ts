@@ -378,10 +378,17 @@ export class RecipeNoteLayout extends Component {
     return root.querySelector<HTMLElement>(":scope > .markdown-preview-view");
   }
 
+  /** The reading view around the preview: the container the css sizes by. */
+  private get paneEl(): HTMLElement | null {
+    const parent = this.previewEl?.parentElement;
+    return parent?.matches(".markdown-reading-view") ? parent : null;
+  }
+
   onload(): void {
     const preview = this.previewEl;
     if (!preview) return;
     this.live = true;
+    this.paneEl?.addClass("is-recipe-pane");
 
     if (this.kind === "rail") {
       preview.addClass("has-recipe-rail");
@@ -454,6 +461,7 @@ export class RecipeNoteLayout extends Component {
     this.railEl?.remove();
     this.tabsEl?.remove();
     this.dockEl?.remove();
+    this.paneEl?.removeClass("is-recipe-pane");
     if (!preview) return;
     preview.removeClass("has-recipe-rail", "recipe-layout-kitchen");
     delete preview.dataset.recipeTab;
