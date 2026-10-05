@@ -78,6 +78,10 @@ export class FakeVault {
     this.contents.set(file.path, data);
   }
 
+  async append(file: TFile, data: string): Promise<void> {
+    this.contents.set(file.path, (this.contents.get(file.path) ?? "") + data);
+  }
+
   async process(file: TFile, fn: (data: string) => string): Promise<string> {
     const next = fn(this.contents.get(file.path) ?? "");
     this.contents.set(file.path, next);
