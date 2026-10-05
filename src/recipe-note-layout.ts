@@ -39,6 +39,8 @@ export interface RecipeActions {
   addToList: (file: TFile) => void;
   askAi: (file: TFile) => void;
   cook: (file: TFile) => void;
+  /** Whether Ask AI is on. Off hides its buttons. */
+  aiEnabled: () => boolean;
 }
 
 function iconButton(
@@ -93,9 +95,11 @@ export function buildRecipeActions(
   });
   setAddCount(add, checked, false);
   add.addEventListener("click", () => actions.addToList(file));
-  iconButton(row, "message-circle", "Ask AI", {
-    text: "Ask AI",
-  }).addEventListener("click", () => actions.askAi(file));
+  if (actions.aiEnabled()) {
+    iconButton(row, "message-circle", "Ask AI", {
+      text: "Ask AI",
+    }).addEventListener("click", () => actions.askAi(file));
+  }
   iconButton(row, "flame", "Cook mode", { text: "Cook" }).addEventListener(
     "click",
     () => actions.cook(file),
@@ -740,9 +744,11 @@ export class RecipeNoteLayout extends Component {
     iconButton(dock, "circle-check", "Mark as made", {
       cls: "recipe-dock-icon",
     }).addEventListener("click", () => this.actions.markMade(this.file));
-    iconButton(dock, "message-circle", "Ask AI", {
-      cls: "recipe-dock-icon",
-    }).addEventListener("click", () => this.actions.askAi(this.file));
+    if (this.actions.aiEnabled()) {
+      iconButton(dock, "message-circle", "Ask AI", {
+        cls: "recipe-dock-icon",
+      }).addEventListener("click", () => this.actions.askAi(this.file));
+    }
     const add = iconButton(dock, "shopping-cart", "Add to list", {
       cls: "mod-cta recipe-add-button",
       text: "",

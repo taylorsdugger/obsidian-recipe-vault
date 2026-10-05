@@ -672,7 +672,28 @@ export default class RecipeVault extends Plugin {
     addToList: (file) => void this.addCheckedIngredientsFromNote(file),
     askAi: (file) => void this.askAiToRefineRecipe(file, ""),
     cook: (file) => void this.openCookMode(file),
+    aiEnabled: () => this.settings.aiFeatures,
   };
+
+  /**
+   * Rebuild the buttons on open recipes after a setting that changes them,
+   * like turning AI features off. A note's action row is drawn as reading
+   * view renders, and the phone dock with its layout, so both are redone.
+   * A `.cook` view draws its own.
+   */
+  refreshRecipeActions(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof MarkdownView)) continue;
+      const layout = this.recipeLayouts.get(view);
+      if (layout) {
+        view.removeChild(layout);
+        this.recipeLayouts.delete(view);
+      }
+      view.previewMode.rerender(true);
+    }
+    this.applyRecipeLayoutSetting();
+  }
 
   /**
    * Which reading-view layout a recipe gets. Kitchen, when it's turned on,
@@ -1283,7 +1304,9 @@ export default class RecipeVault extends Plugin {
     this.addCommand({
       id: c.CMD_RECIPE_FROM_PHOTO,
       name: "Add recipe from photo",
-      callback: () => {
+      checkCallback: (checking) => {
+        if (!this.settings.aiFeatures) return false;
+        if (checking) return true;
         const apiKey = this.settings.openRouterApiKey?.trim();
         if (!apiKey) {
           new Notice(
@@ -1965,7 +1988,12 @@ export default class RecipeVault extends Plugin {
         return;
       }
 
-      let view = this.settings.saveInActiveFile
+      // The open note is only written to when "Save in currently opened file"
+      // is on. Otherwise the recipe goes straight into the file created below.
+      // Don't look the view up again after opening that file: another plugin
+      // (like Homepage) can keep a different note active, and the recipe
+      // would land there instead.
+      const view = this.settings.saveInActiveFile
         ? this.app.workspace.getActiveViewOfType(MarkdownView)
         : null;
 
@@ -1994,16 +2022,10 @@ export default class RecipeVault extends Plugin {
 
         // Open the newly created file
         await this.app.workspace.openLinkText(path, "", true);
-        view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      }
-
-      if (!view) {
-        new Notice("Could not open a Markdown view");
-        return;
       }
 
       // in debug, clear editor first
-      if (this.settings.debug) {
+      if (this.settings.debug && view) {
         view.editor.setValue("");
       }
 
@@ -2120,9 +2142,11 @@ export default class RecipeVault extends Plugin {
           normalizeRecipeNotes(recipe.recipeNotes),
         );
 
-        if (view.getMode() === "source") {
+        if (file) {
+          await this.app.vault.append(file, md);
+        } else if (view?.getMode() === "source") {
           view.editor.replaceSelection(md);
-        } else if (view.file) {
+        } else if (view?.file) {
           await this.app.vault.append(view.file, md);
         }
       }

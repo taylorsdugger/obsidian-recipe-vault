@@ -131,6 +131,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Proxy fallback for blocked imports**     | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default |
 | **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                           |
 | **Recipe gallery folder**                  | The folder the Recipe Gallery browses, including its subfolders. **Leave blank to follow the Recipe save folder** (recommended). Set it only to browse a different folder    |
+| **AI features**                            | On by default. Turn it off to hide the Ask AI button on recipe notes, the Add recipe from photo command, and the AI settings below                                              |
 | **OpenRouter API key**                     | Required for Ask AI and Add recipe from photo                                                                                                                                |
 | **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-3.5-flash-lite`)                                                                            |
 | **AI request timeout (ms)**                | Timeout for AI requests (minimum 5000 ms)                                                                                                                                    |
@@ -399,6 +400,8 @@ This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add
 > **No OpenRouter key yet?** Sign up free at [openrouter.ai](https://openrouter.ai/), then grab a key from [openrouter.ai/keys](https://openrouter.ai/keys). It's pay-as-you-go (no subscription), and the default model costs well under a cent per request. Paste the key into **Recipe Vault settings → OpenRouter API key**.
 
 The default model is `google/gemini-3.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
+
+Don't want any of this? Turn off **AI features** in settings. That hides the Ask AI button, the Add recipe from photo command, and the AI settings.
 
 ---
 
