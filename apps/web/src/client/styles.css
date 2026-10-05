@@ -289,6 +289,19 @@
   }
 
   /*
+   * A filter that toggles on and off, next to the sort pills. Smaller and
+   * outlined in the accent when on, so a row of them doesn't read as a
+   * second sort.
+   */
+  .chip {
+    @apply inline-flex h-8.5 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 text-note font-medium text-muted transition-colors;
+  }
+
+  .chip-on {
+    @apply inline-flex h-8.5 shrink-0 items-center gap-1.5 rounded-full border border-accent bg-accent-soft px-3.5 text-note font-semibold text-accent-ink transition-colors;
+  }
+
+  /*
    * The gallery's back-to-top button. Bottom right, just above the docked
    * search on a phone, and in the corner once the search moves up into the
    * header. Slides down out of sight rather than popping.
@@ -465,5 +478,13 @@
 
   .print-only {
     display: flex;
+  }
+}
+
+/* A row that scrolls sideways under a finger, without a scrollbar under it. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }

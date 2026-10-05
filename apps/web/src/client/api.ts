@@ -1,3 +1,10 @@
+import type {
+  ChatMessage,
+  RecipeChatResult,
+  RecipeEditSuggestion,
+  RecipeLists,
+} from "@recipe-vault/core/ai/recipe-chat";
+
 import { dateKey } from "./week";
 
 /**
@@ -263,6 +270,26 @@ export const api = {
    * The date goes up with it. The Worker has no idea what day it is where the
    * phone is, and "made today" has to mean the day you're standing in.
    */
+  /** Whether the server has an OpenRouter key, so Ask AI can show. */
+  aiStatus: () => request<{ enabled: boolean }>("/ai/status"),
+
+  /** One chat turn about a recipe. The whole conversation goes each time. */
+  aiChat: (id: string, messages: ChatMessage[]) =>
+    request<RecipeChatResult>(`/ai/recipes/${id}/chat`, {
+      method: "POST",
+      body: JSON.stringify({ messages }),
+    }),
+
+  /**
+   * The edit the conversation led to, as replacement lists, with the lists
+   * it was made against. Nothing is saved until the client saves it.
+   */
+  aiEdit: (id: string, messages: ChatMessage[]) =>
+    request<{ suggestion: RecipeEditSuggestion; original: RecipeLists }>(
+      `/ai/recipes/${id}/edit`,
+      { method: "POST", body: JSON.stringify({ messages }) },
+    ),
+
   markMade: (id: string) =>
     request<{ id: string; timesMade: number; lastMade: string }>(
       `/recipes/${id}/made`,

@@ -3,6 +3,7 @@ import { parseRecipesFromHtml } from "@recipe-vault/core";
 
 import { isSignedIn, requireAuth, signIn, signOut } from "./auth";
 import type { AppBindings } from "./env";
+import { aiRoutes } from "./routes/ai";
 import { importRoutes } from "./routes/import";
 import { listRoutes } from "./routes/list";
 import { planRoutes } from "./routes/plan";
@@ -68,6 +69,7 @@ api.use("/list/*", requireAuth);
 api.use("/import/*", requireAuth);
 api.use("/vault/*", requireAuth);
 api.use("/settings/*", requireAuth);
+api.use("/ai/*", requireAuth);
 
 api.route("/recipes", recipeRoutes);
 api.route("/recipes", shareRoutes);
@@ -76,6 +78,7 @@ api.route("/list", listRoutes);
 api.route("/import", importRoutes);
 api.route("/vault", vaultRoutes);
 api.route("/settings", settingsRoutes);
+api.route("/ai", aiRoutes);
 
 /**
  * The Worker only sees requests that didn't match a built asset. An unknown

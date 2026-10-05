@@ -801,8 +801,10 @@
 	border-radius: 0;
 }
 
-/* The modal draws its own close button in the top bar. */
+/* The modal draws its own close button in the top bar. Obsidian 1.13 calls
+   its one `modal-header-button`; older versions, `modal-close-button`. */
 .recipe-cook-modal .modal-close-button,
+.recipe-cook-modal > .modal-header-button,
 .recipe-cook-modal > .modal-header,
 .recipe-cook-modal > .modal-title {
 	display: none;
@@ -925,6 +927,26 @@
 	padding: 0 var(--size-4-3);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-l);
+}
+
+/* Small and quiet: it's there for when you need the whole list, not the
+   thing to do next. */
+.recipe-cook-modal button.recipe-cook-all {
+	align-self: flex-start;
+	height: auto;
+	min-height: 36px;
+	padding: 0 var(--size-4-3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.recipe-cook-modal button.recipe-cook-all:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
 }
 
 /* Pinned to the bottom of the step area, whatever the step's length. */

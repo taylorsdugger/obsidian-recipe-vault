@@ -62,10 +62,13 @@ export class CookModeModal extends Modal {
     modalEl.addClass("recipe-cook-modal");
     contentEl.addClass("recipe-cook");
     // The top bar has its own close button. Obsidian's sits in a different
-    // place across versions, so it's found and hidden here rather than
-    // trusting one css selector to reach it.
+    // place across versions, and 1.13 renamed it `modal-header-button`, so
+    // it's found and hidden here by either name. Left showing, it lands on
+    // top of the ingredients button.
     modalEl
-      .querySelectorAll<HTMLElement>(".modal-close-button")
+      .querySelectorAll<HTMLElement>(
+        ":scope > .modal-close-button, :scope > .modal-header-button",
+      )
       .forEach((el) => el.hide());
 
     const top = contentEl.createDiv({ cls: "recipe-cook-top" });
@@ -76,12 +79,8 @@ export class CookModeModal extends Modal {
     setIcon(close, "x");
     close.addEventListener("click", () => this.close());
     top.createDiv({ cls: "recipe-cook-title", text: options.title });
-    const list = top.createEl("button", {
-      cls: "recipe-cook-icon clickable-icon",
-      attr: { type: "button", "aria-label": "Show ingredients" },
-    });
-    setIcon(list, "list");
-    list.addEventListener("click", () => this.toggleSheet(true));
+    // As wide as the close button, so the title stays in the middle.
+    top.createDiv({ cls: "recipe-cook-icon", attr: { "aria-hidden": "true" } });
 
     this.progressEl = contentEl.createDiv({ cls: "recipe-cook-progress" });
     this.progressEl.style.setProperty(
@@ -96,6 +95,18 @@ export class CookModeModal extends Modal {
     this.labelEl = body.createDiv({ cls: "recipe-cook-label" });
     this.stepEl = body.createDiv({ cls: "recipe-cook-step" });
     this.usesEl = body.createDiv({ cls: "recipe-cook-uses" });
+    // Said in words, under the step's own ingredients. An icon in the top
+    // bar on its own didn't say what it opened. There on every step, since
+    // not every step has ingredients matched to it.
+    if (options.ingredients.length > 0) {
+      body
+        .createEl("button", {
+          cls: "recipe-cook-all",
+          text: "Show all ingredients",
+          attr: { type: "button" },
+        })
+        .addEventListener("click", () => this.toggleSheet(true));
+    }
     this.nextEl = body.createDiv({ cls: "recipe-cook-next" });
 
     const foot = contentEl.createDiv({ cls: "recipe-cook-foot" });

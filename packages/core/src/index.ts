@@ -89,6 +89,32 @@ export {
   setCooklangMetadata,
   setRecipeHistory,
 } from "./note/recipe-file";
+export type {
+  ChatMessage,
+  DiffLine,
+  OpenRouterMessage,
+  OpenRouterResponse,
+  RecipeChatResult,
+  RecipeEditSuggestion,
+  RecipeLists,
+} from "./ai/recipe-chat";
+export {
+  buildChatMessages,
+  buildEditMessages,
+  cleanBoolean,
+  cleanStringList,
+  DEFAULT_AI_MODEL,
+  diffLines,
+  editPromptFromChat,
+  extractJsonBlock,
+  hasRecipeDiff,
+  OFFER_EDIT_TOKEN,
+  openRouterContent,
+  openRouterErrorMessage,
+  OPENROUTER_URL,
+  parseChatPayload,
+  parseSuggestionPayload,
+} from "./ai/recipe-chat";
 export {
   chipText,
   ingredientName,

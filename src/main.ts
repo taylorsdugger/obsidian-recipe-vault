@@ -66,7 +66,6 @@ import {
   requestRecipeChatResponse,
   requestRecipeFromImage,
 } from "./utils/openrouter";
-import type { ChatMessage } from "./utils/openrouter";
 import dateFormat from "dateformat";
 import * as core from "@recipe-vault/core";
 import {
@@ -98,6 +97,7 @@ import {
   parseShoppingListMarkdown,
   removeCheckedItems,
   ingredientsForSteps,
+  editPromptFromChat,
   renderShoppingListMarkdown,
   scaleIngredientLine,
   scaleLabel,
@@ -1109,18 +1109,6 @@ export default class RecipeVault extends Plugin {
       return parsed;
     };
 
-    // Turn the conversation into a single instruction for the edit model.
-    const buildEditPrompt = (messages: ChatMessage[]): string => {
-      const transcript = messages
-        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-        .join("\n");
-      return [
-        "Based on this conversation, update the recipe accordingly:",
-        "",
-        transcript,
-      ].join("\n");
-    };
-
     new RefineRecipeModal(
       this.app,
       // onChat — plain conversational reply, recipe passed as context.
@@ -1144,7 +1132,7 @@ export default class RecipeVault extends Plugin {
           const suggestion = await requestRecipeEditSuggestion({
             apiKey,
             model,
-            prompt: buildEditPrompt(messages),
+            prompt: editPromptFromChat(messages),
             recipeIngredient: parsed.recipeIngredient,
             recipeInstructions: parsed.recipeInstructions,
             timeoutMs,

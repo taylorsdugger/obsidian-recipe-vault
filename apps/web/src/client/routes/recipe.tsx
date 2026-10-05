@@ -10,6 +10,7 @@ import { scaleLabel } from "@recipe-vault/core/scale";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { api, type PublicRecipe, type RecipeDetail } from "../api";
+import { AskAi } from "../components/ask-ai";
 import { CookMode } from "../components/cook-mode";
 import { Icon } from "../components/icon";
 import { PhotoViewer } from "../components/photo-viewer";
@@ -29,6 +30,22 @@ import { scrollContainer } from "../scroll";
 import { useWakeLock } from "../wake-lock";
 
 type Tab = "ingredients" | "steps";
+
+/**
+ * Whether the server has Ask AI set up. Asked once per visit: it only
+ * changes when someone redeploys with a key.
+ */
+let aiStatus: Promise<boolean> | null = null;
+function aiEnabled(): Promise<boolean> {
+  aiStatus ??= api
+    .aiStatus()
+    .then((res) => res.enabled)
+    .catch(() => {
+      aiStatus = null;
+      return false;
+    });
+  return aiStatus;
+}
 
 /** Says nothing you need to act on, so it clears itself. */
 const MARKED_MADE = "Marked as made.";
@@ -62,6 +79,8 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
   const [layout] = useState(storedRecipeLayout);
   const kitchen = layout === "kitchen";
   const [sharing, setSharing] = useState(false);
+  const [canAsk, setCanAsk] = useState(false);
+  const [asking, setAsking] = useState(false);
   /** The phone's nutrition sheet. The desktop's popover keeps its own. */
   const [showNutrition, setShowNutrition] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -113,6 +132,10 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
   }, [tab]);
 
   useEffect(() => {
+    void aiEnabled().then(setCanAsk);
+  }, []);
+
+  useEffect(() => {
     setScale(1);
     api
       .recipe(id)
@@ -126,11 +149,11 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
   // it in the meantime stays put.
   useEffect(() => {
     if (status !== MARKED_MADE) return;
-    const timer = setTimeout(
+    const timer = window.setTimeout(
       () => setStatus((current) => (current === MARKED_MADE ? null : current)),
       2500,
     );
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [status]);
 
   // A .cook file has no sections to find. Its ingredients come from the
@@ -463,6 +486,19 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
   // a menu. Delete still asks first, in its own sheet.
   const headerActions = (button: string) => (
     <>
+      {/* Not for a .cook file: an edit replaces the note's Ingredients and
+          Instructions sections, and a .cook file has neither. */}
+      {canAsk && !cooklang && (
+        <button
+          type="button"
+          class={button}
+          aria-label="Ask AI"
+          title="Ask AI"
+          onClick={() => setAsking(true)}
+        >
+          <Icon name="sparkle" stroke={1.8} />
+        </button>
+      )}
       <button
         type="button"
         class={button}
@@ -917,6 +953,17 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
             well.
           </p>
         </Sheet>
+      )}
+
+      {asking && (
+        <AskAi
+          recipe={recipe}
+          onApplied={(saved) => {
+            setRecipe(saved);
+            setStatus("Recipe updated.");
+          }}
+          onClose={() => setAsking(false)}
+        />
       )}
 
       {sharing && (

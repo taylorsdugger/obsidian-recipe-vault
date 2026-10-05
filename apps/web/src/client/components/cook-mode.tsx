@@ -57,6 +57,20 @@ export function CookMode({
   // turns into a wall of display type. Past a couple of lines it steps down.
   const long = text.length > 140;
 
+  // Said in words, under the step's own ingredients. The list icon in the
+  // phone's top bar on its own didn't say what it opened, and the desktop
+  // had no way to the whole list at all. There on every step, since not
+  // every step has ingredients matched to it.
+  const showAll = ingredients.length > 0 && (
+    <button
+      type="button"
+      class="btn-quiet min-h-9 self-start px-3.5 text-note text-muted"
+      onClick={() => setListOpen(true)}
+    >
+      Show all ingredients
+    </button>
+  );
+
   const next = () => (last ? onDone() : onStep(n + 1));
   const prev = () => onStep(Math.max(0, n - 1));
 
@@ -150,6 +164,7 @@ export function CookMode({
                 </div>
               </div>
             )}
+            {showAll}
 
             <div class="mt-auto flex max-w-[620px] flex-col gap-4">
               <div class="cook-next mt-0 px-4.5 py-4">
@@ -246,15 +261,8 @@ export function CookMode({
           <span class="flex-1 text-center text-sm font-semibold tabular-nums">
             Step {n + 1} of {steps.length}
           </span>
-          <button
-            type="button"
-            class="icon-btn-round"
-            aria-label="Show ingredients"
-            disabled={ingredients.length === 0}
-            onClick={() => setListOpen(true)}
-          >
-            <Icon name="list" class="size-5" />
-          </button>
+          {/* As wide as the close button, so the count stays in the middle. */}
+          <span class="size-11 shrink-0" aria-hidden="true" />
         </div>
 
         {/* One segment per step, so how far through you are reads without
@@ -299,6 +307,7 @@ export function CookMode({
               </div>
             </div>
           )}
+          {showAll}
 
           <div class="cook-next mb-1">
             <span class="label text-muted">

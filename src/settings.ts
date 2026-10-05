@@ -10,6 +10,7 @@ import {
   TFile,
   TFolder,
 } from "obsidian";
+import { DEFAULT_AI_MODEL } from "@recipe-vault/core";
 import RecipeVault from "./main";
 import * as c from "./constants";
 
@@ -60,7 +61,8 @@ export interface PluginSettings {
   filterGlutenFreeWords: boolean;
 }
 
-export const DEFAULT_AI_MODEL = "google/gemini-3.5-flash-lite";
+// Shared with the web app, which falls back to the same model.
+export { DEFAULT_AI_MODEL };
 
 const AI_MODEL_PRESETS: Array<{ id: string; label: string }> = [
   { id: DEFAULT_AI_MODEL, label: "Gemini 3.5 Flash Lite ($)" },
