@@ -31,6 +31,8 @@ export interface PluginSettings {
   debug: boolean;
   shoppingListFile: string;
   recipeGalleryFolder: string;
+  /** Off hides Ask AI, Add recipe from photo, and the AI settings. */
+  aiFeatures: boolean;
   openRouterApiKey: string;
   aiModelPreset: string;
   aiCustomModelId: string;
@@ -77,6 +79,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   debug: false,
   shoppingListFile: "Shopping List.md",
   recipeGalleryFolder: "",
+  aiFeatures: true,
   openRouterApiKey: "",
   aiModelPreset: DEFAULT_AI_MODEL,
   aiCustomModelId: "",
@@ -520,8 +523,25 @@ export class SettingsTab extends PluginSettingTab {
         },
       },
       {
+        name: "AI features",
+        desc: "Ask AI on recipe notes and Add recipe from photo. Turn this off to hide both, along with the AI settings below.",
+        render: (setting) => {
+          setting.addToggle((toggle) => {
+            toggle
+              .setValue(this.plugin.settings.aiFeatures)
+              .onChange(async (value) => {
+                this.plugin.settings.aiFeatures = value;
+                await this.plugin.saveSettings();
+                this.plugin.refreshRecipeActions();
+                this.refresh();
+              });
+          });
+        },
+      },
+      {
         name: "OpenRouter API key",
         desc: "Used for Ask AI recipe edits and Add recipe from photo. Stored in this vault config as plain text.",
+        visible: () => this.plugin.settings.aiFeatures,
         render: (setting) => {
           setting.addText((text) => {
             text
@@ -540,6 +560,7 @@ export class SettingsTab extends PluginSettingTab {
       {
         name: "AI model ID",
         desc: "Choose a default OpenRouter model for Ask AI. Prices are rough relative tiers.",
+        visible: () => this.plugin.settings.aiFeatures,
         render: (setting) => {
           setting.addDropdown((dropdown) => {
             AI_MODEL_PRESETS.forEach((preset) => {
@@ -566,7 +587,8 @@ export class SettingsTab extends PluginSettingTab {
       {
         name: "Custom AI model ID",
         desc: "Used when 'Other (custom)' is selected above. Format: provider/model.",
-        visible: () => this.usesCustomModel(),
+        visible: () =>
+          this.plugin.settings.aiFeatures && this.usesCustomModel(),
         render: (setting) => {
           setting.addText((text) => {
             text
@@ -584,6 +606,7 @@ export class SettingsTab extends PluginSettingTab {
       },
       {
         name: "AI request timeout (ms)",
+        visible: () => this.plugin.settings.aiFeatures,
         desc: "Maximum wait time for Ask AI requests before timing out.",
         render: (setting) => {
           setting.addText((text) => {
@@ -602,6 +625,7 @@ export class SettingsTab extends PluginSettingTab {
       },
       {
         name: "Custom AI system prompt",
+        visible: () => this.plugin.settings.aiFeatures,
         desc: "Override the default AI instructions sent with every request. Leave blank to use the built-in default.",
         render: (setting) => {
           setting.addTextArea((text) => {

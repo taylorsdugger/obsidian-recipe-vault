@@ -470,6 +470,34 @@ export default class RecipeVault extends Plugin {
       })();
     });
 
+    if (this.settings.aiFeatures) {
+      this.addAiControls(actions, file);
+    }
+
+    const targetHeading = Array.from(
+      container.querySelectorAll<HTMLElement>("h2, h3, h4"),
+    ).find((heading) =>
+      heading.textContent?.toLowerCase().includes("ingredients"),
+    );
+
+    if (targetHeading && targetHeading.parentElement) {
+      targetHeading.parentElement.insertBefore(actions, targetHeading);
+      return;
+    }
+
+    const title = container.querySelector("h1, .inline-title");
+    const heroImage = container.querySelector("img");
+    const insertAfter = heroImage ?? title;
+
+    if (insertAfter?.parentElement) {
+      insertAfter.parentElement.insertBefore(actions, insertAfter.nextSibling);
+    } else {
+      container.prepend(actions);
+    }
+  }
+
+  /** The Ask AI input and button on a recipe note's action bar. */
+  private addAiControls(actions: HTMLElement, file: TFile): void {
     const aiControls = actions.createDiv({ cls: "recipe-note-ai-controls" });
 
     const aiPromptInput = aiControls.createEl("input", {
@@ -521,27 +549,19 @@ export default class RecipeVault extends Plugin {
         void runAiRefine();
       }
     });
+  }
 
-    const targetHeading = Array.from(
-      container.querySelectorAll<HTMLElement>("h2, h3, h4"),
-    ).find((heading) =>
-      heading.textContent?.toLowerCase().includes("ingredients"),
-    );
-
-    if (targetHeading && targetHeading.parentElement) {
-      targetHeading.parentElement.insertBefore(actions, targetHeading);
-      return;
+  /**
+   * Rebuild the action bar on the open recipe note, after a setting that
+   * changes it. Other open notes pick it up when they're next shown.
+   */
+  refreshRecipeActions(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      leaf.view.containerEl
+        .querySelectorAll(".recipe-note-actions")
+        .forEach((el) => el.remove());
     }
-
-    const title = container.querySelector("h1, .inline-title");
-    const heroImage = container.querySelector("img");
-    const insertAfter = heroImage ?? title;
-
-    if (insertAfter?.parentElement) {
-      insertAfter.parentElement.insertBefore(actions, insertAfter.nextSibling);
-    } else {
-      container.prepend(actions);
-    }
+    this.queueInjectActiveRecipeActions();
   }
 
   /** Ingredient lines for a note path, for the gallery search (loadRecipes). */
@@ -969,7 +989,9 @@ export default class RecipeVault extends Plugin {
     this.addCommand({
       id: c.CMD_RECIPE_FROM_PHOTO,
       name: "Add recipe from photo",
-      callback: () => {
+      checkCallback: (checking) => {
+        if (!this.settings.aiFeatures) return false;
+        if (checking) return true;
         const apiKey = this.settings.openRouterApiKey?.trim();
         if (!apiKey) {
           new Notice(
