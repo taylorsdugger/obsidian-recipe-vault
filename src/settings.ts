@@ -1,6 +1,7 @@
 import {
   App,
   FuzzySuggestModal,
+  getLanguage,
   PluginSettingTab,
   requireApiVersion,
   Setting,
@@ -10,7 +11,11 @@ import {
   TFile,
   TFolder,
 } from "obsidian";
-import { DEFAULT_AI_MODEL } from "@recipe-vault/core";
+import {
+  DEFAULT_AI_MODEL,
+  primaryLanguage,
+  TITLE_WORD_LISTS,
+} from "@recipe-vault/core";
 import RecipeVault from "./main";
 import * as c from "./constants";
 
@@ -55,10 +60,19 @@ export interface PluginSettings {
   aiModelId: string;
   aiTimeoutMs: number;
   aiSystemPrompt: string;
-  fillerWordsMode: "auto" | "custom";
-  customFillerWords: string;
+  /** Strip the built-in filler words for the recipe's language. */
+  useBuiltInFillerWords: boolean;
+  /** The user's own title words to strip, in any language. */
+  extraFillerWords: string;
+  /** Built-in title words the user wants left alone. */
+  keptFillerWords: string;
   filterVeganWords: boolean;
   filterGlutenFreeWords: boolean;
+  /**
+   * The language to clean titles in when the page doesn't say. Blank follows
+   * Obsidian's own language.
+   */
+  recipeLanguage: string;
 }
 
 // Shared with the web app, which falls back to the same model.
@@ -106,11 +120,52 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   aiModelId: DEFAULT_AI_MODEL,
   aiTimeoutMs: 45000,
   aiSystemPrompt: "",
-  fillerWordsMode: "auto",
-  customFillerWords: "",
+  useBuiltInFillerWords: true,
+  extraFillerWords: "",
+  keptFillerWords: "",
   filterVeganWords: false,
   filterGlutenFreeWords: false,
+  recipeLanguage: "",
 };
+
+/** The old filler word settings, from when you got one list or the other. */
+interface LegacyFillerWordSettings {
+  fillerWordsMode?: "auto" | "custom";
+  customFillerWords?: string;
+}
+
+/**
+ * Filler words used to be a dropdown: the built-in list, or a custom list
+ * instead of it (#33). A custom list carries over as extra words with the
+ * built-in list off, so titles come out the same as before. Returns whether
+ * anything changed and needs saving.
+ */
+export function migrateFillerWordSettings(
+  s: PluginSettings & LegacyFillerWordSettings,
+): boolean {
+  if (s.fillerWordsMode === undefined && s.customFillerWords === undefined) {
+    return false;
+  }
+  if (s.fillerWordsMode === "custom") {
+    s.useBuiltInFillerWords = false;
+    s.extraFillerWords = s.customFillerWords ?? "";
+  }
+  delete s.fillerWordsMode;
+  delete s.customFillerWords;
+  return true;
+}
+
+/**
+ * Obsidian's interface language as a two-letter code, e.g. "de". Older
+ * versions without getLanguage() get English, and can pick a language in
+ * settings instead.
+ */
+export function obsidianLanguage(): string {
+  if (requireApiVersion("1.8.7")) {
+    return primaryLanguage(getLanguage()) ?? "en";
+  }
+  return "en";
+}
 
 export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
   private readonly onChoose: (path: string) => void;
@@ -710,33 +765,48 @@ export class SettingsTab extends PluginSettingTab {
         },
       },
       {
-        name: "Recipe title filler words",
-        desc: "Choose how recipe-title cleanup words are applied during imports.",
+        name: "Remove filler words from titles",
+        desc: 'Strip words like "easy" and "best" from imported recipe titles. The list matches the recipe\'s language.',
         render: (setting) => {
-          setting.addDropdown((dropdown) => {
-            dropdown.addOption("auto", "Auto (built-in list)");
-            dropdown.addOption("custom", "Custom list");
-            dropdown.setValue(this.plugin.settings.fillerWordsMode || "auto");
-            dropdown.onChange(async (value) => {
-              this.plugin.settings.fillerWordsMode =
-                value === "custom" ? "custom" : "auto";
-              await this.plugin.saveSettings();
-              this.refresh();
-            });
+          setting.addToggle((toggle) => {
+            toggle
+              .setValue(this.plugin.settings.useBuiltInFillerWords)
+              .onChange(async (value) => {
+                this.plugin.settings.useBuiltInFillerWords = value;
+                await this.plugin.saveSettings();
+                this.refresh();
+              });
           });
         },
       },
       {
-        name: "Custom filler words",
-        desc: "Words/phrases to remove from imported recipe titles. Separate with commas or new lines.",
-        visible: () => this.plugin.settings.fillerWordsMode === "custom",
+        name: "Filler words to keep",
+        desc: "Built-in words to leave in titles. Separate with commas or new lines.",
+        visible: () => this.plugin.settings.useBuiltInFillerWords,
         render: (setting) => {
           setting.addTextArea((text) => {
             text
-              .setPlaceholder("Best, easy, one-pot")
-              .setValue(this.plugin.settings.customFillerWords)
+              .setPlaceholder("Classic, crispy")
+              .setValue(this.plugin.settings.keptFillerWords)
               .onChange(async (value) => {
-                this.plugin.settings.customFillerWords = value;
+                this.plugin.settings.keptFillerWords = value;
+                await this.plugin.saveSettings();
+              });
+            text.inputEl.addClass("recipe-vault-input-full");
+            text.inputEl.addClass("recipe-vault-textarea-filler-words");
+          });
+        },
+      },
+      {
+        name: "Extra filler words",
+        desc: "Your own words to remove from imported titles, in any language. Separate with commas or new lines.",
+        render: (setting) => {
+          setting.addTextArea((text) => {
+            text
+              .setPlaceholder("Spicy, viral")
+              .setValue(this.plugin.settings.extraFillerWords)
+              .onChange(async (value) => {
+                this.plugin.settings.extraFillerWords = value;
                 await this.plugin.saveSettings();
               });
             text.inputEl.addClass("recipe-vault-input-full");
@@ -769,6 +839,25 @@ export class SettingsTab extends PluginSettingTab {
                 this.plugin.settings.filterGlutenFreeWords = value;
                 await this.plugin.saveSettings();
               });
+          });
+        },
+      },
+      {
+        name: "Recipe language",
+        desc: "Which word lists to use when a recipe page doesn't say what language it's in. Most pages do.",
+        render: (setting) => {
+          setting.addDropdown((dropdown) => {
+            const obsidian = obsidianLanguage();
+            const obsidianName = TITLE_WORD_LISTS[obsidian]?.name ?? obsidian;
+            dropdown.addOption("", `Match Obsidian (${obsidianName})`);
+            for (const [code, list] of Object.entries(TITLE_WORD_LISTS)) {
+              dropdown.addOption(code, list.name);
+            }
+            dropdown.setValue(this.plugin.settings.recipeLanguage);
+            dropdown.onChange(async (value) => {
+              this.plugin.settings.recipeLanguage = value;
+              await this.plugin.saveSettings();
+            });
           });
         },
       },

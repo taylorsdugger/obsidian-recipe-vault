@@ -163,6 +163,10 @@ export function requireApiVersion(): boolean {
   return false;
 }
 
+export function getLanguage(): string {
+  return "en";
+}
+
 export class FuzzySuggestModal<T> {
   app: any;
   constructor(app?: any) {

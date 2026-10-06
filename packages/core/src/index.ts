@@ -145,6 +145,9 @@ export {
   getCustomFillerWordPatterns,
   toLooseWordPattern,
 } from "./parse/clean-name";
+export type { TitleWordList } from "./parse/title-words";
+export { TITLE_WORD_LISTS } from "./parse/title-words";
+export { primaryLanguage, recipeLanguage } from "./parse/language";
 export {
   stripHtml,
   decodeHtmlEntities,

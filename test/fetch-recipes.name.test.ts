@@ -71,14 +71,20 @@ describe("fetchRecipes — recipe name cleaning", () => {
     );
   });
 
-  it("uses only custom words in custom mode (base list ignored)", async () => {
-    // "best" is a base filler word but must survive in custom mode; only the
-    // configured "spicy" is removed.
+  it("uses only the extra words with the built-in list off", async () => {
+    // "best" is a built-in filler word but must survive with the list off;
+    // only the configured "spicy" is removed.
     expect(
       await nameFrom("Spicy Best Ribs", {
-        fillerWordsMode: "custom",
-        customFillerWords: "spicy",
+        useBuiltInFillerWords: false,
+        extraFillerWords: "spicy",
       }),
     ).toBe("Best Ribs");
+  });
+
+  it("adds extra words on top of the built-in list", async () => {
+    expect(
+      await nameFrom("Spicy Best Ribs", { extraFillerWords: "spicy" }),
+    ).toBe("Ribs");
   });
 });

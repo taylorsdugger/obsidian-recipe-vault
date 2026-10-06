@@ -5,6 +5,7 @@ import { fetchPageHtml, type FetchPageOptions } from "../fetch/page";
 import type { ParsedRecipe } from "../types";
 import { type CleanNameOptions } from "./clean-name";
 import { parseRecipesFromJsonLd } from "./json-ld";
+import { pageLanguage } from "./language";
 import { extractMicrodataRecipes } from "./microdata";
 import { extractWprmRecipeNotes, normalizeRecipeNotes } from "./notes";
 
@@ -39,7 +40,11 @@ export function parseRecipesFromHtml(
     }
   });
 
-  const jsonLdOpts = { ...opts, sourceUrl: url.href };
+  const jsonLdOpts = {
+    ...opts,
+    sourceUrl: url.href,
+    pageLanguage: pageLanguage($),
+  };
   let recipes = parseRecipesFromJsonLd(blocks, jsonLdOpts);
 
   // Fallback for pages that carry the recipe as HTML microdata rather than
