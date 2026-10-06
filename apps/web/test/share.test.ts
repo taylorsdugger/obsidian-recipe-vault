@@ -41,6 +41,41 @@ describe("publicRecipe", () => {
     expect(JSON.stringify(view)).not.toMatch(/times|last_made|2026-09-30/);
   });
 
+  it("carries the macros, and what a serving is", () => {
+    const markdown = [
+      "---",
+      "servings: 4",
+      "calories: 420",
+      "protein: 18",
+      "carbs: 52",
+      "fat: 14",
+      "---",
+      "### Ingredients",
+      "- 2 cans chickpeas",
+      "",
+      "### Instructions",
+      "1. Fry the chickpeas.",
+    ].join("\n");
+
+    const view = publicRecipe({ ...base, markdown });
+
+    expect(view.nutrition).toMatchObject({
+      calories: 420,
+      protein: 18,
+      carbs: 52,
+      fat: 14,
+    });
+    expect(view.servings).toBe("4");
+  });
+
+  it("has no nutrition when the note doesn't", () => {
+    const view = publicRecipe({
+      ...base,
+      markdown: "### Ingredients\n- 1 onion\n\n### Instructions\n1. Fry it.",
+    });
+    expect(view.nutrition).toBeNull();
+  });
+
   it("reads a .cook file by its key", () => {
     const view = publicRecipe({
       ...base,

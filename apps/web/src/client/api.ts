@@ -4,6 +4,7 @@ import type {
   RecipeEditSuggestion,
   RecipeLists,
 } from "@recipe-vault/core/ai/recipe-chat";
+import type { Nutrition } from "@recipe-vault/core/nutrition";
 
 import { dateKey } from "./week";
 
@@ -187,6 +188,9 @@ export interface PublicRecipe {
   ingredients: string[];
   steps: string[];
   notes: string[];
+  nutrition: Nutrition | null;
+  servings: string;
+  servingSize: string;
 }
 
 /** Thrown by `api.shared` when the link was turned off, or never existed. */

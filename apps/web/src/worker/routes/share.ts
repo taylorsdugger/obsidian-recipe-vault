@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { nanoid } from "nanoid";
 // Deep import: the barrel pulls in cheerio, and this only needs the reader.
 import { readRecipeFile } from "@recipe-vault/core/note/recipe-file";
+import type { Nutrition } from "@recipe-vault/core/nutrition";
 
 import { db, schema } from "../db/client";
 import type { RecipeRow } from "../db/schema";
@@ -23,6 +24,11 @@ export interface PublicRecipe {
   ingredients: string[];
   steps: string[];
   notes: string[];
+  /** Per serving, as the recipe screen shows it. Null when the note has none. */
+  nutrition: Nutrition | null;
+  /** The yield as written, which the per-serving numbers are a share of. */
+  servings: string;
+  servingSize: string;
 }
 
 /** The page's view of a row: the recipe, and nothing about the household. */
@@ -52,6 +58,9 @@ export function publicRecipe(
     ingredients: file.ingredients,
     steps: file.instructions,
     notes: file.notes,
+    nutrition: file.nutrition,
+    servings: file.servings,
+    servingSize: file.servingSize,
   };
 }
 

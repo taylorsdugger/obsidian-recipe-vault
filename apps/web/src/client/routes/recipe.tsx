@@ -254,6 +254,9 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
     ingredients: written,
     steps: instructions,
     notes,
+    nutrition,
+    servings,
+    servingSize,
   };
   const alreadyMade = madeToday(recipe.lastMade);
 

@@ -4,8 +4,14 @@ import { useEffect, useState } from "preact/hooks";
 import { api, LinkOff, type PublicRecipe } from "../api";
 import { CookMode } from "../components/cook-mode";
 import { Icon } from "../components/icon";
-import { ScaleControl } from "../components/scale-control";
 import { AppIcon, PotMark } from "../components/logo";
+import {
+  NutritionDetails,
+  NutritionPopover,
+  NutritionStrip,
+} from "../components/nutrition";
+import { ScaleControl } from "../components/scale-control";
+import { Sheet } from "../components/sheet";
 import { spaced, sourceHost } from "../format";
 import { back, navigate, replace } from "../router";
 import { useWakeLock } from "../wake-lock";
@@ -34,6 +40,8 @@ export function Shared({
   const [cookStep, setCookStep] = useState(0);
   /** A double batch, say. The link has no servings, so it's a multiplier. */
   const [scale, setScale] = useState(1);
+  /** The phone's nutrition sheet. The desktop's popover keeps its own. */
+  const [showNutrition, setShowNutrition] = useState(false);
   const screenAwake = useWakeLock();
 
   useEffect(() => {
@@ -216,6 +224,15 @@ export function Shared({
               {recipe.title}
             </h1>
             {meta}
+            {recipe.nutrition && (
+              <NutritionPopover
+                nutrition={recipe.nutrition}
+                servings={recipe.servings}
+                servingSize={recipe.servingSize}
+                scale={scale}
+                sourceUrl={recipe.sourceUrl ?? ""}
+              />
+            )}
             <h2 class="mt-2.5 font-display text-2xl font-medium">Steps</h2>
             {stepList("gap-3.5")}
             {notes}
@@ -247,6 +264,16 @@ export function Shared({
               View original on {host}
               <Icon name="external" class="size-[15px]" stroke={2} />
             </a>
+          )}
+          {recipe.nutrition && (
+            <NutritionStrip
+              nutrition={recipe.nutrition}
+              servings={recipe.servings}
+              servingSize={recipe.servingSize}
+              compact
+              open={showNutrition}
+              onClick={() => setShowNutrition(true)}
+            />
           )}
           {tab === "ingredients" ? (
             <>
@@ -300,6 +327,19 @@ export function Shared({
           </div>
         </div>
       </div>
+
+      {showNutrition && recipe.nutrition && (
+        <Sheet title="Nutrition" onClose={() => setShowNutrition(false)}>
+          <NutritionDetails
+            nutrition={recipe.nutrition}
+            servings={recipe.servings}
+            servingSize={recipe.servingSize}
+            scale={scale}
+            sourceUrl={recipe.sourceUrl ?? ""}
+            title={false}
+          />
+        </Sheet>
+      )}
 
       {cooking && recipe.steps.length > 0 && (
         <CookMode
