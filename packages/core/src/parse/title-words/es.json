@@ -1,0 +1,49 @@
+{
+  "name": "Español",
+  "filler": [
+    "(la\\s+)?mejor\\s+receta\\s+de",
+    "(el|la|los|las)\\s+mejor(es)?",
+    "(f[áa]cil(es)?|r[áa]pid[oa]s?|sencill[oa]s?|saludables?|delicios[oa]s?|sabros[oa]s?|ric[oa]s?)\\s+y\\s+(f[áa]cil(es)?|r[áa]pid[oa]s?|sencill[oa]s?|saludables?|delicios[oa]s?|sabros[oa]s?|ric[oa]s?)",
+    "hech[oa]s?\\s+en\\s+casa",
+    "mejor(es)?",
+    "f[áa]cil(es)?",
+    "r[áa]pid[oa]s?",
+    "sencill[oa]s?",
+    "caser[oa]s?",
+    "delicios[oa]s?",
+    "sabros[oa]s?",
+    "riqu[íi]sim[oa]s?",
+    "perfect[oa]s?",
+    "saludables?",
+    "san[oa]s?",
+    "liger[oa]s?",
+    "light",
+    "cl[áa]sic[oa]s?",
+    "tradicional(es)?",
+    "aut[ée]ntic[oa]s?",
+    "famos[oa]s?",
+    "incre[íi]bles?",
+    "espectacular(es)?",
+    "irresistibles?",
+    "jugos[oa]s?",
+    "crujientes?",
+    "tiern[oa]s?",
+    "express",
+    "s[úu]per"
+  ],
+  "vegan": [
+    "a\\s+base\\s+de\\s+plantas",
+    "vegan[oa]s?",
+    "vegetarian[oa]s?",
+    "veggie",
+    "sin\\s+carne",
+    "sin\\s+l[áa]cteos",
+    "sin\\s+lactosa"
+  ],
+  "glutenFree": [
+    "sin\\s+gluten",
+    "libres?\\s+de\\s+gluten",
+    "sin\\s+trigo",
+    "sin\\s+harina"
+  ]
+}

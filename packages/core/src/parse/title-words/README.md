@@ -10,8 +10,8 @@ Open the language's file, edit the list, and open a pull request. You can do the
 
 ## Adding a language
 
-1. Copy `en.json` to `<code>.json`, where the code is the two-letter ISO 639-1 code (`fr`, `es`, `nl`).
-2. Set `name` to what the language calls itself (`Français`), and fill in the three lists.
+1. Copy `en.json` to `<code>.json`, where the code is the two-letter ISO 639-1 code (`it`, `nl`, `pt`).
+2. Set `name` to what the language calls itself (`Nederlands`), and fill in the three lists.
 3. Add the file to `TITLE_WORD_LISTS` in `index.ts`. The tests fail if you forget.
 
 The lists:

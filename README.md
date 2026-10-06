@@ -145,7 +145,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 > **Gallery is empty but you've imported recipes?** By default the gallery follows your **Recipe save folder**, so this shouldn't happen. If it does, you've set an explicit **Recipe gallery folder** that points somewhere other than where recipes are saved. Either clear that setting (blank = follow the save folder) or point it at your save folder, and your recipes will show up.
 
-> **Title words in your language.** The built-in filler word lists are English and German for now. Each language is one JSON file in [`packages/core/src/parse/title-words`](packages/core/src/parse/title-words). Fixing a word or adding a language is a small pull request you can make from GitHub's web editor, and the [README there](packages/core/src/parse/title-words/README.md) walks through it.
+> **Title words in your language.** The built-in filler word lists cover English, German, Spanish and French for now. Each language is one JSON file in [`packages/core/src/parse/title-words`](packages/core/src/parse/title-words). Fixing a word or adding a language is a small pull request you can make from GitHub's web editor, and the [README there](packages/core/src/parse/title-words/README.md) walks through it.
 
 ---
 

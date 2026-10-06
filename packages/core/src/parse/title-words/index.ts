@@ -1,5 +1,7 @@
 import de from "./de.json";
 import en from "./en.json";
+import es from "./es.json";
+import fr from "./fr.json";
 
 /**
  * One language's title cleanup words. Every entry is a regex source, matched
@@ -19,4 +21,9 @@ export interface TitleWordList {
  * built-in cleanup, only the user's own extra words. Falling back to English
  * would strip words like "light" or "fresh" out of a French title.
  */
-export const TITLE_WORD_LISTS: Record<string, TitleWordList> = { de, en };
+export const TITLE_WORD_LISTS: Record<string, TitleWordList> = {
+  de,
+  en,
+  es,
+  fr,
+};

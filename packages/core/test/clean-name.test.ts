@@ -102,10 +102,36 @@ describe("cleanRecipeName in other languages", () => {
   });
 
   it("strips only extra words in a language with no list", () => {
-    expect(inLanguage("Easy Soupe Rapide", "fr")).toBe("Easy Soupe Rapide");
+    expect(inLanguage("Easy Zuppa Veloce", "it")).toBe("Easy Zuppa Veloce");
     expect(
-      inLanguage("Easy Soupe Rapide", "fr", { extraFillerWords: "rapide" }),
-    ).toBe("Easy Soupe");
+      inLanguage("Easy Zuppa Veloce", "it", { extraFillerWords: "veloce" }),
+    ).toBe("Easy Zuppa");
+  });
+
+  it("uses the Spanish list for a Spanish recipe", () => {
+    expect(inLanguage("Tortilla de patatas fácil", "es")).toBe(
+      "Tortilla de patatas",
+    );
+    expect(inLanguage("Flan casero fácil y rápido", "es")).toBe("Flan");
+    expect(inLanguage("La mejor receta de paella", "es")).toBe("paella");
+    expect(inLanguage("Lentejas veganas sin gluten", "es")).toBe("Lentejas");
+    // "rico" only goes in a pair like "fácil y rico", never on its own.
+    expect(inLanguage("Arroz con pollo de Puerto Rico", "es")).toBe(
+      "Arroz con pollo de Puerto Rico",
+    );
+  });
+
+  it("uses the French list for a French recipe", () => {
+    expect(inLanguage("Crêpes faciles et rapides", "fr")).toBe("Crêpes");
+    expect(inLanguage("Le meilleur gâteau au chocolat", "fr")).toBe(
+      "gâteau au chocolat",
+    );
+    expect(inLanguage("Burger végé sans gluten", "fr")).toBe("Burger");
+    // Dish names that sound like filler stay put.
+    expect(inLanguage("Moelleux au chocolat", "fr")).toBe(
+      "Moelleux au chocolat",
+    );
+    expect(inLanguage("Crème fraîche maison", "fr")).toBe("Crème fraîche");
   });
 
   it("matches words that start with an umlaut", () => {
