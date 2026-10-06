@@ -1,4 +1,4 @@
-import { eq, like, or, sql } from "drizzle-orm";
+import { and, eq, like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { setRecipeHistory } from "@recipe-vault/core";
 
@@ -6,6 +6,7 @@ import { db, schema } from "../db/client";
 import { indexNote } from "../db/index-recipe";
 import { deriveRecipeFields } from "../db/recipe-row";
 import type { AppBindings } from "../env";
+import { searchTerms } from "../search";
 import { deleteNote, VaultConflict, writeNote } from "../vault-store";
 
 /**
@@ -46,18 +47,26 @@ export const recipeRoutes = new Hono<AppBindings>()
    * the plugin's gallery filter covers. `ingredients` is a JSON array in a
    * text column, so LIKE over it is a substring match on the whole array,
    * which is exactly what the gallery does client-side today.
+   *
+   * Commas split the search, and a recipe has to match every part:
+   * "chickpea, spinach" is the recipes with both.
    */
   .get("/", async (c) => {
-    const q = (c.req.query("q") ?? "").trim();
+    const terms = searchTerms(c.req.query("q") ?? "");
     const sort = c.req.query("sort");
 
-    const filter = q
-      ? or(
-          like(schema.recipes.title, `%${q}%`),
-          like(schema.recipes.mealType, `%${q}%`),
-          like(schema.recipes.ingredients, `%${q}%`),
-        )
-      : undefined;
+    const filter =
+      terms.length > 0
+        ? and(
+            ...terms.map((term) =>
+              or(
+                like(schema.recipes.title, `%${term}%`),
+                like(schema.recipes.mealType, `%${term}%`),
+                like(schema.recipes.ingredients, `%${term}%`),
+              ),
+            ),
+          )
+        : undefined;
 
     const rows = await db(c.env.DB)
       .select({

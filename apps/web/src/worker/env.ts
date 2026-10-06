@@ -8,6 +8,10 @@ export interface Env {
   AUTH_PASSWORD_HASH: string;
   /** Signs the session cookie. Rotating it signs every device out. */
   AUTH_COOKIE_SECRET: string;
+  /** OpenRouter key for Ask AI. Without it Ask AI stays hidden. */
+  OPENROUTER_API_KEY?: string;
+  /** Which model Ask AI uses. Falls back to the plugin's default. */
+  OPENROUTER_MODEL?: string;
 }
 
 /** The Hono generic every route in this app uses. */

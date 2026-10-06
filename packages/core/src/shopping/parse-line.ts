@@ -14,8 +14,8 @@ export function parseShoppingLine(text: string): ParsedShoppingLine | null {
 
   // Replace unicode fractions with ASCII `n/d` so the numeric regex below
   // can parse them. A leading space keeps mixed numbers separate
-  // ("1½" → "1 1/2"); decimals (" 0.5") must NOT be used here — the regex
-  // only understands integers and `n/d`, so a decimal silently parses as 0.
+  // ("1½" → "1 1/2"). Written as `n/d` rather than a decimal (" 0.5"), since
+  // a leading space before a decimal leaves "1 0.5", which isn't a number.
   const ucFracs: [RegExp, string][] = [
     [/½/g, "1/2"],
     [/¼/g, "1/4"],
@@ -35,10 +35,11 @@ export function parseShoppingLine(text: string): ParsedShoppingLine | null {
   s = s.replace(/(\d+)\s+\/\s*(\d+)/g, "$1/$2");
 
   // Match a leading quantity as one token: a mixed number ("1 1/2"), a bare
-  // fraction ("1/2"), or a whole number ("2"). Ordered alternation matters —
+  // fraction ("1/2"), a decimal ("1.5", which a scaled metric amount is
+  // written as), or a whole number ("2"). Ordered alternation matters -
   // listing the fraction forms before the bare integer stops a fraction's
   // numerator (the "1" in "1/2") from being consumed as a standalone whole.
-  const numRe = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+)\s*/;
+  const numRe = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+\.\d+|\d+)\s*/;
   const numMatch = s.match(numRe);
   let amount = 0;
   let rest = s;

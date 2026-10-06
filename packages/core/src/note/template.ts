@@ -2,6 +2,7 @@ import dateFormat from "dateformat";
 import * as Handlebars from "handlebars";
 
 import { formatIsoDuration, formatPhotoValue } from "./frontmatter";
+import { firstYield } from "../nutrition";
 
 /* ---------------------------- DEFAULT TEMPLATE ---------------------------- */
 // Fields the plugin needs (cssclasses, cook_time, the photo) are backfilled by
@@ -17,6 +18,7 @@ created: {{datePublished}}
 meal_type: {{recipeCategory}}
 author: {{author}}
 cook_time: {{magicTime totalTime}}
+servings: {{servings recipeYield}}
 url: {{url}}
 photo: "{{photoFrontmatter image}}"
 times_made: 0
@@ -146,6 +148,12 @@ export function createRecipeRenderer(
       .replace(/"/g, '\\"');
     return new hb.SafeString(yamlSafe);
   });
+
+  // Pages give a yield as "4", 4, or ["4", "4 servings"]. The first is
+  // enough, and it's what scaling reads the servings from.
+  hb.registerHelper("servings", (recipeYield: unknown) =>
+    firstYield(recipeYield),
+  );
 
   hb.registerHelper("imageLink", function (imgPath: unknown) {
     if (typeof imgPath !== "string" || !imgPath) return "";

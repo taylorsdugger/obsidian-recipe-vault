@@ -5,6 +5,7 @@ import {
   type RecipeVaultState,
 } from "../note/to-json-ld";
 import type { JsonRecord } from "../types";
+import { nutritionFromFields, nutritionToJsonLd } from "../nutrition";
 
 /**
  * Cooklang front matter, flattened. Keys are lowercased, and a nested map is
@@ -30,6 +31,8 @@ export interface CooklangIngredient {
   prep: string;
   /** `@&name`: points back at an earlier ingredient rather than adding one. */
   reference: boolean;
+  /** `{=1%tsp}`: an amount that stays the same when the recipe scales. */
+  fixed?: boolean;
   /**
    * For another recipe used as an ingredient (`@./Sauces/Hollandaise{}`), its
    * path as written, without the `./`. The name is just "Hollandaise".
@@ -158,16 +161,21 @@ function stripComments(body: string): string {
 }
 
 /** `{ 1 / 2 % cup }` → quantity "1/2", unit "cup". */
-function parseAmount(inner: string): { quantity: string; unit: string } {
+function parseAmount(inner: string): {
+  quantity: string;
+  unit: string;
+  fixed: boolean;
+} {
   const split = inner.indexOf("%");
   const rawQuantity = split === -1 ? inner : inner.slice(0, split);
   const unit = split === -1 ? "" : inner.slice(split + 1).trim();
+  // `=` fixes an amount so it doesn't scale.
+  const fixed = /^\s*=/.test(rawQuantity);
   const quantity = rawQuantity
     .trim()
-    // `=` fixes an amount so it doesn't scale. Nothing here scales.
     .replace(/^=\s*/, "")
     .replace(/\s*\/\s*/g, "/");
-  return { quantity, unit };
+  return { quantity, unit, fixed };
 }
 
 // A single-word name runs until whitespace or punctuation.
@@ -250,6 +258,7 @@ function parseStep(source: string): CooklangStep {
           unit: amount.unit,
           prep: prep ? prep[1].trim() : "",
           reference,
+          ...(amount.fixed ? { fixed: true } : {}),
           ...(recipe ? { recipe } : {}),
         });
       } else {
@@ -346,6 +355,7 @@ export function parseCooklang(source: string): CooklangRecipe {
         unit: token.unit,
         prep: token.prep,
         reference: false,
+        ...(token.fixed ? { fixed: true } : {}),
         ...(token.recipe ? { recipe: token.recipe } : {}),
       });
     }
@@ -480,6 +490,15 @@ export function cooklangToJsonLd(
   if (instructions.length > 0) recipe.recipeInstructions = instructions;
 
   if (notes.length > 0) recipe.recipeNotes = notes;
+
+  // `calories: 530`, `protein: 17` and so on, the same names a note uses.
+  const nutrition = nutritionFromFields(meta);
+  if (nutrition) {
+    recipe.nutrition = nutritionToJsonLd(
+      nutrition,
+      metaValue(meta, "serving size"),
+    );
+  }
 
   // Cooking history written by our own export. Read back the same way a
   // JSON-LD round trip does, so it isn't reset on the way in.

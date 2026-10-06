@@ -95,14 +95,14 @@ export function RecipePicker({
       <div class="space-y-3">
         <input
           ref={search}
-          class="field"
+          class="field-round"
           type="search"
           placeholder="Search recipes or ingredients"
           value={query}
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
         />
 
-        {error && <p class="text-sm text-red-700">{error}</p>}
+        {error && <p class="text-sm text-danger">{error}</p>}
 
         {/* Whatever's typed doubles as the free-text entry, so "leftovers" is
             one type and one tap rather than a second field to find. */}
@@ -156,7 +156,7 @@ export function RecipePicker({
         )}
 
         {recipes && shown < recipes.length && (
-          <div class="py-3 text-center text-xs text-faint">
+          <div class="py-3 text-center text-xs text-muted">
             {recipes.length - shown} more
           </div>
         )}

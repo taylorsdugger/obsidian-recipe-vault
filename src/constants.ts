@@ -8,11 +8,14 @@ export const CMD_CLEAR_SHOPPING_LIST = "cmd-clear-shopping-list";
 export const CMD_BATCH_IMPORT = "cmd-batch-import";
 export const CMD_NEW_RECIPE_STUB = "cmd-new-recipe-stub";
 export const CMD_BACKFILL_INGREDIENTS = "cmd-backfill-ingredients";
+export const CMD_BACKFILL_NUTRITION = "cmd-backfill-nutrition";
+export const CMD_STOP_NUTRITION = "cmd-stop-nutrition";
 export const CMD_RECIPE_FROM_PHOTO = "cmd-recipe-from-photo";
 export const CMD_IMPORT_JSONLD = "cmd-import-jsonld";
 export const CMD_EXPORT_JSONLD = "cmd-export-jsonld";
 export const CMD_EXPORT_COOKLANG = "cmd-export-cooklang";
 export const CMD_IMPORT_FOLDER = "cmd-import-folder";
+export const CMD_COOK_MODE = "cmd-cook-mode";
 export const MANUAL_RECIPE_DEFAULT_FOLDER = "recipes";
 export const VIEW_TYPE_RECIPE_GALLERY = "recipe-gallery-view";
 export const CMD_OPEN_RECIPE_GALLERY = "cmd-open-recipe-gallery";
@@ -24,6 +27,13 @@ export const VIEW_TYPE_COOKLANG = "recipe-vault-cooklang-view";
  * collection, so a few thousand at once is worth a second look.
  */
 export const BULK_IMPORT_WARN_AT = 1000;
+
+/**
+ * With the Kitchen layout on, a desktop pane narrower than this gets it too,
+ * as if it were a phone. Wider than a large phone held sideways, narrower
+ * than a tablet held upright.
+ */
+export const KITCHEN_MAX_WIDTH = 640;
 
 /* ------------------------------- TEMPLATE --------------------------------- */
 /** The note template lives in @recipe-vault/core. */

@@ -99,6 +99,22 @@ export const shoppingItems = sqliteTable("shopping_items", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/**
+ * A public link to one recipe. Turning it off deletes the row; turning it back
+ * on writes a new token, so a link someone was sent stays off.
+ */
+export const recipeShares = sqliteTable(
+  "recipe_shares",
+  {
+    token: text("token").primaryKey(),
+    recipeId: text("recipe_id")
+      .notNull()
+      .references(() => recipes.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [uniqueIndex("recipe_shares_recipe_idx").on(table.recipeId)],
+);
+
 /** App settings, one row per key. See `src/worker/settings.ts`. */
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),

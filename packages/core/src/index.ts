@@ -82,11 +82,45 @@ export type {
   RecipeFormat,
 } from "./note/recipe-file";
 export {
+  addRecipeNutrition,
   readRecipeFile,
   recipeFormatOf,
+  scaleRecipeIngredients,
   setCooklangMetadata,
   setRecipeHistory,
 } from "./note/recipe-file";
+export type {
+  ChatMessage,
+  DiffLine,
+  OpenRouterMessage,
+  OpenRouterResponse,
+  RecipeChatResult,
+  RecipeEditSuggestion,
+  RecipeLists,
+} from "./ai/recipe-chat";
+export {
+  buildChatMessages,
+  buildEditMessages,
+  cleanBoolean,
+  cleanStringList,
+  DEFAULT_AI_MODEL,
+  diffLines,
+  editPromptFromChat,
+  extractJsonBlock,
+  hasRecipeDiff,
+  OFFER_EDIT_TOKEN,
+  openRouterContent,
+  openRouterErrorMessage,
+  OPENROUTER_URL,
+  parseChatPayload,
+  parseSuggestionPayload,
+} from "./ai/recipe-chat";
+export {
+  chipText,
+  ingredientName,
+  ingredientsForStep,
+  ingredientsForSteps,
+} from "./note/step-ingredients";
 export type { RecipeRenderer, RendererOptions } from "./note/template";
 export {
   DEFAULT_TEMPLATE,
@@ -133,3 +167,49 @@ export { extractMicrodataRecipes } from "./parse/microdata";
 export { extractWprmRecipeNotes, normalizeRecipeNotes } from "./parse/notes";
 export type { ParseOptions, FetchOptions } from "./parse/recipes";
 export { parseRecipesFromHtml, fetchRecipes } from "./parse/recipes";
+export type {
+  MacroShare,
+  NutrientInfo,
+  NutrientKey,
+  Nutrition,
+  NutritionRow,
+  NutritionView,
+  PageNutrition,
+} from "./nutrition";
+export {
+  MACROS,
+  NUTRIENTS,
+  addNoteNutrition,
+  describesServing,
+  ensureNutritionFrontmatter,
+  firstYield,
+  missingRecipeFields,
+  recipeNutritionInfo,
+  servingSizeFromJsonLd,
+  formatNutrient,
+  macroSplit,
+  missingNutritionFields,
+  nutritionFields,
+  nutritionFromFields,
+  nutritionFromJsonLd,
+  nutritionToJsonLd,
+  nutritionView,
+  pageNutrition,
+  parseNutrientAmount,
+  scaleNutrition,
+  sourceHost,
+} from "./nutrition";
+export {
+  SCALE_STEPS,
+  formatQuantity,
+  parseQuantity,
+  respellUnit,
+  scaleCooklang,
+  scaleIngredientLine,
+  scaleLabel,
+  scaleQuantity,
+  scaleYield,
+  servingsOf,
+  stepScale,
+  yieldLabel,
+} from "./scale";

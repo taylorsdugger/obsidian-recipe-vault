@@ -1,26 +1,11 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import { api, type ListItem } from "../api";
+import { Icon } from "../components/icon";
+import { splitAmount } from "../format";
 
 /** Poll while the screen is open (locked decision 4). Five seconds is enough. */
 const POLL_MS = 5000;
-
-/**
- * Split "2 tbsp olive oil" into its amount and its name. The API sends both
- * the formatted line and the bare name, so this is a suffix trim rather than
- * a second parse. The amount reads as secondary; the thing you're looking for
- * on a shelf is the name.
- */
-function splitAmount(item: ListItem): { amount: string; name: string } {
-  const name = item.name;
-  if (item.text.toLowerCase().endsWith(name.toLowerCase())) {
-    return {
-      amount: item.text.slice(0, item.text.length - name.length).trim(),
-      name: item.text.slice(item.text.length - name.length),
-    };
-  }
-  return { amount: "", name: item.text };
-}
 
 /**
  * Whether this row gets a − / + .
@@ -105,7 +90,7 @@ function EditRow({
   };
 
   return (
-    <li class="space-y-2 px-4 py-3">
+    <li class="space-y-2 py-3">
       <form class="flex gap-2" onSubmit={save}>
         <input
           class="field flex-1"
@@ -117,7 +102,7 @@ function EditRow({
           }}
         />
         <button
-          class="btn-primary shrink-0"
+          class="btn-primary min-h-11 shrink-0 text-sm"
           type="submit"
           disabled={busy || draft.trim().length === 0}
         >
@@ -134,7 +119,7 @@ function EditRow({
         </button>
         <button
           type="button"
-          class="text-sm text-red-700 underline underline-offset-4 disabled:opacity-40"
+          class="text-sm text-danger underline underline-offset-4 disabled:opacity-40"
           disabled={busy}
           onClick={onRemove}
         >
@@ -143,7 +128,7 @@ function EditRow({
       </div>
       {/* Where it came from, so you can see what you're about to overwrite. */}
       {item.sources.length > 0 && (
-        <p class="text-xs text-faint">{item.sources.join(" · ")}</p>
+        <p class="text-xs text-muted">{item.sources.join(" · ")}</p>
       )}
     </li>
   );
@@ -168,9 +153,9 @@ function Row({
   const count = countOf(item);
 
   return (
-    <li class="flex items-center gap-0.5 pr-1.5">
+    <li class="flex items-center gap-0.5">
       {/* The row is the hit area, not the box. */}
-      <label class="flex min-h-14 flex-1 cursor-pointer items-center gap-3 py-2.5 pl-4">
+      <label class="check-row min-w-0 flex-1 px-1 py-1.5">
         <input
           type="checkbox"
           class="check appearance-none"
@@ -179,31 +164,35 @@ function Row({
         />
         <span class="min-w-0 flex-1">
           <span
-            class={`block leading-snug ${
-              item.checked ? "text-faint line-through" : ""
+            class={`block text-base leading-snug ${
+              item.checked ? "text-muted line-through" : ""
             }`}
           >
-            {/* The stepper is the number when there is one, so printing it
-                here as well just says "3 lemons" next to a 3. */}
-            {amount && !stepper && (
-              <span class="text-muted tabular-nums">{amount} </span>
+            {item.checked && amount && (
+              <span class="tabular-nums">{amount} </span>
             )}
-            <span class="font-medium">{name}</span>
+            {name}
           </span>
           {/* What was lifted off the name to merge it, then where it came
               from. One line: on a phone this is already the narrow part. */}
           {!item.checked && (item.detail || item.sources.length > 0) && (
-            <span class="mt-0.5 block truncate text-xs text-faint">
+            <span class="mt-px block truncate text-xs text-muted">
               {[item.detail, ...item.sources].filter(Boolean).join(" · ")}
             </span>
           )}
         </span>
+        {/* The amount sits on the right, where a column of them can be
+            scanned. The stepper is the number when there is one, so printing
+            it here as well would say "3" twice. */}
+        {amount && !stepper && !item.checked && (
+          <span class="shrink-0 text-sm text-muted tabular-nums">{amount}</span>
+        )}
       </label>
 
       {/* Quiet on purpose. These repeat down the whole list, and the job on
           this screen is ticking things off, not counting them. */}
       {stepper && (
-        <div class="flex shrink-0 items-center text-faint">
+        <div class="flex shrink-0 items-center text-muted">
           <button
             type="button"
             aria-label={`One fewer ${item.name}`}
@@ -221,7 +210,7 @@ function Row({
               />
             </svg>
           </button>
-          <span class="w-4 text-center text-sm font-medium text-muted tabular-nums">
+          <span class="w-4 text-center text-sm font-medium text-ink tabular-nums">
             {count}
           </span>
           <button
@@ -247,7 +236,7 @@ function Row({
       <button
         type="button"
         aria-label={`Edit ${item.name}`}
-        class="icon-btn size-8 shrink-0 text-faint active:bg-canvas"
+        class="icon-btn -mr-1 size-8 shrink-0 text-muted active:bg-canvas"
         onClick={() => onEdit(item)}
       >
         {/* A pencil. */}
@@ -444,86 +433,127 @@ export function List() {
   const done = items?.filter((item) => item.checked) ?? [];
 
   return (
-    <div class="screen space-y-4 pb-8">
-      <form class="flex gap-2" onSubmit={(event) => void add(event)}>
-        <input
-          class="field flex-1"
-          placeholder="Add an item"
-          value={entry}
-          onInput={(e) => setEntry((e.target as HTMLInputElement).value)}
-        />
-        <button
-          class="btn-primary shrink-0"
-          type="submit"
-          disabled={busy || entry.trim().length === 0}
-        >
-          Add
-        </button>
+    // Clears the add bar docked above the tab bar.
+    <div class="screen space-y-4 pb-28 lg:space-y-5 lg:pb-12">
+      <header class="screen-title">
+        <div class="min-w-0">
+          <p class="truncate text-note text-muted">
+            {items === null
+              ? "\u00a0"
+              : `${todo.length} to get · ${done.length} in cart`}
+          </p>
+          <h1 class="title-display">List</h1>
+        </div>
+        {/* Only when there is something to fix; a list that's already
+            combined and in order has nothing to offer here. */}
+        <div class="flex shrink-0 gap-2">
+          {needsTidying(items ?? []) && (
+            <button
+              type="button"
+              class="btn-quiet shrink-0"
+              disabled={busy}
+              onClick={() => void tidy()}
+            >
+              Tidy up
+            </button>
+          )}
+          {/* On a phone this is a link at the top of the cart group. */}
+          {done.length > 0 && (
+            <button
+              type="button"
+              class="btn-quiet hidden min-h-12 px-5.5 text-row font-semibold lg:inline-flex"
+              disabled={busy}
+              onClick={() => void clearChecked()}
+            >
+              Clear checked
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Docked by the thumb, over the tab bar, where adding the thing you
+          just remembered is one reach from wherever the list is scrolled.
+          On a desktop it drops into the page under the title instead, which
+          is why it sits here in the markup. */}
+      <form
+        class="action-bar lg:static lg:z-auto lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none"
+        onSubmit={(event) => void add(event)}
+      >
+        <div class="mx-auto flex w-full max-w-2xl items-center gap-2 lg:mx-0 lg:max-w-140">
+          <input
+            class="field-round flex-1"
+            aria-label="Add an item"
+            placeholder="Add an item"
+            enterKeyHint="done"
+            value={entry}
+            onInput={(e) => setEntry((e.target as HTMLInputElement).value)}
+          />
+          <button
+            class="btn-primary size-13 min-h-0 shrink-0 p-0"
+            type="submit"
+            aria-label="Add item"
+            disabled={busy || entry.trim().length === 0}
+          >
+            <Icon name="plus" class="size-[22px]" stroke={2} />
+          </button>
+        </div>
       </form>
 
-      {error && <p class="text-sm text-red-700">{error}</p>}
+      {error && <p class="text-sm text-danger">{error}</p>}
 
       {items && items.length === 0 && (
         <div class="py-16 text-center">
           <p class="text-muted">Nothing on the list.</p>
-          <p class="mt-1 text-sm text-faint">
-            Add something above, or send ingredients from a recipe.
+          <p class="mt-1 text-sm text-muted">
+            Add something below, or send ingredients from a recipe.
           </p>
         </div>
       )}
 
-      {todo.length > 0 && (
-        <section class="space-y-4">
-          <div class="flex items-baseline justify-between gap-3 px-1">
-            <h1 class="text-lg font-semibold">To get</h1>
-            {/* Only when there is something to fix; a list that's already
-                combined and in order has nothing to offer here. */}
-            {needsTidying(items ?? []) ? (
-              <button
-                type="button"
-                class="shrink-0 text-sm text-muted underline underline-offset-4 disabled:opacity-40"
-                disabled={busy}
-                onClick={() => void tidy()}
-              >
-                Tidy up
-              </button>
-            ) : (
-              <span class="text-sm text-faint tabular-nums">{todo.length}</span>
-            )}
-          </div>
-
-          {/* One card per aisle. The header is what stops you walking back
-              across the shop for the onion that came from the eighth recipe. */}
+      {/* One group per aisle. The header is what stops you walking back
+          across the shop for the onion that came from the eighth recipe.
+          A desktop has the width for two columns of them, each a card. */}
+      {(todo.length > 0 || done.length > 0) && (
+        <div class="space-y-1.5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5 lg:space-y-0">
           {byAisle(todo).map((group) => (
-            <div key={group.label} class="space-y-1.5">
-              <h2 class="px-1 text-xs font-medium uppercase tracking-wide text-faint">
-                {group.label}
+            <section
+              key={group.label}
+              class="lg:rounded-[20px] lg:border lg:border-line lg:bg-surface lg:px-2.5 lg:pt-3.5 lg:pb-2.5"
+            >
+              <h2 class="label flex justify-between px-1 pt-3 pb-1 text-muted lg:px-2 lg:pt-0 lg:pb-1.5">
+                <span>{group.label}</span>
+                <span class="tabular-nums">{group.items.length}</span>
               </h2>
-              <ul class="card divide-y divide-line overflow-hidden">
+              <ul class="divide-y divide-line lg:divide-y-0">
                 {group.items.map(row)}
               </ul>
-            </div>
+            </section>
           ))}
-        </section>
-      )}
 
-      {done.length > 0 && (
-        <section class="space-y-2">
-          <div class="flex items-baseline justify-between px-1">
-            <h2 class="text-sm font-medium text-muted">In the basket</h2>
-            <button
-              type="button"
-              class="text-sm text-muted underline underline-offset-4 disabled:opacity-40"
-              disabled={busy}
-              onClick={() => void clearChecked()}
-            >
-              Clear {done.length}
-            </button>
-          </div>
-          <ul class="card divide-y divide-line overflow-hidden opacity-70">
-            {done.map(row)}
-          </ul>
-        </section>
+          {done.length > 0 && (
+            <section class="lg:rounded-[20px] lg:border lg:border-line lg:bg-surface lg:px-2.5 lg:pt-3.5 lg:pb-2.5">
+              <div class="flex items-baseline justify-between px-1 pt-3 pb-1 lg:px-2 lg:pt-0 lg:pb-1.5">
+                <h2 class="label flex-1 text-muted">In cart</h2>
+                <span class="label hidden text-muted tabular-nums lg:inline">
+                  {done.length}
+                </span>
+                <button
+                  type="button"
+                  class="-my-2 py-2 text-sm text-muted underline underline-offset-4 lg:hidden disabled:opacity-40"
+                  disabled={busy}
+                  onClick={() => void clearChecked()}
+                >
+                  Clear {done.length}
+                </button>
+              </div>
+              {/* The group already says they're in the cart, so the rows don't
+              tint as well - a block of highlighted rows reads as selected. */}
+              <ul class="divide-y divide-line lg:divide-y-0 [&_.check-row]:bg-transparent">
+                {done.map(row)}
+              </ul>
+            </section>
+          )}
+        </div>
       )}
     </div>
   );

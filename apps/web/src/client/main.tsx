@@ -1,6 +1,7 @@
 import { render } from "preact";
 
 import { App } from "./app";
+import { applyTheme, storedTheme } from "./theme";
 import "./styles.css";
 
 /**
@@ -30,5 +31,7 @@ function updateOnResume(): void {
 const root = document.getElementById("app");
 if (!root) throw new Error("#app is missing from index.html");
 
+// index.html already set data-theme. This catches the browser chrome up.
+applyTheme(storedTheme());
 render(<App />, root);
 updateOnResume();

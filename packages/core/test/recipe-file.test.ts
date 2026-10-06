@@ -6,6 +6,7 @@ import {
   readRecipeFile,
   recipeFormatOf,
   recipeToCooklang,
+  scaleRecipeIngredients,
   setRecipeHistory,
 } from "../src";
 
@@ -47,6 +48,7 @@ describe("readRecipeFile", () => {
       mealType: "breakfast",
       cookTime: "1h 5m",
       cookTimeMins: 65,
+      servings: "",
       timesMade: 3,
       lastMade: "2026-09-01",
       dateAdded: "",
@@ -54,6 +56,8 @@ describe("readRecipeFile", () => {
       ingredients: ["2 eggs", "250 ml milk", "1 tbsp butter, melted"],
       instructions: ["Whisk eggs and milk in a bowl.", "Fry in butter."],
       notes: ["Rest the batter."],
+      nutrition: null,
+      servingSize: "",
     });
   });
 
@@ -209,5 +213,34 @@ describe("recipeToCooklang", () => {
       recipeInstructions: [{ text: "Toast it." }],
     });
     expect(cook).not.toContain("image:");
+  });
+});
+
+describe("scaleRecipeIngredients", () => {
+  it("scales a .cook file by its markup", () => {
+    expect(scaleRecipeIngredients("Pancakes.cook", COOK, 2)).toEqual([
+      "4 eggs",
+      "500 ml milk",
+      "2 tbsp butter, melted",
+    ]);
+  });
+
+  it("scales a note by the amount in front of each line", () => {
+    const md = [
+      "# Toast",
+      "",
+      "### Ingredients",
+      "",
+      "- [ ] 1 slice bread",
+      "- [ ] butter",
+      "",
+      "### Instructions",
+      "",
+      "- Toast it.",
+    ].join("\n");
+    expect(scaleRecipeIngredients("Toast.md", md, 2)).toEqual([
+      "2 slices bread",
+      "butter",
+    ]);
   });
 });

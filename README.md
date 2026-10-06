@@ -35,16 +35,20 @@ Screenshots and a walkthrough of every feature: **[recipes.taylordugger.com](htt
 - 🍳 **Cooklang support:** open `.cook` files in a recipe view, or have every new recipe saved as Cooklang instead of markdown. The gallery, search and shopping list work with both. See [Cooklang](#-cooklang).
 - 📦 **Import and export files:** turn JSON-LD (`.json`) and Cooklang (`.cook`) files into recipes one at a time or a whole folder at once, and export any recipe back out as either.
 - 🖼️ **Recipe gallery:** browse your whole collection visually in a dedicated gallery view, markdown notes and `.cook` files together.
+- 🍽️ **Layouts that fit the screen:** on a wide pane the photo and ingredients sit in a column beside the steps. On a phone, the optional Kitchen layout splits a recipe into Ingredients and Steps tabs with a bar at the bottom. See [Reading a recipe](#-reading-a-recipe).
+- 👩‍🍳 **Cook mode:** one step at a time in big type, with the ingredients that step uses and the next step in view. The screen stays on while it's open.
 - 🔍 **Search everything:** filter as you type across titles, meal types, _and_ ingredients, so you can find every recipe that uses what's already in the fridge.
-- ⚖️ **Shopping list:** check off ingredients in a recipe and send them to a single shopping list file. Duplicates combine even when the recipes wrote them differently - "1 large onion" and "2 yellow onions, diced" come out as one row of three - and the list is sorted by aisle, so the produce is together.
+- ⚖️ **Shopping list:** tick ingredients in a recipe and send them to a single shopping list file. Duplicates combine even when the recipes wrote them differently - "1 large onion" and "2 yellow onions, diced" come out as one row of three - and the list is sorted by aisle, so the produce is together.
 - 🔁 **Compare recipes:** select multiple recipes and view them side by side, with shared and unique ingredients highlighted.
 - 📅 **Mark as made:** track when you last made a recipe and how many times.
-- 🤖 **Ask AI for edits:** request changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter (API key required). Markdown notes only for now.
+- ➗ **Scale a recipe:** make a double batch, or six servings instead of four. The amounts change in the note, the `.cook` view, cook mode and the web app, and the shopping list gets the scaled amounts. See [Scaling a recipe](#scaling-a-recipe).
+- 🤖 **Ask AI for edits:** chat about a recipe and ask for changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter (API key required). You review the change before it's applied. Markdown notes only for now.
 - 🎨 **Customizable templates:** full Handlebars support so your notes look exactly how you want.
+- 🌗 **Fits your theme:** recipes take their colors, fonts and spacing from your Obsidian theme, light or dark.
 
 <div align="center">
 
-<img src="docs/panels/2-recipe-note.png" alt="A clean recipe, in plain markdown: each recipe is an ordinary note with a hero photo, ingredients, and one-tap actions">
+<img src="docs/panels/2-recipe-note.png" alt="A clean recipe, in plain markdown: on a wide pane the photo and ingredients sit beside the steps, with one-tap actions above them">
 
 <br/>
 
@@ -76,7 +80,7 @@ Screenshots and a walkthrough of every feature: **[recipes.taylordugger.com](htt
 2. Paste a recipe URL and press Enter.
 3. Your recipe note is created in the configured save folder. If **Save new recipes as** is set to Cooklang, you get a `.cook` file instead.
 
-To browse your recipes, click the **utensils icon** in the ribbon to open the Recipe Gallery.
+To browse your recipes, click the **utensils icon** in the ribbon to open the Recipe Gallery. Open a recipe in reading view to cook from it.
 
 <div align="center">
 
@@ -93,6 +97,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Import recipe**                               | Opens a URL prompt and imports a recipe into a new note (or `.cook` file)                                        |
 | **Open recipe gallery**                         | Opens the visual gallery of your recipes                                                                         |
 | **Mark recipe as made**                         | Adds one to the times made and sets the last made date to today on the active recipe                             |
+| **Start cook mode**                             | Opens the active recipe one step at a time. Works on notes and `.cook` files                                     |
 | **Add checked ingredients to shopping list**    | Sends checked ingredients from the active recipe to your shopping list file                                      |
 | **Clear checked items from shopping list**      | Removes completed items from your shopping list                                                                  |
 | **Add recipe (manual)**                         | Creates a new recipe from a title prompt                                                                         |
@@ -103,6 +108,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Export recipe as JSON-LD file**               | Writes the active recipe out as a `.json` file next to it. Works on notes and `.cook` files                      |
 | **Export recipe as Cooklang file**              | Writes the active recipe note out as a `.cook` file next to it                                                   |
 | **Rebuild ingredient search index**             | Rebuilds the index that powers ingredient search in the gallery                                                  |
+| **Fetch missing nutrition from source pages**   | Fills in nutrition, servings and serving size for recipes with a source link. Needs **Show nutrition** on        |
 
 ---
 
@@ -110,6 +116,9 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 | Setting                                    | Description                                                                                                                                                                  |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Recipe layout on small screens**         | **Classic** (default) is the recipe as one scrolling page. **Kitchen** splits it into Ingredients and Steps tabs with a bar at the bottom. Kitchen is used on phones and tablets, and on desktop when the recipe's pane is narrower than about 640px. See [Reading a recipe](#-reading-a-recipe) |
+| **Show nutrition**                         | Calories, protein, carbs and fat per serving under At a Glance, nutrition on new imports, and the command that fetches it for older recipes. Off by default. See [Nutrition](#nutrition) |
+| **Collapse properties on recipes**         | Folds a recipe's properties away when you open it, so the recipe comes first. Click **Properties** to open them. On by default                                              |
 | **Recipe save folder**                     | Where new recipes are created. The gallery browses this folder by default, so imports show up automatically                                                                  |
 | **Save new recipes as**                    | **Markdown note** (default) or **Cooklang file**. Applies to every import and to Add recipe (manual). Recipes you already have stay as they are                              |
 | **Save in currently opened file**          | Import into the active note instead of creating a new one. Markdown only                                                                                                     |
@@ -122,7 +131,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Proxy fallback for blocked imports**     | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default |
 | **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                           |
 | **Recipe gallery folder**                  | The folder the Recipe Gallery browses, including its subfolders. **Leave blank to follow the Recipe save folder** (recommended). Set it only to browse a different folder    |
-| **AI features**                            | On by default. Turn it off to hide the Ask AI bar on recipe notes, the Add recipe from photo command, and the AI settings below                                              |
+| **AI features**                            | On by default. Turn it off to hide the Ask AI button on recipe notes, the Add recipe from photo command, and the AI settings below                                              |
 | **OpenRouter API key**                     | Required for Ask AI and Add recipe from photo                                                                                                                                |
 | **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-3.5-flash-lite`)                                                                            |
 | **AI request timeout (ms)**                | Timeout for AI requests (minimum 5000 ms)                                                                                                                                    |
@@ -132,6 +141,112 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **Debug mode**                             | Enables extra developer logging                                                                                                                                              |
 
 > **Gallery is empty but you've imported recipes?** By default the gallery follows your **Recipe save folder**, so this shouldn't happen. If it does, you've set an explicit **Recipe gallery folder** that points somewhere other than where recipes are saved. Either clear that setting (blank = follow the save folder) or point it at your save folder, and your recipes will show up.
+
+---
+
+## 🍲 Reading a recipe
+
+The layouts below apply in reading view. Editing view stays plain markdown.
+
+### On a wide pane
+
+When the recipe's pane is at least 1000px wide, the photo and the ingredients sit in a column on the left that stays put as you scroll. The title, At a Glance, the buttons, the steps and the notes are on the right. The ingredients column shows how many you've ticked. Narrower than that, the recipe is one column, top to bottom.
+
+The width is the pane's, not the window's, so a recipe in half of a split screen gets the single column.
+
+### Ticking ingredients
+
+A ticked ingredient means "add this to the list", so it's highlighted rather than crossed out. In the ingredients column and in the Kitchen layout you can tap anywhere on the row to tick it. **Add N to shopping list** sends the ticked ones to your shopping list and unticks them.
+
+### Scaling a recipe
+
+Above the ingredients there's a **−  Serves 4  +** control. If the note has `servings` in its frontmatter it moves a serving at a time. If not, it goes through ½×, 1×, 1½×, 2×, 3× and 4×. Tap the middle to go back to the recipe as written.
+
+Only the amount at the front of each ingredient line changes, so "1 (14 oz) can tomatoes" doubled is "2 (14 oz) cans tomatoes". The steps are left alone. The note itself is never rewritten. The scale is kept per recipe until you close Obsidian, and **Add N to shopping list** and cook mode both use it.
+
+New imports get `servings` from the recipe page when it has one. Older notes can have it added by hand.
+
+### Nutrition
+
+Nutrition is off until you turn on **Show nutrition** in settings. Until then nothing below shows up, imports don't add it, and the commands for it are hidden. Nutrition already in a note stays there either way.
+
+With it on, if a recipe has nutrition, a line under At a Glance shows the calories and the protein, carbs and fat per serving. Click it for the details: the full breakdown, how the calories split between the three, and a **Whole recipe** switch that multiplies by the servings at the scale you're making it. On a phone it opens as a sheet from the bottom. The web app shows the same thing.
+
+New imports get it from the recipe page when the page has it, which most food blogs do. It goes in the frontmatter as plain numbers, so you can sort and filter on it with Bases or Dataview, or type it in by hand:
+
+```yaml
+calories: 530
+protein: 17
+carbs: 58
+fat: 26
+fiber: 14
+sugar: 10
+sodium: 690
+```
+
+Calories are kcal, sodium is mg and the rest are grams. Any of them can be left out. A `.cook` file uses the same names in its front matter.
+
+The numbers are per serving, and a serving is the recipe split by its `servings`. So with `servings: 4`, a serving is a quarter of it, and the details say so. When the page gives a real serving size, like "1 of 12 fritters", that goes in as `serving_size` and shows instead. The "1 serving" most food blogs put there is kept but not shown, since it doesn't say anything. A `.cook` file calls it `serving size`.
+
+For recipes imported before this, run **Fetch missing nutrition from source pages** from the command palette. It finds every recipe in the gallery folder that has a source link and is missing its nutrition, its `servings` or its serving size, loads each page one at a time, and adds what it finds. It only adds. Anything already in the note stays. **Stop fetching nutrition** stops it partway.
+
+### Buttons
+
+Under At a Glance:
+
+- **Mark as made** adds one to times made and stamps today as the last made date.
+- **Add N to shopping list** sends what's ticked.
+- **Ask AI** opens a chat about the recipe. See [Ask AI](#-ask-ai).
+- **Cook** opens cook mode.
+
+### Kitchen layout
+
+Set **Recipe layout on small screens** to **Kitchen** for a layout built for cooking from a phone:
+
+- An **Ingredients / Steps** switch at the top shows one half of the recipe at a time. Each half remembers where you were scrolled.
+- A **Cook** button next to the switch opens cook mode.
+- Bigger ingredient rows, and a bar at the bottom with **Mark as made**, **Ask AI** and **Add N to list**.
+
+Kitchen is used on phones and tablets, and on desktop when the recipe's pane is narrower than about 640px. Everywhere else you get the wide or single column layout above. **Classic**, the default, keeps the single scrolling page on a phone.
+
+### Cook mode
+
+Click **Cook**, or run **Start cook mode**, to go through the steps one at a time:
+
+- The current step in large type, with its sub-section name if the instructions have `####` headings.
+- **For this step:** the ingredients the step mentions, matched by name with the amounts left off.
+- A card above the buttons with the next step, so you know what's coming.
+- **Back** and **Next step** buttons. On a keyboard, ← and → move between steps and Esc closes.
+- The list icon at the top shows the full ingredient list.
+- The screen stays on while cook mode is open, on devices that allow it. "Screen stays on" only shows when it really will.
+
+On the last step, **Done** closes cook mode and asks whether to mark the recipe as made. On a phone, cook mode fills the screen.
+
+### Styling it yourself
+
+Recipes take every color, font, radius and spacing from your theme, so they should look at home in any theme, light or dark. To change the layout itself, override these properties on `.recipe-note` in a CSS snippet:
+
+| Property                      | What it sets                                         |
+| ----------------------------- | ---------------------------------------------------- |
+| `--recipe-rail-width`         | Width of the ingredients column on a wide pane       |
+| `--recipe-gap`                | Space between the ingredients column and the steps   |
+| `--recipe-hero-radius`        | Corner radius of the photo                           |
+| `--recipe-radius`             | Corner radius of the ingredient list                 |
+| `--recipe-border`             | Lines around and between ingredient rows             |
+| `--recipe-surface`            | Background of the Ingredients / Steps switch         |
+| `--recipe-row-min-height`     | Height of a Kitchen ingredient row                   |
+| `--recipe-picked-bg`          | Background of a ticked ingredient                    |
+| `--recipe-picked-decoration`  | Set to `line-through` if you'd rather cross them out |
+| `--recipe-meta-callout-color` | The At a Glance callout's color, as an RGB triplet   |
+| `--recipe-dock-bg`            | Background of the Kitchen bar at the bottom          |
+
+For example, a wider ingredients column:
+
+```css
+.recipe-note {
+  --recipe-rail-width: 26rem;
+}
+```
 
 ---
 
@@ -196,6 +311,7 @@ date_added:
 meal_type:
 author:
 cook_time:
+servings:
 url:
 photo:
 times_made:
@@ -226,9 +342,11 @@ Add @stock{1%l} and simmer for ~{20%minutes}.
 
 ### Opening .cook files
 
-Recipe Vault opens `.cook` files in their own view, laid out like a recipe note: an "At a Glance" box, the ingredients as a checkbox list, cookware, and the steps with ingredients, cookware and timers picked out. Your theme styles it the same as your notes.
+Recipe Vault opens `.cook` files in their own view, laid out like a recipe note: an "At a Glance" box, the ingredients as a checkbox list, cookware, and the steps with ingredients, cookware and timers picked out. Your theme styles it the same as your notes, and it uses the same layouts: the ingredients column on a wide pane, and the Kitchen layout on a small screen if you've turned it on. See [Reading a recipe](#-reading-a-recipe).
 
-- **Mark as made** and **Add checked to shopping list** work from the view, the same as from a note. Times made is saved in the file as `times made` and `last made`.
+- **Mark as made** and **Add N to shopping list** work from the view, the same as from a note. Times made is saved in the file as `times made` and `last made`.
+- The scale control works the same as in a note, going by `servings`. Every `@ingredient{}` amount scales, in the list and in the steps. An amount fixed with `=`, like `@salt{=1%pinch}`, stays put, and so do timers.
+- **Cook** opens cook mode. A `.cook` file says exactly which ingredients each step uses, so **For this step** is always right.
 - **Edit** switches to a plain text editor over the file. The pencil in the view's header does the same.
 - The photo at the top is the one named after the recipe and sitting next to it (`Leek Soup.jpg` beside `Leek Soup.cook`), which is where Cooklang keeps photos. Failing that, it's whatever the file's `image:` points at, a path in your vault or a URL.
 - Another recipe used as an ingredient, like `@./Sauces/Hollandaise{150%g}`, is a link you can click. It's looked for next to the file, then in your recipe folder, then anywhere in the vault by name.
@@ -269,7 +387,9 @@ To go the other way, right-click a recipe and choose **Export recipe as JSON-LD*
 
 ## 🤖 Ask AI
 
-Recipe Vault can use an AI model to suggest edits to a markdown recipe note directly in the note preview (for example, "make this dairy-free" or "scale to 2 servings"). This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add in plugin settings.
+Click **Ask AI** on a markdown recipe note to chat about it. Ask a question ("what can I use instead of fish sauce?") or ask for a change ("make this dairy-free", "scale to 2 servings"). When a reply suggests a change, an **Update the recipe** button appears under it. That shows what would change in the ingredients and steps, and nothing changes in your note until you apply it.
+
+This requires an [OpenRouter](https://openrouter.ai/) API key, which you can add in plugin settings.
 
 <div align="center">
 
@@ -281,7 +401,7 @@ Recipe Vault can use an AI model to suggest edits to a markdown recipe note dire
 
 The default model is `google/gemini-3.5-flash-lite`. Any OpenRouter-compatible model ID can be used, and you can optionally override the built-in system prompt in settings.
 
-Don't want any of this? Turn off **AI features** in settings. That hides the Ask AI bar, the Add recipe from photo command, and the AI settings.
+Don't want any of this? Turn off **AI features** in settings. That hides the Ask AI button, the Add recipe from photo command, and the AI settings.
 
 ---
 

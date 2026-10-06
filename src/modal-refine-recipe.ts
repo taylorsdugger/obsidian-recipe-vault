@@ -1,4 +1,5 @@
 import { App, Modal, Notice } from "obsidian";
+import { diffLines, hasRecipeDiff } from "@recipe-vault/core";
 import type { ChatMessage } from "./utils/openrouter";
 
 export interface RecipeRefineModalData {
@@ -106,76 +107,23 @@ export class RefineRecipeModal extends Modal {
   // --- diff helpers ---------------------------------------------------------
 
   private hasDiff(data: RecipeRefineModalData): boolean {
-    if (data.originalIngredients.length !== data.suggestedIngredients.length) {
-      return true;
-    }
-    if (
-      data.originalInstructions.length !== data.suggestedInstructions.length
-    ) {
-      return true;
-    }
-
-    const ingredientsChanged = data.originalIngredients.some(
-      (line, index) => line !== data.suggestedIngredients[index],
-    );
-    if (ingredientsChanged) {
-      return true;
-    }
-
-    return data.originalInstructions.some(
-      (line, index) => line !== data.suggestedInstructions[index],
+    return hasRecipeDiff(
+      {
+        recipeIngredient: data.originalIngredients,
+        recipeInstructions: data.originalInstructions,
+      },
+      {
+        recipeIngredient: data.suggestedIngredients,
+        recipeInstructions: data.suggestedInstructions,
+      },
     );
   }
 
   private buildDiffLines(before: string[], after: string[]): string[] {
-    const n = before.length;
-    const m = after.length;
-    const dp: number[][] = Array.from({ length: n + 1 }, () =>
-      Array.from({ length: m + 1 }, () => 0),
+    const lines = diffLines(before, after).map(
+      (line) => `${line.kind === "removed" ? "-" : "+"} ${line.text}`,
     );
-
-    for (let i = n - 1; i >= 0; i--) {
-      for (let j = m - 1; j >= 0; j--) {
-        if (before[i] === after[j]) {
-          dp[i][j] = dp[i + 1][j + 1] + 1;
-        } else {
-          dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-        }
-      }
-    }
-
-    const diffLines: string[] = [];
-    let i = 0;
-    let j = 0;
-
-    while (i < n && j < m) {
-      if (before[i] === after[j]) {
-        i++;
-        j++;
-      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-        diffLines.push(`- ${before[i]}`);
-        i++;
-      } else {
-        diffLines.push(`+ ${after[j]}`);
-        j++;
-      }
-    }
-
-    while (i < n) {
-      diffLines.push(`- ${before[i]}`);
-      i++;
-    }
-
-    while (j < m) {
-      diffLines.push(`+ ${after[j]}`);
-      j++;
-    }
-
-    if (diffLines.length === 0) {
-      return ["No changes suggested."];
-    }
-
-    return diffLines;
+    return lines.length > 0 ? lines : ["No changes suggested."];
   }
 
   private renderDiffSection(

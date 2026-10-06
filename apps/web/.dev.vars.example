@@ -12,3 +12,10 @@ AUTH_PASSWORD_HASH=""
 
 # Signs the session cookie. Rotating it signs every device out.
 AUTH_COOKIE_SECRET=""
+
+# Optional. Ask AI on the recipe screen, through OpenRouter. Leave it out and
+# the button doesn't show. Deployed: npx wrangler secret put OPENROUTER_API_KEY
+OPENROUTER_API_KEY=""
+
+# Optional. Any OpenRouter model id. Defaults to the plugin's default model.
+# OPENROUTER_MODEL="google/gemini-3.5-flash-lite"
