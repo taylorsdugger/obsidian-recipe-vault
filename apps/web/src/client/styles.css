@@ -119,10 +119,13 @@
     color-scheme: dark;
   }
 
-  html,
-  body,
+  /*
+   * The page is the scroller, not a box inside it. iOS Safari only tucks its
+   * toolbar away when the page itself scrolls, so a full-height shell with
+   * its own overflow left the toolbar parked over the tab bar on an iPhone.
+   */
   #app {
-    height: 100%;
+    min-height: 100dvh;
   }
 
   body {
@@ -132,10 +135,10 @@
   }
 
   /*
-   * Set on the body while a sheet or the photo viewer is up, so the page
+   * Set on the root while a sheet or the photo viewer is up, so the page
    * behind doesn't scroll under a flick on the backdrop. See `useScrollLock`.
    */
-  body.scroll-locked {
+  html.scroll-locked {
     overflow: hidden;
   }
 
@@ -455,6 +458,62 @@
  */
 .print-only {
   display: none;
+}
+
+/*
+ * A docked bar sits by its offset alone. Inside a `space-y-*` screen it picks
+ * up the gap as a bottom margin, which lifted the list's add field 16px off
+ * the tab bar. From `lg` the list's field is back in the page, and wants it.
+ */
+@media (width < 64rem) {
+  .action-bar {
+    margin-block: 0;
+  }
+}
+
+/*
+ * Keeping clear of the on-screen keyboard. `--keyboard` and `data-keyboard`
+ * come from keyboard.ts. Unlayered, so these win over the utilities a screen
+ * puts on its own bars without an important flag.
+ */
+
+/* The window less the keyboard, for a sheet to sit in. */
+.sheet-frame {
+  top: var(--viewport-top, 0px);
+  bottom: var(--keyboard, 0px);
+}
+
+/*
+ * Most of the window, so a long list scrolls inside the sheet rather than
+ * the page. With the keyboard up the window is half what it was, and 85% of
+ * that left the picker about three rows, so it takes all but a sliver.
+ */
+.sheet-panel {
+  max-height: 85%;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+:root[data-keyboard] .sheet-panel {
+  max-height: calc(100% - 0.75rem);
+  /* The home indicator is under the keyboard. */
+  padding-bottom: 0;
+}
+
+/*
+ * The docked search and the list's add field ride up on top of the keyboard.
+ * The tab bar is behind it by then, so there's nothing else to clear.
+ */
+:root[data-keyboard] .action-bar {
+  bottom: var(--keyboard);
+  padding-bottom: 0.625rem;
+}
+
+/*
+ * And the page gets the keyboard's height to scroll its last rows into, in
+ * place of the tab bar's. Each screen already pads for its own bar.
+ */
+:root[data-keyboard] main {
+  padding-bottom: var(--keyboard);
 }
 
 @media print {

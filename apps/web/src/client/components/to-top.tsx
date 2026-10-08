@@ -44,8 +44,9 @@ export function ToTop() {
       else if (!up && top - turn > NUDGE) setShown(false);
     };
 
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    // The page scrolls, and a page's scroll events land on the window.
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   const goUp = () => {

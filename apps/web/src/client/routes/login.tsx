@@ -24,7 +24,7 @@ export function Login({ onSignedIn }: { onSignedIn: () => void }) {
   };
 
   return (
-    <div class="flex h-full items-center justify-center p-6">
+    <div class="flex min-h-dvh items-center justify-center p-6">
       <form
         class="w-full max-w-xs space-y-4"
         onSubmit={(event) => void submit(event)}

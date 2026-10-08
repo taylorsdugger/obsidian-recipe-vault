@@ -1,38 +1,53 @@
 /**
  * Remembering where a screen was scrolled to.
  *
- * The app has one scroll container - the `main` in `app.tsx` - and screens
- * mount and unmount inside it. A screen starts with no data, so its content
- * height collapses to nothing on mount and the container clamps `scrollTop` to
- * zero; by the time the fetch lands, the position is already gone. Restoring
- * has to happen after the data renders, which is why this is a store the
- * screen drives rather than something the router can do on its own.
+ * The app scrolls the page itself, and screens mount and unmount inside it. A
+ * screen starts with no data, so its content height collapses to nothing on
+ * mount and the page clamps `scrollTop` to zero; by the time the fetch lands,
+ * the position is already gone. Restoring has to happen after the data
+ * renders, which is why this is a store the screen drives rather than
+ * something the router can do on its own.
+ *
+ * It used to be a `main` with its own `overflow-y-auto`. That looked the same,
+ * but iOS Safari only tucks its toolbar away when the page scrolls, so on an
+ * iPhone the toolbar sat over the bottom of the app for good.
  */
 
 import { useEffect } from "preact/hooks";
-
-let container: HTMLElement | null = null;
-
-/** Set once by `App`, which owns the scrolling element. */
-export function setScrollContainer(el: HTMLElement | null): void {
-  container = el;
-}
 
 /**
  * The scrolling element itself, for the plan's drag.
  *
  * A drag across days has to survive the list scrolling underneath it, so it
- * measures everything in this container's coordinates rather than the
- * viewport's, and nudges it when a meal is held near an edge.
+ * measures everything in the page's coordinates rather than the viewport's,
+ * and nudges it when a meal is held near an edge.
  */
 export function scrollContainer(): HTMLElement | null {
-  return container;
+  return (document.scrollingElement as HTMLElement | null) ?? null;
+}
+
+/**
+ * The band of the window the page shows through, in viewport coordinates.
+ * The whole window, less the phone's tab bar, which is fixed over the bottom
+ * of the page. The sidebar from `md` up isn't over anything.
+ */
+export function scrollBox(): { top: number; bottom: number } {
+  const bar = document.querySelector<HTMLElement>("[data-tab-bar]");
+  const over =
+    bar &&
+    bar.getClientRects().length > 0 &&
+    getComputedStyle(bar).position === "fixed";
+  return {
+    top: 0,
+    bottom: over ? bar.getBoundingClientRect().top : window.innerHeight,
+  };
 }
 
 const positions = new Map<string, number>();
 
 /** Save where this screen is now. Call it on the way out. */
 export function rememberScroll(key: string): void {
+  const container = scrollContainer();
   if (container) positions.set(key, container.scrollTop);
 }
 
@@ -42,6 +57,7 @@ export function rememberScroll(key: string): void {
  */
 export function restoreScroll(key: string): boolean {
   const top = positions.get(key);
+  const container = scrollContainer();
   if (!container || top === undefined) return false;
   container.scrollTop = top;
   return true;
@@ -49,6 +65,7 @@ export function restoreScroll(key: string): boolean {
 
 /** Back to the top, for when the content changed under the screen. */
 export function scrollToTop(): void {
+  const container = scrollContainer();
   if (container) container.scrollTop = 0;
 }
 
@@ -63,10 +80,11 @@ let locks = 0;
 export function useScrollLock(): void {
   useEffect(() => {
     locks += 1;
-    document.body.classList.add("scroll-locked");
+    document.documentElement.classList.add("scroll-locked");
     return () => {
       locks -= 1;
-      if (locks === 0) document.body.classList.remove("scroll-locked");
+      if (locks === 0)
+        document.documentElement.classList.remove("scroll-locked");
     };
   }, []);
 }

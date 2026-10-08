@@ -76,6 +76,8 @@ function useCounts(path: string): { list: number; recipes: number } | null {
  * The app's navigation.
  *
  * A bottom tab bar on a phone, 60px over the home indicator, icon over label.
+ * Fixed rather than the foot of a full-height column, so the page under it is
+ * what scrolls and iOS Safari can tuck its toolbar away.
  * The active tab's icon sits in a soft pill, which is what makes it findable
  * at a glance - a bolder stroke alone was too subtle to read in a dim kitchen.
  * From `md` up it turns into a left sidebar: a wide screen has the room, and a
@@ -92,7 +94,8 @@ export function TabBar({ path, pushed }: { path: string; pushed: boolean }) {
   return (
     <nav
       aria-label="Main"
-      class={`${pushed ? "hidden md:flex" : "flex"} shrink-0 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:order-first md:w-58 md:flex-col md:gap-1 md:border-t-0 md:border-r md:px-3.5 md:py-6`}
+      data-tab-bar
+      class={`${pushed ? "hidden md:flex" : "flex"} fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:sticky md:top-0 md:bottom-auto md:order-first md:h-dvh md:w-58 md:shrink-0 md:flex-col md:gap-1 md:border-t-0 md:border-r md:px-3.5 md:py-6`}
     >
       <div class="hidden items-center gap-2.5 px-2.5 pb-5.5 md:flex">
         <AppIcon class="size-7" />

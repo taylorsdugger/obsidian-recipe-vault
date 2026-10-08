@@ -1,6 +1,7 @@
 import { render } from "preact";
 
 import { App } from "./app";
+import { trackKeyboard } from "./keyboard";
 import { applyTheme, storedTheme } from "./theme";
 import "./styles.css";
 
@@ -31,7 +32,12 @@ function updateOnResume(): void {
 const root = document.getElementById("app");
 if (!root) throw new Error("#app is missing from index.html");
 
+// The screens put their own scroll back once their data lands (see scroll.ts).
+// The browser jumping first on a back gesture would just fight them.
+history.scrollRestoration = "manual";
+
 // index.html already set data-theme. This catches the browser chrome up.
 applyTheme(storedTheme());
+trackKeyboard();
 render(<App />, root);
 updateOnResume();

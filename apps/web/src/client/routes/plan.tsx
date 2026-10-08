@@ -23,7 +23,7 @@ import { RecipePicker } from "../components/recipe-picker";
 import { Sheet } from "../components/sheet";
 import { addLeftoversNextDay } from "../leftovers";
 import { navigate } from "../router";
-import { scrollContainer } from "../scroll";
+import { scrollBox, scrollContainer } from "../scroll";
 import {
   addDays,
   dateKey,
@@ -780,7 +780,7 @@ export function Plan() {
         scrolling.current = 0;
         return;
       }
-      const box = scroller.getBoundingClientRect();
+      const box = scrollBox();
       const above = pointerY.current - box.top;
       const below = box.bottom - pointerY.current;
 

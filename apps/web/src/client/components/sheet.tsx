@@ -37,7 +37,9 @@ export function Sheet({
   }, [onClose]);
 
   return (
-    <div class="fixed inset-0 z-30 flex flex-col justify-end">
+    // `sheet-frame` is the part of the window the keyboard isn't covering, so
+    // with it up the sheet sits on top of it rather than behind it.
+    <div class="sheet-frame fixed inset-x-0 z-30 flex flex-col justify-end">
       {/* Black in both themes. A scrim is a shadow, and in dark mode the
           hairline on the sheet's top edge is what lifts it off the page. */}
       <button
@@ -49,7 +51,7 @@ export function Sheet({
       {/* Full width on a phone. On a desktop it caps at the screen width and
           rounds all the way round, so it reads as a dialog and not a drawer
           stretched across a 1400px window. */}
-      <div class="relative flex max-h-[85vh] w-full flex-col rounded-t-3xl border-t border-line bg-canvas pb-[env(safe-area-inset-bottom)] shadow-xl md:mx-auto md:border md:mb-8 md:max-w-2xl md:rounded-3xl">
+      <div class="sheet-panel relative flex w-full flex-col rounded-t-3xl border-t border-line bg-canvas shadow-xl md:mx-auto md:border md:mb-8 md:max-w-2xl md:rounded-3xl">
         <div class="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
           <h2 class="text-lg font-semibold">{title}</h2>
           <button
