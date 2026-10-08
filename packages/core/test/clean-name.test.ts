@@ -66,6 +66,15 @@ describe("cleanRecipeName", () => {
   it("title-cases accented and apostrophe words properly", () => {
     expect(clean("ÜBERBACKENE NUDELN")).toBe("Überbackene Nudeln");
     expect(clean("MOM'S EASY PIE")).toBe("Mom's Pie");
+    expect(clean("PEANUT-BUTTER COOKIES")).toBe("Peanut-Butter Cookies");
+  });
+
+  it("keeps hyphens inside a word but not ones left dangling", () => {
+    expect(clean("Stir-Fried Noodles")).toBe("Stir-Fried Noodles");
+    expect(clean("Chicken Tikka Masala - Easy")).toBe("Chicken Tikka Masala");
+    // Stripping one half of a compound leaves its hyphen behind.
+    expect(clean("Super-Moist Chocolate Cake")).toBe("Moist Chocolate Cake");
+    expect(clean("Chili -- Vegan")).toBe("Chili");
   });
 });
 
@@ -78,8 +87,7 @@ describe("cleanRecipeName in other languages", () => {
     expect(inLanguage("Der beste Käsekuchen", "de")).toBe("Käsekuchen");
     expect(inLanguage("Omas bester Bienenstich", "de")).toBe("Bienenstich");
     expect(inLanguage("Christstollen - Omas bestes Rezept", "de")).toBe("Christstollen");
-    // The following was supposed to result in "Himbeer-Joghurt-Torte"
-    expect(inLanguage("Himbeer-Joghurt-Torte ohne Backen – super cremig!", "de")).toBe("Himbeer Joghurt Torte");
+    expect(inLanguage("Himbeer-Joghurt-Torte ohne Backen – super cremig!", "de")).toBe("Himbeer-Joghurt-Torte");
     expect(inLanguage("Schokotorte einfach backen", "de")).toBe("Schokotorte");
     expect(inLanguage("Kandierte Wahlnüsse Originalrezept von Oma", "de")).toBe("Kandierte Wahlnüsse");
     expect(inLanguage("Das Rezept wie von Oma für Kandierte Wahlnüsse", "de")).toBe("Kandierte Wahlnüsse");
@@ -88,8 +96,7 @@ describe("cleanRecipeName in other languages", () => {
     expect(inLanguage("Rezept für selbstgemachtes Vanilleeis", "de")).toBe("Vanilleeis");
     expect(inLanguage("Franzbrötchen von M_Mustermann", "de")).toBe("Franzbrötchen");
     expect(inLanguage("Apfelmustorte – SO cremig & fruchtig mit Pudding", "de")).toBe("Apfelmustorte mit Pudding");
-    // The following was supposed to result in "Kirsch-Kokos-Blechkuchen"
-    expect(inLanguage("Kirsch-Kokos-Blechkuchen - luftig locker", "de")).toBe("Kirsch Kokos Blechkuchen");
+    expect(inLanguage("Kirsch-Kokos-Blechkuchen - luftig locker", "de")).toBe("Kirsch-Kokos-Blechkuchen");
     expect(inLanguage("Schwarzwälder Kirschtorte das klassische Rezept", "de")).toBe("Schwarzwälder Kirschtorte");
 
     expect(inLanguage("Schnelle und einfache Gemüsesuppe", "de")).toBe(
@@ -178,7 +185,7 @@ describe("cleanRecipeName word settings", () => {
         ...OPTS,
         keptFillerWords: "one pot",
       }),
-    ).toBe("One Pot Pasta");
+    ).toBe("One-Pot Pasta");
   });
 
   it("adds extra words on top of the built-in list", () => {

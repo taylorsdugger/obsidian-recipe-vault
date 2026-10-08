@@ -112,8 +112,16 @@ export function cleanRecipeName(
     /[\p{L}\p{N}]/u.test(group) ? group : "",
   );
 
-  // Tidy up leftover punctuation, symbols, and whitespace
-  cleaned = cleaned.replace(/[\s,\-–—&|]+/g, " ").trim();
+  // Tidy up leftover punctuation, symbols, and whitespace. A hyphen between
+  // two letters or digits is part of the name ("Himbeer-Joghurt-Torte"), so it
+  // stays. One with a space or nothing on either side is a separator, or what
+  // is left after a filler word was stripped off one half of a compound.
+  cleaned = cleaned
+    .replace(
+      /(?:[\s,–—&|]|(?<![\p{L}\p{M}\p{N}])[-‐]|[-‐](?![\p{L}\p{M}\p{N}]))+/gu,
+      " ",
+    )
+    .trim();
 
   // If the result is ALL CAPS (or mostly), convert to Title Case
   const upper = cleaned.replace(/\s/g, "");
