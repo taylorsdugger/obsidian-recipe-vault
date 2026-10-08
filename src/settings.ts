@@ -35,6 +35,8 @@ export interface PluginSettings {
    * import, and the commands that fetch them. Off unless someone wants it.
    */
   showNutrition: boolean;
+  /** The Cook button on a recipe. Start cook mode still works without it. */
+  showCookButton: boolean;
   folder: string;
   /** What new recipes are saved as. Existing files stay in their format. */
   recipeFormat: "markdown" | "cooklang";
@@ -99,6 +101,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   mobileRecipeLayout: "classic",
   collapseRecipeProperties: true,
   showNutrition: false,
+  showCookButton: true,
   folder: "Recipes",
   recipeFormat: "markdown",
   saveInActiveFile: false,
@@ -345,6 +348,21 @@ export class SettingsTab extends PluginSettingTab {
                 this.plugin.settings.showNutrition = value;
                 await this.plugin.saveSettings();
                 this.plugin.applyNutritionSetting();
+              });
+          });
+        },
+      },
+      {
+        name: "Show Cook button",
+        desc: "The Cook button on a recipe, which opens cook mode. Turn it off to hide it. The Start cook mode command still works.",
+        render: (setting) => {
+          setting.addToggle((toggle) => {
+            toggle
+              .setValue(this.plugin.settings.showCookButton)
+              .onChange(async (value) => {
+                this.plugin.settings.showCookButton = value;
+                await this.plugin.saveSettings();
+                this.plugin.refreshRecipeActions();
               });
           });
         },

@@ -673,13 +673,14 @@ export default class RecipeVault extends Plugin {
     askAi: (file) => void this.askAiToRefineRecipe(file, ""),
     cook: (file) => void this.openCookMode(file),
     aiEnabled: () => this.settings.aiFeatures,
+    cookEnabled: () => this.settings.showCookButton,
   };
 
   /**
    * Rebuild the buttons on open recipes after a setting that changes them,
    * like turning AI features off. A note's action row is drawn as reading
    * view renders, and the phone dock with its layout, so both are redone.
-   * A `.cook` view draws its own.
+   * A `.cook` view draws its own, so it just renders again.
    */
   refreshRecipeActions(): void {
     for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
@@ -693,6 +694,11 @@ export default class RecipeVault extends Plugin {
       view.previewMode.rerender(true);
     }
     this.applyRecipeLayoutSetting();
+    for (const leaf of this.app.workspace.getLeavesOfType(
+      c.VIEW_TYPE_COOKLANG,
+    )) {
+      if (leaf.view instanceof CooklangView) leaf.view.refreshLayout();
+    }
   }
 
   /**

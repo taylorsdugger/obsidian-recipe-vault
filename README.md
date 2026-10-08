@@ -15,7 +15,7 @@
 
 <br/>
 
-<img src="docs/panels/1-gallery.png" alt="Your whole cookbook, at a glance: every recipe becomes a visual card you can filter by tag and sort, on desktop and mobile">
+<img src="docs/panels/2-gallery.png" alt="Your whole cookbook, at a glance: every recipe becomes a visual card you can filter by tag and sort, on desktop and mobile">
 
 </div>
 
@@ -43,12 +43,17 @@ Screenshots and a walkthrough of every feature: **[recipes.taylordugger.com](htt
 - 📅 **Mark as made:** track when you last made a recipe and how many times.
 - ➗ **Scale a recipe:** make a double batch, or six servings instead of four. The amounts change in the note, the `.cook` view, cook mode and the web app, and the shopping list gets the scaled amounts. See [Scaling a recipe](#scaling-a-recipe).
 - 🤖 **Ask AI for edits:** chat about a recipe and ask for changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter (API key required). You review the change before it's applied. Markdown notes only for now.
+- 🧹 **Clean titles:** imported titles lose the filler, so "The Best Easy Weeknight Chili" comes in as "Chili". There are word lists for English, German, Spanish and French, picked by the recipe's language.
 - 🎨 **Customizable templates:** full Handlebars support so your notes look exactly how you want.
 - 🌗 **Fits your theme:** recipes take their colors, fonts and spacing from your Obsidian theme, light or dark.
 
 <div align="center">
 
-<img src="docs/panels/2-recipe-note.png" alt="A clean recipe, in plain markdown: on a wide pane the photo and ingredients sit beside the steps, with one-tap actions above them">
+<img src="docs/panels/1-recipe.png" alt="Every recipe, clean and in plain markdown: ingredients beside the steps, a serving scaler, and calories and macros a tap away">
+
+<br/>
+
+<img src="docs/panels/4-cook-mode.png" alt="Cook mode, one step at a time: big type, the ingredients for each step, a look at what comes next, and the screen stays on">
 
 <br/>
 
@@ -84,7 +89,7 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 <div align="center">
 
-<img src="docs/panels/5-import.png" alt="Paste a link, get a recipe: drop in any recipe URL and Recipe Vault saves a clean, ad-free note to your vault">
+<img src="docs/panels/3-import.png" alt="Paste a link, get a recipe: drop in any recipe URL and Recipe Vault saves a clean, ad-free note to your vault">
 
 </div>
 
@@ -92,56 +97,57 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 
 ## ⌨️ Commands
 
-| Command                                         | What it does                                                                                                     |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **Import recipe**                               | Opens a URL prompt and imports a recipe into a new note (or `.cook` file)                                        |
-| **Open recipe gallery**                         | Opens the visual gallery of your recipes                                                                         |
-| **Mark recipe as made**                         | Adds one to the times made and sets the last made date to today on the active recipe                             |
-| **Start cook mode**                             | Opens the active recipe one step at a time. Works on notes and `.cook` files                                     |
-| **Add checked ingredients to shopping list**    | Sends checked ingredients from the active recipe to your shopping list file                                      |
-| **Clear checked items from shopping list**      | Removes completed items from your shopping list                                                                  |
-| **Add recipe (manual)**                         | Creates a new recipe from a title prompt                                                                         |
-| **Add recipe from photo**                       | Transcribes a photographed cookbook page or recipe card into a new recipe (requires an OpenRouter API key)       |
-| **Batch import recipes from URL list**          | Imports multiple recipes from a list of URLs (one per line) in the active note                                   |
-| **Import recipe from JSON-LD or Cooklang file** | Pick a `.json` or `.cook` file in your vault and make a recipe from it                                           |
-| **Import recipes from folder**                  | Makes a recipe from every `.json` and `.cook` file in a folder. Also on a folder's right-click menu              |
-| **Export recipe as JSON-LD file**               | Writes the active recipe out as a `.json` file next to it. Works on notes and `.cook` files                      |
-| **Export recipe as Cooklang file**              | Writes the active recipe note out as a `.cook` file next to it                                                   |
-| **Rebuild ingredient search index**             | Rebuilds the index that powers ingredient search in the gallery                                                  |
-| **Fetch missing nutrition from source pages**   | Fills in nutrition, servings and serving size for recipes with a source link. Needs **Show nutrition** on        |
+| Command                                         | What it does                                                                                               |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Import recipe**                               | Opens a URL prompt and imports a recipe into a new note (or `.cook` file)                                  |
+| **Open recipe gallery**                         | Opens the visual gallery of your recipes                                                                   |
+| **Mark recipe as made**                         | Adds one to the times made and sets the last made date to today on the active recipe                       |
+| **Start cook mode**                             | Opens the active recipe one step at a time. Works on notes and `.cook` files                               |
+| **Add checked ingredients to shopping list**    | Sends checked ingredients from the active recipe to your shopping list file                                |
+| **Clear checked items from shopping list**      | Removes completed items from your shopping list                                                            |
+| **Add recipe (manual)**                         | Creates a new recipe from a title prompt                                                                   |
+| **Add recipe from photo**                       | Transcribes a photographed cookbook page or recipe card into a new recipe (requires an OpenRouter API key) |
+| **Batch import recipes from URL list**          | Imports multiple recipes from a list of URLs (one per line) in the active note                             |
+| **Import recipe from JSON-LD or Cooklang file** | Pick a `.json` or `.cook` file in your vault and make a recipe from it                                     |
+| **Import recipes from folder**                  | Makes a recipe from every `.json` and `.cook` file in a folder. Also on a folder's right-click menu        |
+| **Export recipe as JSON-LD file**               | Writes the active recipe out as a `.json` file next to it. Works on notes and `.cook` files                |
+| **Export recipe as Cooklang file**              | Writes the active recipe note out as a `.cook` file next to it                                             |
+| **Rebuild ingredient search index**             | Rebuilds the index that powers ingredient search in the gallery                                            |
+| **Fetch missing nutrition from source pages**   | Fills in nutrition, servings and serving size for recipes with a source link. Needs **Show nutrition** on  |
 
 ---
 
 ## ⚙️ Settings
 
-| Setting                                    | Description                                                                                                                                                                  |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Setting                                    | Description                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Recipe layout on small screens**         | **Classic** (default) is the recipe as one scrolling page. **Kitchen** splits it into Ingredients and Steps tabs with a bar at the bottom. Kitchen is used on phones and tablets, and on desktop when the recipe's pane is narrower than about 640px. See [Reading a recipe](#-reading-a-recipe) |
-| **Show nutrition**                         | Calories, protein, carbs and fat per serving under At a Glance, nutrition on new imports, and the command that fetches it for older recipes. Off by default. See [Nutrition](#nutrition) |
-| **Collapse properties on recipes**         | Folds a recipe's properties away when you open it, so the recipe comes first. Click **Properties** to open them. On by default                                              |
-| **Recipe save folder**                     | Where new recipes are created. The gallery browses this folder by default, so imports show up automatically                                                                  |
-| **Save new recipes as**                    | **Markdown note** (default) or **Cooklang file**. Applies to every import and to Add recipe (manual). Recipes you already have stay as they are                              |
-| **Save in currently opened file**          | Import into the active note instead of creating a new one. Markdown only                                                                                                     |
-| **Save images**                            | Download recipe images into your vault, into this folder. Leave the folder blank to use Obsidian's attachment location, or for a `.cook` file, to put the photo next to it   |
-| **Save images in subdirectories**          | Create a per-recipe subfolder under the image folder                                                                                                                         |
-| **Template file**                          | A note in your vault to use as the template instead of the one below. **Create** writes the current template out to a new note. Markdown only. See [Custom Templates](#-custom-templates) |
-| **Recipe template**                        | Handlebars template used when creating recipe notes, when no template file is set. Markdown only                                                                             |
-| **Photo property**                         | The frontmatter property that holds a recipe's photo (default `photo`). Set it to match your template, e.g. `image_url`, and the gallery reads that instead               |
-| **Decode entities**                        | Decodes HTML entities in imported data                                                                                                                                       |
-| **Proxy fallback for blocked imports**     | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default |
-| **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                           |
-| **Recipe gallery folder**                  | The folder the Recipe Gallery browses, including its subfolders. **Leave blank to follow the Recipe save folder** (recommended). Set it only to browse a different folder    |
-| **AI features**                            | On by default. Turn it off to hide the Ask AI button on recipe notes, the Add recipe from photo command, and the AI settings below                                              |
-| **OpenRouter API key**                     | Required for Ask AI and Add recipe from photo                                                                                                                                |
-| **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-3.5-flash-lite`)                                                                            |
-| **AI request timeout (ms)**                | Timeout for AI requests (minimum 5000 ms)                                                                                                                                    |
-| **Custom AI system prompt**                | Optional override for the built-in Ask AI instructions                                                                                                                       |
-| **Remove filler words from titles**        | Strips words like "easy" and "best" from imported titles, using the list for the recipe's language                                                                           |
-| **Filler words to keep**                   | Built-in words you want left in titles                                                                                                                                       |
-| **Extra filler words**                     | Your own words to strip from titles, in any language                                                                                                                         |
-| **Filter vegan words / gluten-free words** | Optionally strips dietary labels from imported recipe titles                                                                                                                 |
-| **Recipe language**                        | Which word lists to use when a recipe page doesn't say its language. Defaults to Obsidian's language                                                                         |
-| **Debug mode**                             | Enables extra developer logging                                                                                                                                              |
+| **Show nutrition**                         | Calories, protein, carbs and fat per serving under At a Glance, nutrition on new imports, and the command that fetches it for older recipes. Off by default. See [Nutrition](#nutrition)                                                                                                         |
+| **Show Cook button**                       | The Cook button on a recipe. On by default. Turn it off to hide it. **Start cook mode** still works                                                                                                                                                                                              |
+| **Collapse properties on recipes**         | Folds a recipe's properties away when you open it, so the recipe comes first. Click **Properties** to open them. On by default                                                                                                                                                                   |
+| **Recipe save folder**                     | Where new recipes are created. The gallery browses this folder by default, so imports show up automatically                                                                                                                                                                                      |
+| **Save new recipes as**                    | **Markdown note** (default) or **Cooklang file**. Applies to every import and to Add recipe (manual). Recipes you already have stay as they are                                                                                                                                                  |
+| **Save in currently opened file**          | Import into the active note instead of creating a new one. Markdown only                                                                                                                                                                                                                         |
+| **Save images**                            | Download recipe images into your vault, into this folder. Leave the folder blank to use Obsidian's attachment location, or for a `.cook` file, to put the photo next to it                                                                                                                       |
+| **Save images in subdirectories**          | Create a per-recipe subfolder under the image folder                                                                                                                                                                                                                                             |
+| **Template file**                          | A note in your vault to use as the template instead of the one below. **Create** writes the current template out to a new note. Markdown only. See [Custom Templates](#-custom-templates)                                                                                                        |
+| **Recipe template**                        | Handlebars template used when creating recipe notes, when no template file is set. Markdown only                                                                                                                                                                                                 |
+| **Photo property**                         | The frontmatter property that holds a recipe's photo (default `photo`). Set it to match your template, e.g. `image_url`, and the gallery reads that instead                                                                                                                                      |
+| **Decode entities**                        | Decodes HTML entities in imported data                                                                                                                                                                                                                                                           |
+| **Proxy fallback for blocked imports**     | If a page blocks the import (e.g. a 403 from bot protection), retry once through a public read proxy (allorigins.win). Sends the recipe URL to a third party. Off by default                                                                                                                     |
+| **Shopping list file**                     | Path to your shopping list note (created automatically if missing)                                                                                                                                                                                                                               |
+| **Recipe gallery folder**                  | The folder the Recipe Gallery browses, including its subfolders. **Leave blank to follow the Recipe save folder** (recommended). Set it only to browse a different folder                                                                                                                        |
+| **AI features**                            | On by default. Turn it off to hide the Ask AI button on recipe notes, the Add recipe from photo command, and the AI settings below                                                                                                                                                               |
+| **OpenRouter API key**                     | Required for Ask AI and Add recipe from photo                                                                                                                                                                                                                                                    |
+| **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-3.5-flash-lite`)                                                                                                                                                                                                |
+| **AI request timeout (ms)**                | Timeout for AI requests (minimum 5000 ms)                                                                                                                                                                                                                                                        |
+| **Custom AI system prompt**                | Optional override for the built-in Ask AI instructions                                                                                                                                                                                                                                           |
+| **Remove filler words from titles**        | Strips words like "easy" and "best" from imported titles, using the list for the recipe's language                                                                                                                                                                                               |
+| **Filler words to keep**                   | Built-in words you want left in titles                                                                                                                                                                                                                                                           |
+| **Extra filler words**                     | Your own words to strip from titles, in any language                                                                                                                                                                                                                                             |
+| **Filter vegan words / gluten-free words** | Optionally strips dietary labels from imported recipe titles                                                                                                                                                                                                                                     |
+| **Recipe language**                        | Which word lists to use when a recipe page doesn't say its language. Defaults to Obsidian's language                                                                                                                                                                                             |
+| **Debug mode**                             | Enables extra developer logging                                                                                                                                                                                                                                                                  |
 
 > **Gallery is empty but you've imported recipes?** By default the gallery follows your **Recipe save folder**, so this shouldn't happen. If it does, you've set an explicit **Recipe gallery folder** that points somewhere other than where recipes are saved. Either clear that setting (blank = follow the save folder) or point it at your save folder, and your recipes will show up.
 
@@ -165,7 +171,7 @@ A ticked ingredient means "add this to the list", so it's highlighted rather tha
 
 ### Scaling a recipe
 
-Above the ingredients there's a **−  Serves 4  +** control. If the note has `servings` in its frontmatter it moves a serving at a time. If not, it goes through ½×, 1×, 1½×, 2×, 3× and 4×. Tap the middle to go back to the recipe as written.
+Above the ingredients there's a **− Serves 4 +** control. If the note has `servings` in its frontmatter it moves a serving at a time. If not, it goes through ½×, 1×, 1½×, 2×, 3× and 4×. Tap the middle to go back to the recipe as written.
 
 Only the amount at the front of each ingredient line changes, so "1 (14 oz) can tomatoes" doubled is "2 (14 oz) cans tomatoes". The steps are left alone. The note itself is never rewritten. The scale is kept per recipe until you close Obsidian, and **Add N to shopping list** and cook mode both use it.
 
@@ -202,14 +208,14 @@ Under At a Glance:
 - **Mark as made** adds one to times made and stamps today as the last made date.
 - **Add N to shopping list** sends what's ticked.
 - **Ask AI** opens a chat about the recipe. See [Ask AI](#-ask-ai).
-- **Cook** opens cook mode.
+- **Cook** opens cook mode. Turn off **Show Cook button** in settings to hide it.
 
 ### Kitchen layout
 
 Set **Recipe layout on small screens** to **Kitchen** for a layout built for cooking from a phone:
 
 - An **Ingredients / Steps** switch at the top shows one half of the recipe at a time. Each half remembers where you were scrolled.
-- A **Cook** button next to the switch opens cook mode.
+- A **Cook** button next to the switch opens cook mode, unless **Show Cook button** is off.
 - Bigger ingredient rows, and a bar at the bottom with **Mark as made**, **Ask AI** and **Add N to list**.
 
 Kitchen is used on phones and tablets, and on desktop when the recipe's pane is narrower than about 640px. Everywhere else you get the wide or single column layout above. **Classic**, the default, keeps the single scrolling page on a phone.
@@ -222,7 +228,7 @@ Click **Cook**, or run **Start cook mode**, to go through the steps one at a tim
 - **For this step:** the ingredients the step mentions, matched by name with the amounts left off.
 - A card above the buttons with the next step, so you know what's coming.
 - **Back** and **Next step** buttons. On a keyboard, ← and → move between steps and Esc closes.
-- The list icon at the top shows the full ingredient list.
+- **Show all ingredients** under the step's ingredients shows the full list.
 - The screen stays on while cook mode is open, on devices that allow it. "Screen stays on" only shows when it really will.
 
 On the last step, **Done** closes cook mode and asks whether to mark the recipe as made. On a phone, cook mode fills the screen.
@@ -431,6 +437,7 @@ Recipe Vault is primarily local, but it can make network requests for the follow
 - **Recipe URL import:** fetches the page you provide to read recipe JSON-LD data. The URL and page response are used only to create recipe notes in your vault.
 - **Proxy fallback (optional, off by default):** if an import is blocked and you enable this setting, the recipe URL is retried once through a public read proxy (allorigins.win), which sends that URL to a third-party service.
 - **Recipe image download (optional):** when enabled, recipe images referenced by imported recipes are downloaded into your vault. This includes the image URL in an imported JSON-LD file.
+- **Fetch missing nutrition (optional):** only runs when you start it, with **Show nutrition** on. It loads the source page of each recipe that's missing nutrition, one at a time, the same way a URL import does.
 - **Ask AI via OpenRouter (optional):** sends your prompt plus recipe ingredients/instructions to OpenRouter to generate suggestions. Requests include your configured OpenRouter API key.
 - **Add recipe from photo via OpenRouter (optional):** sends your captured/chosen photo(s) to OpenRouter for transcription. Requests include your configured OpenRouter API key.
 
