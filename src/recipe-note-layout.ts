@@ -41,6 +41,8 @@ export interface RecipeActions {
   cook: (file: TFile) => void;
   /** Whether Ask AI is on. Off hides its buttons. */
   aiEnabled: () => boolean;
+  /** Whether the Cook button shows. */
+  cookEnabled: () => boolean;
 }
 
 function iconButton(
@@ -100,10 +102,12 @@ export function buildRecipeActions(
       text: "Ask AI",
     }).addEventListener("click", () => actions.askAi(file));
   }
-  iconButton(row, "flame", "Cook mode", { text: "Cook" }).addEventListener(
-    "click",
-    () => actions.cook(file),
-  );
+  if (actions.cookEnabled()) {
+    iconButton(row, "flame", "Cook mode", { text: "Cook" }).addEventListener(
+      "click",
+      () => actions.cook(file),
+    );
+  }
   return row;
 }
 
@@ -709,10 +713,12 @@ export class RecipeNoteLayout extends Component {
       button.createSpan({ cls: "recipe-tab-count" });
       button.addEventListener("click", () => this.setTab(tab));
     }
-    iconButton(bar, "flame", "Cook mode", {
-      cls: "recipe-tabs-cook",
-      text: "Cook",
-    }).addEventListener("click", () => this.actions.cook(this.file));
+    if (this.actions.cookEnabled()) {
+      iconButton(bar, "flame", "Cook mode", {
+        cls: "recipe-tabs-cook",
+        text: "Cook",
+      }).addEventListener("click", () => this.actions.cook(this.file));
+    }
     preview.prepend(bar);
     this.tabsEl = bar;
   }

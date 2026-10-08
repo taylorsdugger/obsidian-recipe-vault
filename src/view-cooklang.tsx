@@ -327,6 +327,7 @@ export class CooklangView extends TextFileView {
         onAddToList={() => void this.addCheckedToList()}
         onEdit={() => this.setMode("source")}
         onCook={() => this.openCookMode()}
+        showCook={this.plugin.settings.showCookButton}
         layout={this.layout}
         tab={this.tab}
         onTab={(tab) => this.setTab(tab)}

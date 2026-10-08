@@ -35,6 +35,8 @@ interface CooklangRecipeProps {
   onAddToList: () => void;
   onEdit: () => void;
   onCook: () => void;
+  /** Off hides both Cook buttons. */
+  showCook: boolean;
   /** `rail` lays out in two columns once the pane is wide enough. */
   layout: "rail" | "kitchen";
   /** The Kitchen layout's Ingredients / Steps switch. */
@@ -309,6 +311,7 @@ export function CooklangRecipe({
   onAddToList,
   onEdit,
   onCook,
+  showCook,
   layout,
   tab,
   onTab,
@@ -435,15 +438,17 @@ export function CooklangRecipe({
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            className="recipe-tabs-cook"
-            onClick={onCook}
-            disabled={stepCount === 0}
-          >
-            <Icon name="flame" />
-            <span className="recipe-button-text">Cook</span>
-          </button>
+          {showCook && (
+            <button
+              type="button"
+              className="recipe-tabs-cook"
+              onClick={onCook}
+              disabled={stepCount === 0}
+            >
+              <Icon name="flame" />
+              <span className="recipe-button-text">Cook</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -543,10 +548,12 @@ export function CooklangRecipe({
               <Icon name="shopping-cart" />
               <span className="recipe-button-text">{addText}</span>
             </button>
-            <button type="button" onClick={onCook} disabled={stepCount === 0}>
-              <Icon name="flame" />
-              <span className="recipe-button-text">Cook</span>
-            </button>
+            {showCook && (
+              <button type="button" onClick={onCook} disabled={stepCount === 0}>
+                <Icon name="flame" />
+                <span className="recipe-button-text">Cook</span>
+              </button>
+            )}
             <button type="button" onClick={onEdit}>
               <Icon name="pencil" />
               <span className="recipe-button-text">Edit</span>
