@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 
 import { api } from "./api";
 import { TabBar } from "./components/tab-bar";
 import { usePath } from "./router";
-import { setScrollContainer } from "./scroll";
 import { startAutoSync } from "./sync";
 import { Home } from "./routes/home";
 import { Import } from "./routes/import";
@@ -45,7 +44,6 @@ function Screen({ path }: { path: string }) {
 export function App() {
   const path = usePath();
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
-  const scroller = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     api
@@ -66,7 +64,7 @@ export function App() {
   if (path.startsWith("/s/")) {
     const [token, mode] = path.slice("/s/".length).split("/");
     return (
-      <main class="h-full overflow-y-auto" ref={setScrollContainer}>
+      <main>
         <Shared token={token} cooking={mode === "cook"} />
       </main>
     );
@@ -76,23 +74,22 @@ export function App() {
   if (signedIn === null) return null;
   if (!signedIn) return <Login onSignedIn={() => setSignedIn(true)} />;
 
-  // Tab bar under the screen on a phone; from `md` up it sits to the left.
-  // `order-first` keeps the DOM order the same either way, so the screen's
-  // content is still what a screen reader lands on first.
+  // Tab bar fixed over the bottom of the page on a phone; from `md` up it
+  // sits to the left. `order-first` keeps the DOM order the same either way,
+  // so the screen's content is still what a screen reader lands on first.
+  //
+  // A recipe is a pushed screen: on a phone it has a back arrow instead of
+  // the tabs, and the space goes to its own dock. Everything else leaves room
+  // at the bottom for the tab bar to sit over.
+  const pushed = path.startsWith("/recipes/");
   return (
-    <div class="flex h-full flex-col md:flex-row">
+    <div class="md:flex">
       <main
-        class="min-w-0 flex-1 overflow-y-auto"
-        ref={(el) => {
-          scroller.current = el;
-          setScrollContainer(el);
-        }}
+        class={`min-w-0 md:flex-1 md:pb-0 ${pushed ? "" : "pb-[calc(3.75rem+1px+env(safe-area-inset-bottom))]"}`}
       >
         <Screen path={path} />
       </main>
-      {/* A recipe is a pushed screen: on a phone it has a back arrow instead
-          of the tabs, and the space goes to its own dock. */}
-      <TabBar path={path} pushed={path.startsWith("/recipes/")} />
+      <TabBar path={path} pushed={pushed} />
     </div>
   );
 }

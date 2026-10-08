@@ -123,11 +123,7 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
     // further up than that, looking at the photo.
     const start = tabStart.current;
     if (!start) return;
-    const top =
-      start.getBoundingClientRect().top -
-      scroller.getBoundingClientRect().top +
-      scroller.scrollTop -
-      12;
+    const top = start.getBoundingClientRect().top + scroller.scrollTop - 12;
     scroller.scrollTop = Math.max(0, Math.min(scroller.scrollTop, top));
   }, [tab]);
 
@@ -355,7 +351,7 @@ export function Recipe({ id, cooking }: { id: string; cooking: boolean }) {
 
   if (editing) {
     return (
-      <div class="mx-auto flex h-full w-full max-w-2xl flex-col gap-3 p-4 pt-[calc(1rem+env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div class="mx-auto flex h-dvh w-full max-w-2xl flex-col gap-3 p-4 pt-[calc(1rem+env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
         <p class="text-sm text-muted">
           The note itself. Saving writes it back to the vault.
         </p>

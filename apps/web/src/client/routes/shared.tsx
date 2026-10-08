@@ -59,7 +59,7 @@ export function Shared({
 
   if (off) {
     return (
-      <div class="flex h-full flex-col items-center justify-center gap-3.5 px-10 text-center">
+      <div class="flex min-h-dvh flex-col items-center justify-center gap-3.5 px-10 text-center">
         <span class="grid size-14 place-items-center rounded-full bg-accent-soft text-accent-ink">
           <Icon name="link-off" class="size-[26px]" />
         </span>
@@ -178,7 +178,7 @@ export function Shared({
     <>
       {/* Desktop: a header with the two things you'd do, and the recipe laid
           out the way the signed-in screen does it. */}
-      <div class="hidden min-h-full flex-col lg:flex">
+      <div class="hidden min-h-dvh flex-col lg:flex">
         <header class="flex h-[72px] shrink-0 items-center gap-4 border-b border-line bg-surface px-10">
           <span class="flex flex-1 items-center gap-2.5 text-sm text-muted">
             <AppIcon class="size-[22px]" />
