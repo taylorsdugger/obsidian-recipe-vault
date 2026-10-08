@@ -16,8 +16,10 @@ import {
  */
 
 const OPTS: ParseOptions = {
-  fillerWordsMode: "auto",
-  customFillerWords: "",
+  useBuiltInFillerWords: true,
+  extraFillerWords: "",
+  keptFillerWords: "",
+  defaultLanguage: "en",
   filterVeganWords: true,
   filterGlutenFreeWords: true,
 };
@@ -63,13 +65,60 @@ describe("parseRecipesFromHtml", () => {
   it("keeps filler words when the filters are off", () => {
     const recipes = parseRecipesFromHtml(htmlWithJsonLd(RECIPE), url, {
       ...OPTS,
-      fillerWordsMode: "custom",
-      customFillerWords: "",
+      useBuiltInFillerWords: false,
       filterVeganWords: false,
       filterGlutenFreeWords: false,
     });
 
     expect(recipes[0].name).toBe("Easy Vegan Soup");
+  });
+
+  describe("recipe language", () => {
+    const page = (head: string, recipe: object, lang = "") =>
+      `<!doctype html><html${lang}><head>${head}<script type="application/ld+json">${JSON.stringify(
+        recipe,
+      )}</script></head><body></body></html>`;
+    const GERMAN = { ...RECIPE, name: "Einfacher Apfelkuchen" };
+    const nameOf = (html: string) =>
+      parseRecipesFromHtml(html, url, OPTS)[0].name;
+
+    it("reads <html lang>", () => {
+      expect(nameOf(page("", GERMAN, ' lang="de-DE"'))).toBe("Apfelkuchen");
+    });
+
+    it("reads og:locale when there is no lang", () => {
+      expect(
+        nameOf(page('<meta property="og:locale" content="de_DE">', GERMAN)),
+      ).toBe("Apfelkuchen");
+    });
+
+    it("prefers the recipe's own inLanguage over the page", () => {
+      expect(
+        nameOf(page("", { ...GERMAN, inLanguage: "en" }, ' lang="de"')),
+      ).toBe("Einfacher Apfelkuchen");
+      expect(
+        nameOf(
+          page(
+            "",
+            {
+              ...GERMAN,
+              inLanguage: { "@type": "Language", alternateName: "de" },
+            },
+            ' lang="en"',
+          ),
+        ),
+      ).toBe("Apfelkuchen");
+    });
+
+    it("uses the default language when the page doesn't say", () => {
+      expect(nameOf(page("", GERMAN))).toBe("Einfacher Apfelkuchen");
+      expect(
+        parseRecipesFromHtml(page("", GERMAN), url, {
+          ...OPTS,
+          defaultLanguage: "de",
+        })[0].name,
+      ).toBe("Apfelkuchen");
+    });
   });
 
   it("returns an empty list for a page with no recipe", () => {

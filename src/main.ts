@@ -1769,6 +1769,10 @@ export default class RecipeVault extends Plugin {
       await this.saveData(this.settings);
     }
 
+    if (settings.migrateFillerWordSettings(this.settings)) {
+      await this.saveData(this.settings);
+    }
+
     // Presets get swapped for newer models over time. Move anyone still on a
     // retired preset to its replacement, so the dropdown doesn't fall back to
     // "Other (custom)" with an empty field.
@@ -1932,10 +1936,12 @@ export default class RecipeVault extends Plugin {
   private fetchOptions(): core.FetchOptions {
     const s = this.settings;
     return {
-      fillerWordsMode: s.fillerWordsMode ?? "auto",
-      customFillerWords: s.customFillerWords,
+      useBuiltInFillerWords: s.useBuiltInFillerWords ?? true,
+      extraFillerWords: s.extraFillerWords,
+      keptFillerWords: s.keptFillerWords,
       filterVeganWords: s.filterVeganWords ?? true,
       filterGlutenFreeWords: s.filterGlutenFreeWords ?? true,
+      defaultLanguage: s.recipeLanguage || settings.obsidianLanguage(),
       proxyFallback: s.proxyFallback,
       retryDelayMs: this.fetchRetryDelayMs,
       sleep: (ms) => sleep(ms),

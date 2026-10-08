@@ -8,6 +8,7 @@ import {
 import { cleanRecipeName, type CleanNameOptions } from "./clean-name";
 import { collapseDoubledParens, stripHtml } from "./html";
 import { normalizeImages } from "./images";
+import { recipeLanguage } from "./language";
 import { normalizeRecipeNotes } from "./notes";
 
 /** Everything the pure JSON-LD walk reads. No DOM, no vault, no network. */
@@ -19,6 +20,11 @@ export interface JsonLdParseOptions extends CleanNameOptions {
    * standalone `.json` file: the recipe keeps its own `url` if it has one.
    */
   sourceUrl?: string;
+  /**
+   * The language the page says it is in. Picks the title cleanup list when
+   * the recipe has no `inLanguage` of its own.
+   */
+  pageLanguage?: string;
 }
 
 /**
@@ -160,7 +166,11 @@ export function parseRecipesFromJsonLd(
     normalizeImages(json);
 
     if (typeof node.name === "string") {
-      json.name = cleanRecipeName(node.name, opts);
+      json.name = cleanRecipeName(
+        node.name,
+        opts,
+        recipeLanguage(node.inLanguage) ?? opts.pageLanguage,
+      );
     }
 
     // Ingredients may be a string, an array of strings, or objects — flatten

@@ -9,8 +9,10 @@ import {
 } from "../src";
 
 const PARSE_OPTS = {
-  fillerWordsMode: "auto" as const,
-  customFillerWords: "",
+  useBuiltInFillerWords: true,
+  extraFillerWords: "",
+  keptFillerWords: "",
+  defaultLanguage: "en",
   filterVeganWords: false,
   filterGlutenFreeWords: false,
 };

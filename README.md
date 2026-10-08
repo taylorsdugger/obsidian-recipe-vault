@@ -136,11 +136,16 @@ To browse your recipes, click the **utensils icon** in the ribbon to open the Re
 | **AI model ID**                            | Which model to use for Ask AI and Add recipe from photo (default: `google/gemini-3.5-flash-lite`)                                                                            |
 | **AI request timeout (ms)**                | Timeout for AI requests (minimum 5000 ms)                                                                                                                                    |
 | **Custom AI system prompt**                | Optional override for the built-in Ask AI instructions                                                                                                                       |
-| **Recipe title filler words**              | Controls how imported titles are cleaned up                                                                                                                                  |
+| **Remove filler words from titles**        | Strips words like "easy" and "best" from imported titles, using the list for the recipe's language                                                                           |
+| **Filler words to keep**                   | Built-in words you want left in titles                                                                                                                                       |
+| **Extra filler words**                     | Your own words to strip from titles, in any language                                                                                                                         |
 | **Filter vegan words / gluten-free words** | Optionally strips dietary labels from imported recipe titles                                                                                                                 |
+| **Recipe language**                        | Which word lists to use when a recipe page doesn't say its language. Defaults to Obsidian's language                                                                         |
 | **Debug mode**                             | Enables extra developer logging                                                                                                                                              |
 
 > **Gallery is empty but you've imported recipes?** By default the gallery follows your **Recipe save folder**, so this shouldn't happen. If it does, you've set an explicit **Recipe gallery folder** that points somewhere other than where recipes are saved. Either clear that setting (blank = follow the save folder) or point it at your save folder, and your recipes will show up.
+
+> **Title words in your language.** The built-in filler word lists cover English, German, Spanish and French for now. Each language is one JSON file in [`packages/core/src/parse/title-words`](packages/core/src/parse/title-words). Fixing a word or adding a language is a small pull request you can make from GitHub's web editor, and the [README there](packages/core/src/parse/title-words/README.md) walks through it.
 
 ---
 
