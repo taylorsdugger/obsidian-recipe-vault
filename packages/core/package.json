@@ -45,7 +45,7 @@
     "typecheck": "tsc -noEmit"
   },
   "dependencies": {
-    "cheerio": "^1.0.0-rc.12",
+    "cheerio": "^1.2.0",
     "dateformat": "^5.0.3",
     "handlebars": "^4.7.9"
   },
