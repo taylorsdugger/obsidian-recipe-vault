@@ -60,7 +60,8 @@ jobs:
           npm version "$VERSION_TYPE" -w packages/core --no-git-tag-version
           VERSION=$(node -p "require('./packages/core/package.json').version")
           git commit -am "core $VERSION"
-          git tag "core-v$VERSION"
+          # Annotated, because --follow-tags below only pushes annotated tags.
+          git tag -a "core-v$VERSION" -m "core $VERSION"
 
       # Push before publishing. If the push fails nothing went to npm, and a
       # rerun bumps from the same version again.
