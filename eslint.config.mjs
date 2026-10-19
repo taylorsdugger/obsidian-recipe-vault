@@ -1,6 +1,6 @@
 // The same rules the Obsidian community plugin review bot runs. The bot scans
-// shipped source across the repo, so this covers the web app and core package
-// too, not only the plugin. Tests and node scripts are left out like the bot
+// shipped source across the repo, so this covers the core package too, not
+// only the plugin. Tests and node scripts are left out like the bot
 // leaves them out.
 import { defineConfig, globalIgnores } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
@@ -12,8 +12,6 @@ export default defineConfig([
   globalIgnores([
     "**/node_modules/",
     "**/dist/",
-    // wrangler dev's bundle output, gitignored in apps/web.
-    "**/.wrangler/",
     "main.js",
     ".loadtest-*/",
     "**/test/",
@@ -51,18 +49,6 @@ export default defineConfig([
           ],
         },
       ],
-    },
-  },
-  {
-    // Workers runtime types from @cloudflare/workers-types. They're ambient
-    // in the worker's tsconfig, but no-undef doesn't read types.
-    files: ["apps/web/src/worker/**/*.ts"],
-    languageOptions: {
-      globals: {
-        D1Database: "readonly",
-        Fetcher: "readonly",
-        R2Bucket: "readonly",
-      },
     },
   },
 ]);
