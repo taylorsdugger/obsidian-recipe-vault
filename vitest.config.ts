@@ -12,6 +12,11 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // Core from source, like the plugin build, so tests don't need a core
+      // build first.
+      "@recipe-vault/core": fileURLToPath(
+        new URL("./packages/core/src", import.meta.url),
+      ),
       obsidian: fileURLToPath(
         new URL("./test/helpers/obsidian-stub.ts", import.meta.url),
       ),

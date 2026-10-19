@@ -13,6 +13,9 @@ const context = await esbuild.context({
 	banner: {
 		js: banner,
 	},
+	// @recipe-vault/core resolves to packages/core/src through the "paths" in
+	// tsconfig.json, which esbuild reads. So the plugin bundles core from
+	// source and doesn't need a core build first.
 	entryPoints: ["src/main.ts"],
 	bundle: true,
 	external: [
