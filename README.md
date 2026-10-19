@@ -41,7 +41,7 @@ Screenshots and a walkthrough of every feature: **[recipes.taylordugger.com](htt
 - ⚖️ **Shopping list:** tick ingredients in a recipe and send them to a single shopping list file. Duplicates combine even when the recipes wrote them differently - "1 large onion" and "2 yellow onions, diced" come out as one row of three - and the list is sorted by aisle, so the produce is together.
 - 🔁 **Compare recipes:** select multiple recipes and view them side by side, with shared and unique ingredients highlighted.
 - 📅 **Mark as made:** track when you last made a recipe and how many times.
-- ➗ **Scale a recipe:** make a double batch, or six servings instead of four. The amounts change in the note, the `.cook` view, cook mode and the web app, and the shopping list gets the scaled amounts. See [Scaling a recipe](#scaling-a-recipe).
+- ➗ **Scale a recipe:** make a double batch, or six servings instead of four. The amounts change in the note, the `.cook` view and cook mode, and the shopping list gets the scaled amounts. See [Scaling a recipe](#scaling-a-recipe).
 - 🤖 **Ask AI for edits:** chat about a recipe and ask for changes like "make this dairy-free" or "scale to 2 servings" via OpenRouter (API key required). You review the change before it's applied. Markdown notes only for now.
 - 🧹 **Clean titles:** imported titles lose the filler, so "The Best Easy Weeknight Chili" comes in as "Chili". There are word lists for English, German, Spanish and French, picked by the recipe's language.
 - 🎨 **Customizable templates:** full Handlebars support so your notes look exactly how you want.
@@ -181,7 +181,7 @@ New imports get `servings` from the recipe page when it has one. Older notes can
 
 Nutrition is off until you turn on **Show nutrition** in settings. Until then nothing below shows up, imports don't add it, and the commands for it are hidden. Nutrition already in a note stays there either way.
 
-With it on, if a recipe has nutrition, a line under At a Glance shows the calories and the protein, carbs and fat per serving. Click it for the details: the full breakdown, how the calories split between the three, and a **Whole recipe** switch that multiplies by the servings at the scale you're making it. On a phone it opens as a sheet from the bottom. The web app shows the same thing.
+With it on, if a recipe has nutrition, a line under At a Glance shows the calories and the protein, carbs and fat per serving. Click it for the details: the full breakdown, how the calories split between the three, and a **Whole recipe** switch that multiplies by the servings at the scale you're making it. On a phone it opens as a sheet from the bottom.
 
 New imports get it from the recipe page when the page has it, which most food blogs do. It goes in the frontmatter as plain numbers, so you can sort and filter on it with Bases or Dataview, or type it in by hand:
 
