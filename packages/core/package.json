@@ -1,6 +1,6 @@
 {
   "name": "@recipe-vault/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Recipe parsing, shopping list math, scaling, nutrition and the note template behind the Recipe Vault Obsidian plugin.",
   "keywords": [
     "recipe",
