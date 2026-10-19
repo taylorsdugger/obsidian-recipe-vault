@@ -16,6 +16,8 @@
 		"jsx": "react-jsx",
 		"jsxImportSource": "preact",
 		"paths": {
+			"@recipe-vault/core": ["./packages/core/src/index.ts"],
+			"@recipe-vault/core/*": ["./packages/core/src/*"],
 			"react": ["./node_modules/preact/compat/"],
 			"react-dom": ["./node_modules/preact/compat/"],
 			"react-dom/client": ["./node_modules/preact/compat/client"],

@@ -1,5 +1,7 @@
 import dateFormat from "dateformat";
-import * as Handlebars from "handlebars";
+// A default import, not `* as`. handlebars is CommonJS, and under plain Node
+// ESM the namespace object doesn't carry `create`. Bundlers work either way.
+import Handlebars from "handlebars";
 
 import { formatIsoDuration, formatPhotoValue } from "./frontmatter";
 import { firstYield } from "../nutrition";
