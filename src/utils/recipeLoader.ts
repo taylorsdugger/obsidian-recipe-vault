@@ -1,6 +1,7 @@
 import { MetadataCache, TFile, Vault } from "obsidian";
 import { normalizePhotoProperty } from "@recipe-vault/core";
 import { RecipeNote } from "../types/recipe";
+import { dedupeTags, parseTags } from "./tagFilter";
 
 /**
  * What the plugin's index keeps for a `.cook` file. Obsidian has no metadata
@@ -126,8 +127,8 @@ export function loadRecipes(
           getIngredients(file.path),
         );
       }
-      const fm = (metadataCache.getFileCache(file)?.frontmatter ??
-        {}) as Record<string, unknown>;
+      const cache = metadataCache.getFileCache(file);
+      const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
       // The configured property, else `photo`, so notes made before it
       // changed keep their photo.
       const photo = resolvePhoto(file, vault, fm[photoKey] || fm.photo);
@@ -136,6 +137,10 @@ export function loadRecipes(
       const cook_time_mins = parseCookTimeMins(cook_time);
       const times_made = typeof fm.times_made === "number" ? fm.times_made : 0;
       const ingredients = getIngredients(file.path);
+      const tags = dedupeTags([
+        ...parseTags(fm.tags ?? fm.tag),
+        ...(cache?.tags ?? []).map((t) => t.tag),
+      ]);
 
       return {
         title: file.basename,
@@ -146,6 +151,7 @@ export function loadRecipes(
         cook_time_mins,
         times_made,
         ingredients,
+        tags,
       };
     })
     .sort((a, b) => a.title.localeCompare(b.title));
@@ -171,6 +177,7 @@ function cooklangRecipe(
     cook_time_mins: parseCookTimeMins(cook_time),
     times_made: info?.timesMade ?? 0,
     ingredients,
+    tags: [],
   };
 }
 

@@ -1,6 +1,7 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { createRoot } from "react-dom/client";
 import { RecipeGallery, type SortMode } from "./components/RecipeGallery";
+import { dedupeTags, type TagMatchMode } from "./utils/tagFilter";
 import { getRecipeFiles, loadRecipes } from "./utils/recipeLoader";
 import { CompareRecipesModal } from "./modal-compare-recipes";
 import * as c from "./constants";
@@ -14,10 +15,14 @@ const lastGalleryState: {
   scrollTop: number;
   searchQuery: string;
   sortMode: SortMode;
+  selectedTags: string[];
+  tagMatchMode: TagMatchMode;
 } = {
   scrollTop: 0,
   searchQuery: "",
   sortMode: "name",
+  selectedTags: [],
+  tagMatchMode: "all",
 };
 
 /**
@@ -30,6 +35,8 @@ export function resetGalleryUiState(): void {
   lastGalleryState.scrollTop = 0;
   lastGalleryState.searchQuery = "";
   lastGalleryState.sortMode = "name";
+  lastGalleryState.selectedTags = [];
+  lastGalleryState.tagMatchMode = "all";
 }
 
 export class RecipeGalleryView extends ItemView {
@@ -38,6 +45,8 @@ export class RecipeGalleryView extends ItemView {
   private savedScrollTop = lastGalleryState.scrollTop;
   private savedSearchQuery = lastGalleryState.searchQuery;
   private savedSortMode: SortMode = lastGalleryState.sortMode;
+  private savedSelectedTags: string[] = lastGalleryState.selectedTags;
+  private savedTagMatchMode: TagMatchMode = lastGalleryState.tagMatchMode;
   private renderTimer: number | null = null;
 
   private isValidSortMode(value: unknown): value is SortMode {
@@ -45,7 +54,8 @@ export class RecipeGalleryView extends ItemView {
       value === "name" ||
       value === "meal_type" ||
       value === "cook_time" ||
-      value === "times_made"
+      value === "times_made" ||
+      (typeof value === "string" && /^tag:[^/]+$/.test(value))
     );
   }
 
@@ -121,6 +131,8 @@ export class RecipeGalleryView extends ItemView {
       scrollTop?: unknown;
       searchQuery?: unknown;
       sortMode?: unknown;
+      selectedTags?: unknown;
+      tagMatchMode?: unknown;
     } | null;
     const scrollTop = next?.scrollTop;
     // Fall back to the shared cache (not the defaults) so a fresh instance
@@ -138,6 +150,18 @@ export class RecipeGalleryView extends ItemView {
       ? next.sortMode
       : lastGalleryState.sortMode;
 
+    this.savedSelectedTags = Array.isArray(next?.selectedTags)
+      ? dedupeTags(
+          next.selectedTags.filter((t): t is string => typeof t === "string"),
+        )
+      : lastGalleryState.selectedTags;
+    this.savedTagMatchMode =
+      next?.tagMatchMode === "all" || next?.tagMatchMode === "any"
+        ? next.tagMatchMode
+        : lastGalleryState.tagMatchMode;
+
+    lastGalleryState.selectedTags = this.savedSelectedTags;
+    lastGalleryState.tagMatchMode = this.savedTagMatchMode;
     lastGalleryState.scrollTop = this.savedScrollTop;
     lastGalleryState.searchQuery = this.savedSearchQuery;
     lastGalleryState.sortMode = this.savedSortMode;
@@ -149,6 +173,8 @@ export class RecipeGalleryView extends ItemView {
       scrollTop: this.savedScrollTop,
       searchQuery: this.savedSearchQuery,
       sortMode: this.savedSortMode,
+      selectedTags: this.savedSelectedTags,
+      tagMatchMode: this.savedTagMatchMode,
     };
   }
 
@@ -202,6 +228,8 @@ export class RecipeGalleryView extends ItemView {
         initialScrollTop={this.savedScrollTop}
         initialSearchQuery={this.savedSearchQuery}
         initialSortMode={this.savedSortMode}
+        initialSelectedTags={this.savedSelectedTags}
+        initialTagMatchMode={this.savedTagMatchMode}
         onScrollTopChange={(scrollTop) => {
           this.savedScrollTop = scrollTop;
           lastGalleryState.scrollTop = scrollTop;
@@ -213,6 +241,12 @@ export class RecipeGalleryView extends ItemView {
         onSortModeChange={(sortMode) => {
           this.savedSortMode = sortMode;
           lastGalleryState.sortMode = sortMode;
+        }}
+        onTagFilterChange={(selectedTags, tagMatchMode) => {
+          this.savedSelectedTags = selectedTags;
+          this.savedTagMatchMode = tagMatchMode;
+          lastGalleryState.selectedTags = selectedTags;
+          lastGalleryState.tagMatchMode = tagMatchMode;
         }}
         onOpen={(path: string) => {
           void (async () => {

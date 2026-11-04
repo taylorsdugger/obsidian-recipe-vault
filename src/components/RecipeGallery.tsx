@@ -7,9 +7,23 @@ import React, {
 } from "react";
 import { RecipeNote } from "../types/recipe";
 import { cookTimeGroup, timesMadeGroup } from "../utils/recipeLoader";
+import {
+  buildTagGroups,
+  capitalize,
+  filterByTags,
+  groupByNamespace,
+  sortableNamespaces,
+  type TagMatchMode,
+} from "../utils/tagFilter";
 import { RecipeCard } from "./RecipeCard";
 
-export type SortMode = "name" | "meal_type" | "cook_time" | "times_made";
+type BaseSortMode = "name" | "meal_type" | "cook_time" | "times_made";
+/** `tag:<namespace>` groups by the tags in one namespace, e.g. `tag:cuisine`. */
+export type SortMode = BaseSortMode | `tag:${string}`;
+
+export function isTagSortMode(mode: SortMode): mode is `tag:${string}` {
+  return mode.startsWith("tag:");
+}
 
 interface Section {
   label: string;
@@ -31,6 +45,9 @@ interface RecipeGalleryProps {
   initialSortMode?: SortMode;
   onSearchQueryChange?: (searchQuery: string) => void;
   onSortModeChange?: (sortMode: SortMode) => void;
+  initialSelectedTags?: string[];
+  initialTagMatchMode?: TagMatchMode;
+  onTagFilterChange?: (selectedTags: string[], mode: TagMatchMode) => void;
   /** The folder the gallery is currently reading from (for the empty state). */
   galleryFolder?: string;
   /**
@@ -41,7 +58,7 @@ interface RecipeGalleryProps {
   recipesElsewhereFolder?: string;
 }
 
-const SORT_LABELS: Record<SortMode, string> = {
+const SORT_LABELS: Record<BaseSortMode, string> = {
   name: "Name",
   meal_type: "Meal Type",
   cook_time: "Cook Time",
@@ -133,6 +150,13 @@ function buildSections(recipes: RecipeNote[], sortMode: SortMode): Section[] {
         recipes: map.get(g)!.sort((a, b) => b.times_made - a.times_made),
       }));
     }
+
+    default: {
+      if (isTagSortMode(sortMode)) {
+        return groupByNamespace(recipes, sortMode.slice(4));
+      }
+      return [{ label: "", recipes }];
+    }
   }
 }
 
@@ -147,12 +171,21 @@ export function RecipeGallery({
   initialSortMode = "name",
   onSearchQueryChange,
   onSortModeChange,
+  initialSelectedTags = [],
+  initialTagMatchMode = "all",
+  onTagFilterChange,
   galleryFolder,
   recipesElsewhereFolder,
 }: RecipeGalleryProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
+  const [tagsExpanded, setTagsExpanded] = useState(false);
+  const [selectedTags, setSelectedTags] =
+    useState<string[]>(initialSelectedTags);
+  const [tagMatchMode, setTagMatchMode] =
+    useState<TagMatchMode>(initialTagMatchMode);
+  const [tagQuery, setTagQuery] = useState("");
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -162,18 +195,66 @@ export function RecipeGallery({
     onScrollTopChangeRef.current = onScrollTopChange;
   });
 
-  // Filter by search query — matches title, meal type, or ingredients, so
-  // typing e.g. "breakfast" surfaces every recipe tagged with that meal type.
-  const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+  // Filter by search query — matches title, meal type, tags, or ingredients,
+  // so typing e.g. "breakfast" surfaces every recipe with that meal type.
+  const searched = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim().replace(/^#/, "");
     if (!q) return recipes;
     return recipes.filter(
       (r) =>
         r.title.toLowerCase().includes(q) ||
         r.meal_type.some((t) => t.toLowerCase().includes(q)) ||
+        r.tags.some((t) => t.includes(q)) ||
         r.ingredients.some((ing) => ing.toLowerCase().includes(q)),
     );
   }, [recipes, searchQuery]);
+
+  // Then by the toggled tags.
+  const filtered = useMemo(
+    () => filterByTags(searched, selectedTags, tagMatchMode),
+    [searched, selectedTags, tagMatchMode],
+  );
+
+  const tagGroups = useMemo(
+    () => buildTagGroups(recipes, searched, selectedTags, tagMatchMode),
+    [recipes, searched, selectedTags, tagMatchMode],
+  );
+
+  const visibleTagGroups = useMemo(() => {
+    const q = tagQuery.toLowerCase().trim().replace(/^#/, "");
+    if (!q) return tagGroups;
+    return tagGroups
+      .map((g) => ({ ...g, tags: g.tags.filter((t) => t.tag.includes(q)) }))
+      .filter((g) => g.tags.length > 0);
+  }, [tagGroups, tagQuery]);
+
+  const tagNamespaces = useMemo(() => sortableNamespaces(recipes), [recipes]);
+
+  const sortOptions = useMemo(
+    () => [
+      ...(Object.keys(SORT_LABELS) as BaseSortMode[]).map((mode) => ({
+        mode: mode,
+        label: SORT_LABELS[mode],
+      })),
+      ...tagNamespaces.map((ns) => ({
+        mode: `tag:${ns}` as SortMode,
+        label: capitalize(ns),
+      })),
+    ],
+    [tagNamespaces],
+  );
+
+  const sortLabel = useCallback(
+    (mode: SortMode) =>
+      isTagSortMode(mode) ? capitalize(mode.slice(4)) : SORT_LABELS[mode],
+    [],
+  );
+
+  const toggleTag = useCallback((tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+  }, []);
 
   // Build grouped sections
   const sections = useMemo(
@@ -190,6 +271,10 @@ export function RecipeGallery({
   useEffect(() => {
     onSortModeChange?.(sortMode);
   }, [sortMode, onSortModeChange]);
+
+  useEffect(() => {
+    onTagFilterChange?.(selectedTags, tagMatchMode);
+  }, [selectedTags, tagMatchMode, onTagFilterChange]);
 
   const handleSelect = useCallback((path: string) => {
     setSelectedPaths((prev) => {
@@ -257,18 +342,34 @@ export function RecipeGallery({
           />
           <button
             type="button"
+            className={`rg-sort-toggle${tagsExpanded ? " active" : selectedTags.length > 0 ? " filtered" : ""}`}
+            onClick={() => {
+              setTagsExpanded((v) => !v);
+              setToolbarExpanded(false);
+            }}
+            title="Filter by tags"
+            aria-label="Toggle tag filter"
+            aria-expanded={tagsExpanded}
+          >
+            {selectedTags.length > 0 ? `Tags (${selectedTags.length})` : "Tags"}
+          </button>
+          <button
+            type="button"
             className={`rg-sort-toggle${toolbarExpanded ? " active" : sortMode !== "name" ? " filtered" : ""}`}
-            onClick={() => setToolbarExpanded((v) => !v)}
+            onClick={() => {
+              setToolbarExpanded((v) => !v);
+              setTagsExpanded(false);
+            }}
             title="Sort options"
             aria-label="Toggle sort options"
             aria-expanded={toolbarExpanded}
           >
-            {sortMode !== "name" ? SORT_LABELS[sortMode] : "Sort"}
+            {sortMode !== "name" ? sortLabel(sortMode) : "Sort"}
           </button>
         </div>
         {toolbarExpanded && (
           <div className="recipe-gallery-sort-tabs">
-            {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
+            {sortOptions.map(({ mode, label }) => (
               <button
                 key={mode}
                 type="button"
@@ -278,9 +379,106 @@ export function RecipeGallery({
                   setToolbarExpanded(false);
                 }}
               >
-                {SORT_LABELS[mode]}
+                {label}
               </button>
             ))}
+          </div>
+        )}
+        {tagsExpanded && (
+          <div className="rg-tag-panel">
+            <div className="rg-tag-panel-controls">
+              <input
+                className="rg-tag-search"
+                type="search"
+                placeholder="Find a tag…"
+                value={tagQuery}
+                onChange={(e) => setTagQuery(e.currentTarget.value)}
+              />
+              <div
+                className="rg-tag-mode"
+                role="radiogroup"
+                aria-label="Tag match mode"
+              >
+                {(["all", "any"] as TagMatchMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={tagMatchMode === mode}
+                    className={`rg-tag-mode-btn${tagMatchMode === mode ? " active" : ""}`}
+                    title={
+                      mode === "all"
+                        ? "Show recipes with every selected tag"
+                        : "Show recipes with at least one selected tag"
+                    }
+                    onClick={() => setTagMatchMode(mode)}
+                  >
+                    {mode === "all" ? "Match all" : "Match any"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="rg-tag-groups">
+              {visibleTagGroups.length === 0 ? (
+                <div className="rg-tag-empty">No tags found.</div>
+              ) : (
+                visibleTagGroups.map((group) => (
+                  <div key={group.namespace} className="rg-tag-group">
+                    <div className="rg-tag-group-label">
+                      {group.namespace ? capitalize(group.namespace) : "Other"}
+                    </div>
+                    <div className="rg-tag-chips">
+                      {group.tags.map(({ tag, label, count }) => {
+                        const active = selectedTags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            className={`rg-tag-chip${active ? " active" : ""}${!active && count === 0 ? " empty" : ""}`}
+                            aria-pressed={active}
+                            title={`#${tag}`}
+                            onClick={() => toggleTag(tag)}
+                          >
+                            {label}
+                            <span className="rg-tag-chip-count">{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+        {selectedTags.length > 0 && (
+          <div className="rg-active-tags">
+            {selectedTags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                className="rg-tag-chip active"
+                title={`Remove #${tag}`}
+                onClick={() => toggleTag(tag)}
+              >
+                #{tag}
+                <span className="rg-tag-chip-remove" aria-hidden="true">
+                  ×
+                </span>
+              </button>
+            ))}
+            {selectedTags.length > 1 && (
+              <span className="rg-active-tags-mode">
+                {tagMatchMode === "all" ? "all of these" : "any of these"}
+              </span>
+            )}
+            <button
+              type="button"
+              className="rg-active-tags-clear"
+              onClick={() => setSelectedTags([])}
+            >
+              Clear
+            </button>
           </div>
         )}
       </div>
@@ -328,8 +526,16 @@ export function RecipeGallery({
           {totalCount === 0 ? (
             <div className="recipe-gallery-empty">
               <span style={{ fontSize: 32 }}>🍽️</span>
-              {searchQuery ? (
-                <span>No recipes match your search.</span>
+              {searchQuery || selectedTags.length > 0 ? (
+                <span>
+                  No recipes match your{" "}
+                  {searchQuery && selectedTags.length > 0
+                    ? "search and tags"
+                    : searchQuery
+                      ? "search"
+                      : "tags"}
+                  .
+                </span>
               ) : recipesElsewhereFolder ? (
                 <>
                   <span>

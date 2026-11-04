@@ -15,4 +15,6 @@ export interface RecipeNote {
   times_made: number;
   /** Ingredient list from frontmatter.recipeIngredient */
   ingredients: string[];
+  /** Normalized tags (lower-case, no `#`) from frontmatter and inline tags */
+  tags: string[];
 }
