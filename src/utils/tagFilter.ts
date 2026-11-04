@@ -188,16 +188,23 @@ export function sortableNamespaces(
  * Sections for "sort by <namespace>": one per tag in that namespace (a recipe
  * with two cuisines shows under both), biggest first, then a catch-all for
  * recipes with none.
+ *
+ * When `selected` holds tags from this namespace, only those sections are
+ * kept (and no catch-all), so picking `method/grill` shows just "grill".
  */
 export function groupByNamespace<T extends { tags: string[]; title: string }>(
   recipes: readonly T[],
   namespace: string,
+  selected: readonly string[] = [],
 ): { label: string; recipes: T[] }[] {
   const map = new Map<string, T[]>();
   const none: T[] = [];
   const prefix = namespace + "/";
+  const picked = selected.filter((t) => t.startsWith(prefix));
+  const keep = (t: string) =>
+    picked.length === 0 || picked.some((p) => t === p || t.startsWith(p + "/"));
   for (const r of recipes) {
-    const own = r.tags.filter((t) => t.startsWith(prefix));
+    const own = r.tags.filter((t) => t.startsWith(prefix) && keep(t));
     if (own.length === 0) {
       none.push(r);
       continue;
@@ -212,7 +219,7 @@ export function groupByNamespace<T extends { tags: string[]; title: string }>(
   const sections = [...map.entries()]
     .sort(([a, ra], [b, rb]) => rb.length - ra.length || a.localeCompare(b))
     .map(([label, recs]) => ({ label, recipes: recs.sort(byTitle) }));
-  if (none.length > 0) {
+  if (none.length > 0 && picked.length === 0) {
     sections.push({ label: `No ${namespace}`, recipes: none.sort(byTitle) });
   }
   return sections;

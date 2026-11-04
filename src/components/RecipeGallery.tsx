@@ -8,6 +8,18 @@ import React, {
 import { RecipeNote } from "../types/recipe";
 import { cookTimeGroup, timesMadeGroup } from "../utils/recipeLoader";
 import {
+  COOK_TIME_ORDER,
+  facetChips,
+  filterByFacets,
+  hasFacetSelection,
+  isFacetKey,
+  nameGroup,
+  TIMES_MADE_ORDER,
+  UNCATEGORIZED,
+  type FacetKey,
+  type FacetSelections,
+} from "../utils/facets";
+import {
   buildTagGroups,
   capitalize,
   filterByTags,
@@ -48,6 +60,8 @@ interface RecipeGalleryProps {
   initialSelectedTags?: string[];
   initialTagMatchMode?: TagMatchMode;
   onTagFilterChange?: (selectedTags: string[], mode: TagMatchMode) => void;
+  initialFacetSelections?: FacetSelections;
+  onFacetFilterChange?: (selections: FacetSelections) => void;
   /** The folder the gallery is currently reading from (for the empty state). */
   galleryFolder?: string;
   /**
@@ -65,23 +79,15 @@ const SORT_LABELS: Record<BaseSortMode, string> = {
   times_made: "Times Made",
 };
 
-const COOK_TIME_ORDER = [
-  "Under 15 min",
-  "15\u201330 min",
-  "30\u201360 min",
-  "1\u20132 hr",
-  "2+ hr",
-  "Unknown",
-];
+/** What a facet chip panel's open-state key looks like. */
+const facetPanel = (key: FacetKey) => `facet:${key}`;
 
-const TIMES_MADE_ORDER = [
-  "11+ times",
-  "4\u201310 times",
-  "1\u20133 times",
-  "Never made",
-];
-
-function buildSections(recipes: RecipeNote[], sortMode: SortMode): Section[] {
+function buildSections(
+  recipes: RecipeNote[],
+  sortMode: SortMode,
+  selectedTags: readonly string[] = [],
+  facetSelections: FacetSelections = {},
+): Section[] {
   if (recipes.length === 0) return [];
 
   switch (sortMode) {
@@ -91,20 +97,26 @@ function buildSections(recipes: RecipeNote[], sortMode: SortMode): Section[] {
         a.title.localeCompare(b.title),
       );
       for (const recipe of sorted) {
-        const ch = recipe.title[0]?.toUpperCase() ?? "#";
-        const key = /^[A-Z]$/.test(ch) ? ch : "#";
+        const key = nameGroup(recipe.title);
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(recipe);
       }
       return [...map.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
+        .sort(([a], [b]) =>
+          a === "#" ? 1 : b === "#" ? -1 : a.localeCompare(b),
+        )
         .map(([label, recs]) => ({ label, recipes: recs }));
     }
 
     case "meal_type": {
       const allTypes = new Set<string>();
       recipes.forEach((r) => r.meal_type.forEach((t) => allTypes.add(t)));
-      const sortedTypes = [...allTypes].sort((a, b) => a.localeCompare(b));
+      // With meal types picked, a recipe that is also e.g. "Lunch" shouldn't
+      // bring a Lunch section along.
+      const picked = facetSelections.meal_type ?? [];
+      const sortedTypes = [...allTypes]
+        .filter((t) => picked.length === 0 || picked.includes(t))
+        .sort((a, b) => a.localeCompare(b));
       const sections: Section[] = sortedTypes
         .map((type) => ({
           label: type,
@@ -117,8 +129,11 @@ function buildSections(recipes: RecipeNote[], sortMode: SortMode): Section[] {
       const uncategorized = recipes
         .filter((r) => r.meal_type.length === 0)
         .sort((a, b) => a.title.localeCompare(b.title));
-      if (uncategorized.length > 0) {
-        sections.push({ label: "Uncategorized", recipes: uncategorized });
+      if (
+        uncategorized.length > 0 &&
+        (picked.length === 0 || picked.includes(UNCATEGORIZED))
+      ) {
+        sections.push({ label: UNCATEGORIZED, recipes: uncategorized });
       }
       return sections;
     }
@@ -153,7 +168,7 @@ function buildSections(recipes: RecipeNote[], sortMode: SortMode): Section[] {
 
     default: {
       if (isTagSortMode(sortMode)) {
-        return groupByNamespace(recipes, sortMode.slice(4));
+        return groupByNamespace(recipes, sortMode.slice(4), selectedTags);
       }
       return [{ label: "", recipes }];
     }
@@ -174,18 +189,26 @@ export function RecipeGallery({
   initialSelectedTags = [],
   initialTagMatchMode = "all",
   onTagFilterChange,
+  initialFacetSelections = {},
+  onFacetFilterChange,
   galleryFolder,
   recipesElsewhereFolder,
 }: RecipeGalleryProps) {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [sortMode, setSortMode] = useState<SortMode>(initialSortMode);
-  const [toolbarExpanded, setToolbarExpanded] = useState(false);
-  const [tagsExpanded, setTagsExpanded] = useState(false);
+  /**
+   * Which chip submenu is open: "*" for every tag (the Tags pill), a
+   * namespace like "method" for that pill's tags, or null for none.
+   */
+  const [openPanel, setOpenPanel] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] =
     useState<string[]>(initialSelectedTags);
   const [tagMatchMode, setTagMatchMode] =
     useState<TagMatchMode>(initialTagMatchMode);
   const [tagQuery, setTagQuery] = useState("");
+  const [facetSelections, setFacetSelections] = useState<FacetSelections>(
+    initialFacetSelections,
+  );
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -209,24 +232,79 @@ export function RecipeGallery({
     );
   }, [recipes, searchQuery]);
 
-  // Then by the toggled tags.
-  const filtered = useMemo(
+  // Then by the toggled tags, then by the meal type / cook time / times made
+  // chips.
+  const tagFiltered = useMemo(
     () => filterByTags(searched, selectedTags, tagMatchMode),
     [searched, selectedTags, tagMatchMode],
   );
-
-  const tagGroups = useMemo(
-    () => buildTagGroups(recipes, searched, selectedTags, tagMatchMode),
-    [recipes, searched, selectedTags, tagMatchMode],
+  const filtered = useMemo(
+    () => filterByFacets(tagFiltered, facetSelections),
+    [tagFiltered, facetSelections],
   );
 
+  const tagGroups = useMemo(
+    () =>
+      buildTagGroups(
+        recipes,
+        filterByFacets(searched, facetSelections),
+        selectedTags,
+        tagMatchMode,
+      ),
+    [recipes, searched, facetSelections, selectedTags, tagMatchMode],
+  );
+
+  /** The facet whose chip panel is open, if it's a facet panel. */
+  const openFacet: FacetKey | null = useMemo(() => {
+    const key = openPanel?.startsWith("facet:") ? openPanel.slice(6) : null;
+    return isFacetKey(key) ? key : null;
+  }, [openPanel]);
+
+  const openFacetChips = useMemo(
+    () =>
+      openFacet
+        ? facetChips(
+            recipes,
+            filterByFacets(tagFiltered, facetSelections, openFacet),
+            openFacet,
+            facetSelections[openFacet],
+          )
+        : [],
+    [openFacet, recipes, tagFiltered, facetSelections],
+  );
+
+  const toggleFacet = useCallback((key: FacetKey, value: string) => {
+    setFacetSelections((prev) => {
+      const current = prev[key] ?? [];
+      const nextValues = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+      const next = { ...prev };
+      if (nextValues.length > 0) next[key] = nextValues;
+      else delete next[key];
+      return next;
+    });
+  }, []);
+
   const visibleTagGroups = useMemo(() => {
+    if (openPanel === null || openFacet) return [];
     const q = tagQuery.toLowerCase().trim().replace(/^#/, "");
-    if (!q) return tagGroups;
     return tagGroups
-      .map((g) => ({ ...g, tags: g.tags.filter((t) => t.tag.includes(q)) }))
+      .filter((g) => openPanel === "*" || g.namespace === openPanel)
+      .map((g) =>
+        q ? { ...g, tags: g.tags.filter((t) => t.tag.includes(q)) } : g,
+      )
       .filter((g) => g.tags.length > 0);
-  }, [tagGroups, tagQuery]);
+  }, [tagGroups, tagQuery, openPanel, openFacet]);
+
+  /** How many selected tags belong to a namespace ("*" = all of them). */
+  const selectedIn = useCallback(
+    (ns: string) =>
+      ns === "*"
+        ? selectedTags.length
+        : selectedTags.filter((t) => t === ns || t.startsWith(ns + "/")).length,
+    [selectedTags],
+  );
 
   const tagNamespaces = useMemo(() => sortableNamespaces(recipes), [recipes]);
 
@@ -235,19 +313,15 @@ export function RecipeGallery({
       ...(Object.keys(SORT_LABELS) as BaseSortMode[]).map((mode) => ({
         mode: mode,
         label: SORT_LABELS[mode],
+        namespace: null as string | null,
       })),
       ...tagNamespaces.map((ns) => ({
         mode: `tag:${ns}` as SortMode,
         label: capitalize(ns),
+        namespace: ns,
       })),
     ],
     [tagNamespaces],
-  );
-
-  const sortLabel = useCallback(
-    (mode: SortMode) =>
-      isTagSortMode(mode) ? capitalize(mode.slice(4)) : SORT_LABELS[mode],
-    [],
   );
 
   const toggleTag = useCallback((tag: string) => {
@@ -258,8 +332,8 @@ export function RecipeGallery({
 
   // Build grouped sections
   const sections = useMemo(
-    () => buildSections(filtered, sortMode),
-    [filtered, sortMode],
+    () => buildSections(filtered, sortMode, selectedTags, facetSelections),
+    [filtered, sortMode, selectedTags, facetSelections],
   );
 
   const sectionLabels = useMemo(() => sections.map((s) => s.label), [sections]);
@@ -275,6 +349,13 @@ export function RecipeGallery({
   useEffect(() => {
     onTagFilterChange?.(selectedTags, tagMatchMode);
   }, [selectedTags, tagMatchMode, onTagFilterChange]);
+
+  useEffect(() => {
+    onFacetFilterChange?.(facetSelections);
+  }, [facetSelections, onFacetFilterChange]);
+
+  const anyFilter =
+    selectedTags.length > 0 || hasFacetSelection(facetSelections);
 
   const handleSelect = useCallback((path: string) => {
     setSelectedPaths((prev) => {
@@ -330,7 +411,7 @@ export function RecipeGallery({
 
   return (
     <div className="recipe-gallery-root">
-      {/* Toolbar: search + collapsible sort tabs */}
+      {/* Toolbar: search, then the sort options (always visible) */}
       <div className="recipe-gallery-toolbar">
         <div className="rg-toolbar-top">
           <input
@@ -340,57 +421,136 @@ export function RecipeGallery({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
-          <button
-            type="button"
-            className={`rg-sort-toggle${tagsExpanded ? " active" : selectedTags.length > 0 ? " filtered" : ""}`}
-            onClick={() => {
-              setTagsExpanded((v) => !v);
-              setToolbarExpanded(false);
-            }}
-            title="Filter by tags"
-            aria-label="Toggle tag filter"
-            aria-expanded={tagsExpanded}
-          >
-            {selectedTags.length > 0 ? `Tags (${selectedTags.length})` : "Tags"}
-          </button>
-          <button
-            type="button"
-            className={`rg-sort-toggle${toolbarExpanded ? " active" : sortMode !== "name" ? " filtered" : ""}`}
-            onClick={() => {
-              setToolbarExpanded((v) => !v);
-              setTagsExpanded(false);
-            }}
-            title="Sort options"
-            aria-label="Toggle sort options"
-            aria-expanded={toolbarExpanded}
-          >
-            {sortMode !== "name" ? sortLabel(sortMode) : "Sort"}
-          </button>
         </div>
-        {toolbarExpanded && (
-          <div className="recipe-gallery-sort-tabs">
-            {sortOptions.map(({ mode, label }) => (
+        <div
+          className="recipe-gallery-sort-tabs"
+          role="toolbar"
+          aria-label="Sort recipes"
+        >
+          {sortOptions.map(({ mode, label, namespace }) => {
+            const active = sortMode === mode;
+            if (namespace === null && isFacetKey(mode)) {
+              // Name / Meal Type / Cook Time / Times Made: sort by it and open its
+              // chips; clicking the active one again folds them away.
+              const panel = facetPanel(mode);
+              const count = facetSelections[mode]?.length ?? 0;
+              const open = openPanel === panel;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`rg-sort-tab rg-sort-tab-tags${active ? " active" : count > 0 ? " filtered" : ""}`}
+                  aria-pressed={active}
+                  aria-expanded={open}
+                  onClick={() => {
+                    if (!active) {
+                      setSortMode(mode);
+                      setOpenPanel(panel);
+                    } else {
+                      setOpenPanel(open ? null : panel);
+                    }
+                  }}
+                >
+                  {label}
+                  {count > 0 ? ` (${count})` : ""}
+                  <span className="rg-sort-tab-caret" aria-hidden="true">
+                    {open ? "▴" : "▾"}
+                  </span>
+                </button>
+              );
+            }
+            if (namespace === null) {
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`rg-sort-tab${active ? " active" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => {
+                    setSortMode(mode);
+                    setOpenPanel(null);
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            }
+            // Namespace pills sort by that namespace and open its chips;
+            // clicking the active one again folds the chips away.
+            const count = selectedIn(namespace);
+            const open = openPanel === namespace;
+            return (
               <button
                 key={mode}
                 type="button"
-                className={`rg-sort-tab${sortMode === mode ? " active" : ""}`}
+                className={`rg-sort-tab rg-sort-tab-tags${active ? " active" : count > 0 ? " filtered" : ""}`}
+                aria-pressed={active}
+                aria-expanded={open}
                 onClick={() => {
-                  setSortMode(mode);
-                  setToolbarExpanded(false);
+                  if (!active) {
+                    setSortMode(mode);
+                    setOpenPanel(namespace);
+                  } else {
+                    setOpenPanel(open ? null : namespace);
+                  }
+                  setTagQuery("");
                 }}
               >
                 {label}
+                {count > 0 ? ` (${count})` : ""}
+                <span className="rg-sort-tab-caret" aria-hidden="true">
+                  {open ? "▴" : "▾"}
+                </span>
               </button>
-            ))}
+            );
+          })}
+          <button
+            type="button"
+            className={`rg-sort-tab rg-sort-tab-tags${openPanel === "*" ? " active" : selectedTags.length > 0 ? " filtered" : ""}`}
+            aria-expanded={openPanel === "*"}
+            onClick={() => {
+              setOpenPanel((v) => (v === "*" ? null : "*"));
+              setTagQuery("");
+            }}
+          >
+            Tags
+            {selectedTags.length > 0 ? ` (${selectedTags.length})` : ""}
+            <span className="rg-sort-tab-caret" aria-hidden="true">
+              {openPanel === "*" ? "▴" : "▾"}
+            </span>
+          </button>
+        </div>
+        {openFacet && (
+          <div className="rg-tag-panel">
+            <div className="rg-tag-chips">
+              {openFacetChips.map(({ value, count }) => {
+                const active =
+                  facetSelections[openFacet]?.includes(value) ?? false;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`rg-tag-chip${active ? " active" : ""}${!active && count === 0 ? " empty" : ""}`}
+                    aria-pressed={active}
+                    onClick={() => toggleFacet(openFacet, value)}
+                  >
+                    {value}
+                    <span className="rg-tag-chip-count">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
-        {tagsExpanded && (
+        {openPanel !== null && !openFacet && (
           <div className="rg-tag-panel">
             <div className="rg-tag-panel-controls">
               <input
                 className="rg-tag-search"
                 type="search"
-                placeholder="Find a tag…"
+                placeholder={
+                  openPanel === "*" ? "Find a tag…" : `Find a ${openPanel}…`
+                }
                 value={tagQuery}
                 onChange={(e) => setTagQuery(e.currentTarget.value)}
               />
@@ -424,9 +584,13 @@ export function RecipeGallery({
               ) : (
                 visibleTagGroups.map((group) => (
                   <div key={group.namespace} className="rg-tag-group">
-                    <div className="rg-tag-group-label">
-                      {group.namespace ? capitalize(group.namespace) : "Other"}
-                    </div>
+                    {openPanel === "*" && (
+                      <div className="rg-tag-group-label">
+                        {group.namespace
+                          ? capitalize(group.namespace)
+                          : "Other"}
+                      </div>
+                    )}
                     <div className="rg-tag-chips">
                       {group.tags.map(({ tag, label, count }) => {
                         const active = selectedTags.includes(tag);
@@ -451,8 +615,24 @@ export function RecipeGallery({
             </div>
           </div>
         )}
-        {selectedTags.length > 0 && (
+        {anyFilter && (
           <div className="rg-active-tags">
+            {(Object.keys(facetSelections) as FacetKey[]).flatMap((key) =>
+              (facetSelections[key] ?? []).map((value) => (
+                <button
+                  key={`${key}:${value}`}
+                  type="button"
+                  className="rg-tag-chip active"
+                  title={`Remove ${SORT_LABELS[key]}: ${value}`}
+                  onClick={() => toggleFacet(key, value)}
+                >
+                  {value}
+                  <span className="rg-tag-chip-remove" aria-hidden="true">
+                    ×
+                  </span>
+                </button>
+              )),
+            )}
             {selectedTags.map((tag) => (
               <button
                 key={tag}
@@ -469,13 +649,16 @@ export function RecipeGallery({
             ))}
             {selectedTags.length > 1 && (
               <span className="rg-active-tags-mode">
-                {tagMatchMode === "all" ? "all of these" : "any of these"}
+                {tagMatchMode === "all" ? "all tags" : "any tag"}
               </span>
             )}
             <button
               type="button"
               className="rg-active-tags-clear"
-              onClick={() => setSelectedTags([])}
+              onClick={() => {
+                setSelectedTags([]);
+                setFacetSelections({});
+              }}
             >
               Clear
             </button>
@@ -526,14 +709,14 @@ export function RecipeGallery({
           {totalCount === 0 ? (
             <div className="recipe-gallery-empty">
               <span style={{ fontSize: 32 }}>🍽️</span>
-              {searchQuery || selectedTags.length > 0 ? (
+              {searchQuery || anyFilter ? (
                 <span>
                   No recipes match your{" "}
-                  {searchQuery && selectedTags.length > 0
-                    ? "search and tags"
+                  {searchQuery && anyFilter
+                    ? "search and filters"
                     : searchQuery
                       ? "search"
-                      : "tags"}
+                      : "filters"}
                   .
                 </span>
               ) : recipesElsewhereFolder ? (

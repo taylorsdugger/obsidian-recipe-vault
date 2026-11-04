@@ -92,3 +92,16 @@ describe("tag sorting", () => {
     expect(groupByNamespace(recipes, "dish").at(-1)!.label).toBe("No dish");
   });
 });
+
+describe("groupByNamespace with selected tags", () => {
+  it("keeps only the picked sections and drops the catch-all", () => {
+    const sections = groupByNamespace(recipes, "cuisine", [
+      "cuisine/thai",
+      "dish/noodles",
+    ]);
+    expect(sections.map((s) => s.label)).toEqual(["thai"]);
+    expect(
+      groupByNamespace(recipes, "cuisine", ["dish/noodles"]).at(-1)!.label,
+    ).toBe("vietnamese");
+  });
+});

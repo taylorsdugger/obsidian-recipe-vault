@@ -1408,24 +1408,6 @@
 	border-color: var(--color-accent);
 }
 
-/* Search + Tags + Sort on one row */
-.rg-toolbar-top {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 12px;
-}
-
-.rg-toolbar-top .recipe-gallery-search {
-	flex: 1 1 auto;
-	min-width: 0;
-	margin-bottom: 0;
-}
-
-.rg-sort-toggle {
-	flex-shrink: 0;
-	white-space: nowrap;
-}
 
 .rg-sort-toggle.active,
 .rg-sort-toggle.filtered {
@@ -1433,9 +1415,28 @@
 	color: var(--color-accent);
 }
 
-/* ---- Tag filter panel ---- */
+/* "Tags" entry in the sort menu, which opens the tag chips below it */
+.rg-sort-tab-tags {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.rg-sort-tab-tags.filtered {
+	border-color: var(--color-accent);
+	color: var(--color-accent);
+}
+
+.rg-sort-tab-caret {
+	font-size: 10px;
+	opacity: 0.8;
+}
+
+/* ---- Tag filter panel (inside the sort menu) ---- */
 .rg-tag-panel {
-	margin-top: 4px;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--background-modifier-border);
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
