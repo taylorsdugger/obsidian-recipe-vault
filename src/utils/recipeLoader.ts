@@ -137,6 +137,11 @@ export function loadRecipes(
       const cook_time_mins = parseCookTimeMins(cook_time);
       const times_made = typeof fm.times_made === "number" ? fm.times_made : 0;
       const ingredients = getIngredients(file.path);
+      const created =
+        parseCreated(fm.created) ||
+        parseCreated(fm.date_added) ||
+        file.stat.ctime ||
+        0;
       const tags = dedupeTags([
         ...parseTags(fm.tags ?? fm.tag),
         ...(cache?.tags ?? []).map((t) => t.tag),
@@ -151,6 +156,7 @@ export function loadRecipes(
         cook_time_mins,
         times_made,
         ingredients,
+        created,
         tags,
       };
     })
@@ -177,6 +183,7 @@ function cooklangRecipe(
     cook_time_mins: parseCookTimeMins(cook_time),
     times_made: info?.timesMade ?? 0,
     ingredients,
+    created: file.stat.ctime || 0,
     tags: [],
   };
 }
@@ -366,6 +373,44 @@ export function cookTimeGroup(mins: number): string {
   if (mins < 60) return "30\u201360 min";
   if (mins < 120) return "1\u20132 hr";
   return "2+ hr";
+}
+
+/** A frontmatter date (string, number or Date) as epoch ms; 0 if not one. */
+export function parseCreated(value: unknown): number {
+  if (value instanceof Date) return value.getTime() || 0;
+  if (typeof value === "number") return value > 0 ? value : 0;
+  if (typeof value !== "string" || !value.trim()) return 0;
+  const ms = Date.parse(value.trim());
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/** The month a recipe was added, e.g. "November 2026", or "Unknown". */
+export function createdGroup(ms: number): string {
+  if (!ms || ms <= 0) return "Unknown";
+  const d = new Date(ms);
+  return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/** Sort key for a `createdGroup` label: year*12+month, -1 for "Unknown". */
+export function createdGroupRank(label: string): number {
+  const m = /^(\w+) (\d{4})$/.exec(label);
+  const month = m ? MONTHS.indexOf(m[1]) : -1;
+  return m && month >= 0 ? Number(m[2]) * 12 + month : -1;
 }
 
 /** Group a times-made count into a display range label. */

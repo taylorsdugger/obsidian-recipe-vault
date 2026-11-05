@@ -4,6 +4,7 @@ import {
   filterByFacets,
   sanitizeFacetSelections,
 } from "../src/utils/facets";
+import { parseCreated } from "../src/utils/recipeLoader";
 
 const r = (
   title: string,
@@ -90,5 +91,49 @@ describe("name facet", () => {
       "Stew",
       "10-minute soup",
     ]);
+  });
+});
+
+describe("created facet", () => {
+  const at = (iso: string) => Date.parse(iso);
+  const r = (title: string, created?: number) => ({
+    title,
+    meal_type: [],
+    cook_time_mins: 0,
+    times_made: 0,
+    created,
+  });
+
+  it("groups by month and orders chips newest first, Unknown last", () => {
+    const recipes = [
+      r("Old", at("2025-03-10T12:00:00")),
+      r("Undated"),
+      r("New", at("2026-11-02T12:00:00")),
+      r("Newer", at("2026-11-04T12:00:00")),
+    ];
+    expect(facetChips(recipes, recipes, "created")).toEqual([
+      { value: "November 2026", count: 2 },
+      { value: "March 2025", count: 1 },
+      { value: "Unknown", count: 1 },
+    ]);
+  });
+
+  it("filters by picked months", () => {
+    const recipes = [
+      r("Old", at("2025-03-10T12:00:00")),
+      r("New", at("2026-11-02T12:00:00")),
+    ];
+    expect(
+      filterByFacets(recipes, { created: ["March 2025"] }).map((x) => x.title),
+    ).toEqual(["Old"]);
+  });
+});
+
+describe("parseCreated", () => {
+  it("reads dates and rejects junk", () => {
+    expect(parseCreated("2026-11-05")).toBe(Date.parse("2026-11-05"));
+    expect(parseCreated(new Date(5))).toBe(5);
+    expect(parseCreated("not a date")).toBe(0);
+    expect(parseCreated(undefined)).toBe(0);
   });
 });

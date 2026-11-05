@@ -4,6 +4,7 @@ import { RecipeGallery, type SortMode } from "./components/RecipeGallery";
 import { dedupeTags, type TagMatchMode } from "./utils/tagFilter";
 import { sanitizeFacetSelections, type FacetSelections } from "./utils/facets";
 import { getRecipeFiles, loadRecipes } from "./utils/recipeLoader";
+import { DEFAULT_ORDER, sanitizeOrder, type RecipeOrder } from "./utils/order";
 import { CompareRecipesModal } from "./modal-compare-recipes";
 import * as c from "./constants";
 import type RecipeVault from "./main";
@@ -19,6 +20,7 @@ const lastGalleryState: {
   selectedTags: string[];
   tagMatchMode: TagMatchMode;
   facetSelections: FacetSelections;
+  order: RecipeOrder;
 } = {
   scrollTop: 0,
   searchQuery: "",
@@ -26,6 +28,7 @@ const lastGalleryState: {
   selectedTags: [],
   tagMatchMode: "all",
   facetSelections: {},
+  order: DEFAULT_ORDER,
 };
 
 /**
@@ -41,6 +44,7 @@ export function resetGalleryUiState(): void {
   lastGalleryState.selectedTags = [];
   lastGalleryState.tagMatchMode = "all";
   lastGalleryState.facetSelections = {};
+  lastGalleryState.order = DEFAULT_ORDER;
 }
 
 export class RecipeGalleryView extends ItemView {
@@ -53,6 +57,7 @@ export class RecipeGalleryView extends ItemView {
   private savedTagMatchMode: TagMatchMode = lastGalleryState.tagMatchMode;
   private savedFacetSelections: FacetSelections =
     lastGalleryState.facetSelections;
+  private savedOrder: RecipeOrder = lastGalleryState.order;
   private renderTimer: number | null = null;
 
   private isValidSortMode(value: unknown): value is SortMode {
@@ -61,6 +66,7 @@ export class RecipeGalleryView extends ItemView {
       value === "meal_type" ||
       value === "cook_time" ||
       value === "times_made" ||
+      value === "created" ||
       (typeof value === "string" && /^tag:[^/]+$/.test(value))
     );
   }
@@ -140,6 +146,7 @@ export class RecipeGalleryView extends ItemView {
       selectedTags?: unknown;
       tagMatchMode?: unknown;
       facetSelections?: unknown;
+      order?: unknown;
     } | null;
     const scrollTop = next?.scrollTop;
     // Fall back to the shared cache (not the defaults) so a fresh instance
@@ -172,6 +179,11 @@ export class RecipeGalleryView extends ItemView {
         ? sanitizeFacetSelections(next.facetSelections)
         : lastGalleryState.facetSelections;
     lastGalleryState.facetSelections = this.savedFacetSelections;
+    this.savedOrder =
+      next?.order !== undefined
+        ? sanitizeOrder(next.order)
+        : lastGalleryState.order;
+    lastGalleryState.order = this.savedOrder;
     lastGalleryState.selectedTags = this.savedSelectedTags;
     lastGalleryState.tagMatchMode = this.savedTagMatchMode;
     lastGalleryState.scrollTop = this.savedScrollTop;
@@ -188,6 +200,7 @@ export class RecipeGalleryView extends ItemView {
       selectedTags: this.savedSelectedTags,
       tagMatchMode: this.savedTagMatchMode,
       facetSelections: this.savedFacetSelections,
+      order: this.savedOrder,
     };
   }
 
@@ -244,6 +257,11 @@ export class RecipeGalleryView extends ItemView {
         initialSelectedTags={this.savedSelectedTags}
         initialTagMatchMode={this.savedTagMatchMode}
         initialFacetSelections={this.savedFacetSelections}
+        initialOrder={this.savedOrder}
+        onOrderChange={(order) => {
+          this.savedOrder = order;
+          lastGalleryState.order = order;
+        }}
         onFacetFilterChange={(facetSelections) => {
           this.savedFacetSelections = facetSelections;
           lastGalleryState.facetSelections = facetSelections;

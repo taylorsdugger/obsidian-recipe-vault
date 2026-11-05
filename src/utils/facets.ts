@@ -1,12 +1,22 @@
 /**
  * Chip filters for the gallery's non-tag sort options (Name, Meal Type,
- * Cook Time, Times Made). Each recipe falls into one or more values per facet; picking
+ * Cook Time, Times Made, Recently Added). Each recipe falls into one or more values per facet; picking
  * several chips in one facet matches any of them, and facets combine with
  * each other (and with the tag filter) as "and".
  */
-import { cookTimeGroup, timesMadeGroup } from "./recipeLoader";
+import {
+  cookTimeGroup,
+  createdGroup,
+  createdGroupRank,
+  timesMadeGroup,
+} from "./recipeLoader";
 
-export type FacetKey = "name" | "meal_type" | "cook_time" | "times_made";
+export type FacetKey =
+  | "name"
+  | "meal_type"
+  | "cook_time"
+  | "times_made"
+  | "created";
 export type FacetSelections = Partial<Record<FacetKey, string[]>>;
 
 export const FACET_KEYS: readonly FacetKey[] = [
@@ -14,6 +24,7 @@ export const FACET_KEYS: readonly FacetKey[] = [
   "meal_type",
   "cook_time",
   "times_made",
+  "created",
 ];
 
 export const UNCATEGORIZED = "Uncategorized";
@@ -45,6 +56,8 @@ export interface FacetRecipe {
   meal_type: string[];
   cook_time_mins: number;
   times_made: number;
+  /** Epoch ms the recipe was added; 0 or missing if unknown. */
+  created?: number;
 }
 
 export function isFacetKey(value: unknown): value is FacetKey {
@@ -62,6 +75,8 @@ export function facetValues(recipe: FacetRecipe, key: FacetKey): string[] {
       return [cookTimeGroup(recipe.cook_time_mins)];
     case "times_made":
       return [timesMadeGroup(recipe.times_made)];
+    case "created":
+      return [createdGroup(recipe.created ?? 0)];
   }
 }
 
@@ -86,6 +101,10 @@ export function filterByFacets<T extends FacetRecipe>(
 
 function orderValues(key: FacetKey, values: Iterable<string>): string[] {
   const list = [...new Set(values)];
+  if (key === "created") {
+    // Newest month first, "Unknown" last.
+    return list.sort((a, b) => createdGroupRank(b) - createdGroupRank(a));
+  }
   if (key === "cook_time" || key === "times_made") {
     const order = key === "cook_time" ? COOK_TIME_ORDER : TIMES_MADE_ORDER;
     const rank = (v: string) => {

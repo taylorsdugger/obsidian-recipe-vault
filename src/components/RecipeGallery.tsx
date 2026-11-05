@@ -6,7 +6,12 @@ import React, {
   useState,
 } from "react";
 import { RecipeNote } from "../types/recipe";
-import { cookTimeGroup, timesMadeGroup } from "../utils/recipeLoader";
+import {
+  cookTimeGroup,
+  createdGroup,
+  createdGroupRank,
+  timesMadeGroup,
+} from "../utils/recipeLoader";
 import {
   COOK_TIME_ORDER,
   facetChips,
@@ -27,9 +32,24 @@ import {
   sortableNamespaces,
   type TagMatchMode,
 } from "../utils/tagFilter";
+import {
+  applyOrder,
+  DEFAULT_ORDER,
+  dirLabel,
+  isOrderField,
+  NATURAL_DIR,
+  ORDER_FIELDS,
+  ORDER_LABELS,
+  type RecipeOrder,
+} from "../utils/order";
 import { RecipeCard } from "./RecipeCard";
 
-type BaseSortMode = "name" | "meal_type" | "cook_time" | "times_made";
+type BaseSortMode =
+  | "name"
+  | "meal_type"
+  | "cook_time"
+  | "times_made"
+  | "created";
 /** `tag:<namespace>` groups by the tags in one namespace, e.g. `tag:cuisine`. */
 export type SortMode = BaseSortMode | `tag:${string}`;
 
@@ -42,8 +62,11 @@ interface Section {
   recipes: RecipeNote[];
 }
 
-function shouldShowSectionHeader(sortMode: SortMode): boolean {
-  return sortMode !== "name";
+function shouldShowSectionHeader(
+  sortMode: SortMode,
+  sections: Section[],
+): boolean {
+  return sortMode !== "name" && sections.some((s) => s.label !== "");
 }
 
 interface RecipeGalleryProps {
@@ -62,6 +85,8 @@ interface RecipeGalleryProps {
   onTagFilterChange?: (selectedTags: string[], mode: TagMatchMode) => void;
   initialFacetSelections?: FacetSelections;
   onFacetFilterChange?: (selections: FacetSelections) => void;
+  initialOrder?: RecipeOrder;
+  onOrderChange?: (order: RecipeOrder) => void;
   /** The folder the gallery is currently reading from (for the empty state). */
   galleryFolder?: string;
   /**
@@ -77,6 +102,7 @@ const SORT_LABELS: Record<BaseSortMode, string> = {
   meal_type: "Meal Type",
   cook_time: "Cook Time",
   times_made: "Times Made",
+  created: "Recently Added",
 };
 
 /** What a facet chip panel's open-state key looks like. */
@@ -166,6 +192,22 @@ function buildSections(
       }));
     }
 
+    case "created": {
+      // Newest first, one section per month; undated recipes last.
+      const map = new Map<string, RecipeNote[]>();
+      const sorted = [...recipes].sort(
+        (a, b) => b.created - a.created || a.title.localeCompare(b.title),
+      );
+      for (const recipe of sorted) {
+        const group = createdGroup(recipe.created);
+        if (!map.has(group)) map.set(group, []);
+        map.get(group)!.push(recipe);
+      }
+      return [...map.entries()]
+        .sort(([a], [b]) => createdGroupRank(b) - createdGroupRank(a))
+        .map(([label, recs]) => ({ label, recipes: recs }));
+    }
+
     default: {
       if (isTagSortMode(sortMode)) {
         return groupByNamespace(recipes, sortMode.slice(4), selectedTags);
@@ -191,6 +233,8 @@ export function RecipeGallery({
   onTagFilterChange,
   initialFacetSelections = {},
   onFacetFilterChange,
+  initialOrder = DEFAULT_ORDER,
+  onOrderChange,
   galleryFolder,
   recipesElsewhereFolder,
 }: RecipeGalleryProps) {
@@ -209,6 +253,7 @@ export function RecipeGallery({
   const [facetSelections, setFacetSelections] = useState<FacetSelections>(
     initialFacetSelections,
   );
+  const [order, setOrder] = useState<RecipeOrder>(initialOrder);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -330,10 +375,15 @@ export function RecipeGallery({
     );
   }, []);
 
-  // Build grouped sections
+  // Build grouped sections, then order the recipes inside them.
   const sections = useMemo(
-    () => buildSections(filtered, sortMode, selectedTags, facetSelections),
-    [filtered, sortMode, selectedTags, facetSelections],
+    () =>
+      applyOrder(
+        buildSections(filtered, sortMode, selectedTags, facetSelections),
+        sortMode,
+        order,
+      ),
+    [filtered, sortMode, selectedTags, facetSelections, order],
   );
 
   const sectionLabels = useMemo(() => sections.map((s) => s.label), [sections]);
@@ -349,6 +399,10 @@ export function RecipeGallery({
   useEffect(() => {
     onTagFilterChange?.(selectedTags, tagMatchMode);
   }, [selectedTags, tagMatchMode, onTagFilterChange]);
+
+  useEffect(() => {
+    onOrderChange?.(order);
+  }, [order, onOrderChange]);
 
   useEffect(() => {
     onFacetFilterChange?.(facetSelections);
@@ -407,7 +461,7 @@ export function RecipeGallery({
   }, [sectionLabels, initialScrollTop]);
 
   const totalCount = filtered.length;
-  const showSectionHeader = shouldShowSectionHeader(sortMode);
+  const showSectionHeader = shouldShowSectionHeader(sortMode, sections);
 
   return (
     <div className="recipe-gallery-root">
@@ -427,10 +481,57 @@ export function RecipeGallery({
           role="toolbar"
           aria-label="Sort recipes"
         >
+          <div className="rg-order" role="group" aria-label="Order">
+            <span className="rg-order-pick">
+              <select
+                className={`rg-sort-tab rg-order-select${order.field !== "default" ? " filtered" : ""}`}
+                aria-label="Order recipes by"
+                title="Order recipes within each section"
+                value={order.field}
+                onChange={(e) => {
+                  const field = e.currentTarget.value;
+                  if (isOrderField(field)) {
+                    setOrder({ field, dir: NATURAL_DIR[field] });
+                  }
+                }}
+              >
+                {ORDER_FIELDS.map((field) => (
+                  <option key={field} value={field}>
+                    {field === "default"
+                      ? "Order"
+                      : `Order: ${ORDER_LABELS[field]}`}
+                  </option>
+                ))}
+              </select>
+              <span
+                className="rg-sort-tab-caret rg-order-caret"
+                aria-hidden="true"
+              >
+                ▾
+              </span>
+            </span>
+            {order.field !== "default" && (
+              <button
+                type="button"
+                className="rg-sort-tab rg-order-dir"
+                title="Reverse the order"
+                onClick={() =>
+                  setOrder((o) => ({
+                    ...o,
+                    dir: o.dir === "asc" ? "desc" : "asc",
+                  }))
+                }
+              >
+                {order.dir === "asc" ? "↑" : "↓"}{" "}
+                {dirLabel(order.field, order.dir)}
+              </button>
+            )}
+          </div>
+          <span className="rg-order-divider" aria-hidden="true" />
           {sortOptions.map(({ mode, label, namespace }) => {
             const active = sortMode === mode;
             if (namespace === null && isFacetKey(mode)) {
-              // Name / Meal Type / Cook Time / Times Made: sort by it and open its
+              // Name / Meal Type / Cook Time / Times Made / Recently Added: sort by it and open its
               // chips; clicking the active one again folds them away.
               const panel = facetPanel(mode);
               const count = facetSelections[mode]?.length ?? 0;
