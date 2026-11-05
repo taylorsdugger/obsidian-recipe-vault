@@ -1038,6 +1038,58 @@
 .recipe-gallery-search:focus {
   border-color: var(--color-accent);
 }
+.rg-order {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.recipe-gallery-sort-tabs .rg-sort-tab {
+  box-sizing: border-box;
+  height: 28px;
+  min-height: 0;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: 999px;
+  box-shadow: none;
+}
+.recipe-gallery-sort-tabs select.rg-order-select {
+  display: block;
+  line-height: 26px;
+  font-family: inherit;
+  padding-right: 28px;
+  background-image: none;
+}
+.rg-order-pick {
+  position: relative;
+  display: inline-flex;
+}
+.rg-order-caret {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text-muted);
+}
+select.rg-order-select.filtered {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.rg-order-dir {
+  white-space: nowrap;
+  color: var(--text-normal);
+}
+.rg-order-divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 2px;
+  background: var(--background-modifier-border);
+}
 .recipe-gallery-sort-tabs {
   display: flex;
   gap: 8px;
@@ -1065,6 +1117,150 @@
   background: var(--color-accent);
   color: var(--text-on-accent);
   border-color: var(--color-accent);
+}
+.rg-sort-toggle.active, .rg-sort-toggle.filtered {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.rg-sort-tab-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.rg-sort-tab-tags.filtered {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.rg-sort-tab-caret {
+  font-size: 10px;
+  opacity: 0.8;
+}
+.rg-tag-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rg-tag-panel-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.rg-tag-search {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+}
+.rg-tag-mode {
+  display: inline-flex;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.rg-tag-mode-btn {
+  appearance: none;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  height: auto;
+}
+.rg-tag-mode-btn.active {
+  background: var(--color-accent);
+  color: var(--text-on-accent);
+}
+.rg-tag-groups {
+  max-height: min(45vh, 360px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+.rg-tag-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin-bottom: 5px;
+}
+.rg-tag-chips, .rg-active-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rg-active-tags {
+  align-items: center;
+  margin-top: 10px;
+}
+.rg-tag-chip {
+  appearance: none;
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: var(--tag-background);
+  color: var(--tag-color);
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+  user-select: none;
+}
+.rg-tag-chip:hover {
+  background: var(--tag-background-hover, var(--background-modifier-hover));
+}
+.rg-tag-chip.active {
+  background: var(--color-accent);
+  color: var(--text-on-accent);
+  border-color: var(--color-accent);
+}
+.rg-tag-chip.empty {
+  opacity: 0.4;
+}
+.rg-tag-chip-count {
+  font-size: 11px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.rg-tag-chip-remove {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.8;
+}
+.rg-tag-empty, .rg-active-tags-mode {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.rg-active-tags-clear {
+  appearance: none;
+  box-shadow: none;
+  background: none;
+  border: none;
+  height: auto;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text-accent);
+  cursor: pointer;
 }
 .recipe-gallery-body {
   display: flex;

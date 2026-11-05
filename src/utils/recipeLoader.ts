@@ -1,6 +1,7 @@
 import { MetadataCache, TFile, Vault } from "obsidian";
 import { normalizePhotoProperty } from "@recipe-vault/core";
 import { RecipeNote } from "../types/recipe";
+import { dedupeTags, parseTags } from "./tagFilter";
 
 /**
  * What the plugin's index keeps for a `.cook` file. Obsidian has no metadata
@@ -126,8 +127,8 @@ export function loadRecipes(
           getIngredients(file.path),
         );
       }
-      const fm = (metadataCache.getFileCache(file)?.frontmatter ??
-        {}) as Record<string, unknown>;
+      const cache = metadataCache.getFileCache(file);
+      const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
       // The configured property, else `photo`, so notes made before it
       // changed keep their photo.
       const photo = resolvePhoto(file, vault, fm[photoKey] || fm.photo);
@@ -136,6 +137,17 @@ export function loadRecipes(
       const cook_time_mins = parseCookTimeMins(cook_time);
       const times_made = typeof fm.times_made === "number" ? fm.times_made : 0;
       const ingredients = getIngredients(file.path);
+      // `date_added` first: imported recipes often carry the site's publish
+      // date in `created`, which isn't when the recipe joined the vault.
+      const created =
+        parseCreated(fm.date_added) ||
+        parseCreated(fm.created) ||
+        file.stat.ctime ||
+        0;
+      const tags = dedupeTags([
+        ...parseTags(fm.tags ?? fm.tag),
+        ...(cache?.tags ?? []).map((t) => t.tag),
+      ]);
 
       return {
         title: file.basename,
@@ -146,6 +158,8 @@ export function loadRecipes(
         cook_time_mins,
         times_made,
         ingredients,
+        created,
+        tags,
       };
     })
     .sort((a, b) => a.title.localeCompare(b.title));
@@ -171,6 +185,8 @@ function cooklangRecipe(
     cook_time_mins: parseCookTimeMins(cook_time),
     times_made: info?.timesMade ?? 0,
     ingredients,
+    created: file.stat.ctime || 0,
+    tags: [],
   };
 }
 
@@ -359,6 +375,56 @@ export function cookTimeGroup(mins: number): string {
   if (mins < 60) return "30\u201360 min";
   if (mins < 120) return "1\u20132 hr";
   return "2+ hr";
+}
+
+/** A frontmatter date (string, number or Date) as epoch ms; 0 if not one. */
+export function parseCreated(value: unknown): number {
+  if (value instanceof Date) return value.getTime() || 0;
+  if (typeof value === "number") return value > 0 ? value : 0;
+  if (typeof value !== "string" || !value.trim()) return 0;
+  const text = value.trim();
+  // `2026-11-01` and `2026-11-01 14:30` (Obsidian's date and datetime
+  // properties, no zone) are local times. Date.parse reads a bare date as UTC
+  // midnight, which lands on the previous day west of UTC, and Safari (iOS)
+  // can't parse the space-separated form at all.
+  const local =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(text);
+  if (local) {
+    const [, y, mo, d, h = "0", mi = "0", s = "0"] = local;
+    const ms = new Date(+y, +mo - 1, +d, +h, +mi, +s).getTime();
+    return Number.isNaN(ms) ? 0 : ms;
+  }
+  const ms = Date.parse(text);
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/** The month a recipe was added, e.g. "November 2026", or "Unknown". */
+export function createdGroup(ms: number): string {
+  if (!ms || ms <= 0) return "Unknown";
+  const d = new Date(ms);
+  return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/** Sort key for a `createdGroup` label: year*12+month, -1 for "Unknown". */
+export function createdGroupRank(label: string): number {
+  const m = /^(\w+) (\d{4})$/.exec(label);
+  const month = m ? MONTHS.indexOf(m[1]) : -1;
+  return m && month >= 0 ? Number(m[2]) * 12 + month : -1;
 }
 
 /** Group a times-made count into a display range label. */
