@@ -74,6 +74,14 @@ export function tagLabel(tag: string): string {
   return ns ? tag.slice(ns.length + 1) : tag;
 }
 
+/**
+ * Whether a recipe can have tags at all. `.cook` files can't yet (the
+ * Cooklang index doesn't read them); anything without a path is a note.
+ */
+export function canCarryTags(recipe: { path?: string }): boolean {
+  return !recipe.path?.toLowerCase().endsWith(".cook");
+}
+
 /** True when `recipeTags` has `tag` itself or a tag nested under it. */
 export function hasTag(recipeTags: readonly string[], tag: string): boolean {
   const prefix = tag + "/";
@@ -113,32 +121,26 @@ export function filterByTags<T extends { tags: string[] }>(
  * nothing, so they are left out unless selected.
  */
 export function buildTagGroups(
-  allRecipes: readonly { tags: string[] }[],
+  allRecipes: readonly { tags: string[]; path?: string }[],
   pool: readonly { tags: string[] }[],
   selected: readonly string[],
   mode: TagMatchMode,
 ): TagGroup[] {
-  const total = new Map<string, number>();
-  for (const r of allRecipes) {
-    for (const t of r.tags) total.set(t, (total.get(t) ?? 0) + 1);
-  }
+  const tags = new Set<string>(selected);
+  for (const r of allRecipes) for (const t of r.tags) tags.add(t);
 
+  // Recipes that can't carry tags (`.cook` files, for now) would keep a
+  // blanket tag from ever looking universal, so only taggable ones decide it.
+  const taggable = allRecipes.filter(canCarryTags);
   const base = mode === "all" ? filterByTags(pool, selected, "all") : [...pool];
-  const counts = new Map<string, number>();
-  for (const r of base) {
-    for (const t of r.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
-  }
-
-  const tags = new Set<string>(total.keys());
-  for (const t of selected) tags.add(t);
 
   const groups = new Map<string, TagCount[]>();
   for (const tag of tags) {
     const isSelected = selected.includes(tag);
     if (
       !isSelected &&
-      allRecipes.length > 1 &&
-      total.get(tag) === allRecipes.length
+      taggable.length > 1 &&
+      taggable.every((r) => hasTag(r.tags, tag))
     ) {
       continue;
     }
@@ -147,10 +149,9 @@ export function buildTagGroups(
     groups.get(ns)!.push({
       tag,
       label: tagLabel(tag),
-      // A selected parent tag (e.g. `cuisine`) counts its nested tags too.
-      count: isSelected
-        ? base.filter((r) => hasTag(r.tags, tag)).length
-        : counts.get(tag) ?? 0,
+      // Counted the way selecting it filters: a parent tag (e.g. `dish`)
+      // includes its nested tags, so the count doesn't jump on click.
+      count: base.filter((r) => hasTag(r.tags, tag)).length,
     });
   }
 

@@ -44,11 +44,7 @@
   --recipe-row-min-height: 44px;
   --recipe-picked-bg: var(--interactive-accent);
   @supports (color: color-mix(in lab, red, red)) {
-    --recipe-picked-bg: color-mix(
-    in srgb,
-    var(--interactive-accent) 12%,
-    var(--background-primary)
-  );
+    --recipe-picked-bg: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
   }
   --recipe-picked-color: var(--text-normal);
   --recipe-picked-decoration: none;
@@ -174,7 +170,7 @@
     min-height: 44px;
     gap: var(--size-4-2);
   }
-  .recipe-nutrition-long, .recipe-nutrition-per, .recipe-nutrition-chevron.mod-down {
+  .recipe-nutrition-long,	.recipe-nutrition-per,	.recipe-nutrition-chevron.mod-down {
     display: none;
   }
   .recipe-nutrition-short {
@@ -429,14 +425,14 @@
   white-space: nowrap;
 }
 @container recipe-pane (width >= 1000px) {
-  .markdown-preview-view.recipe-note.has-recipe-rail, .cooklang-recipe .recipe-layout {
+  .markdown-preview-view.recipe-note.has-recipe-rail,	.cooklang-recipe .recipe-layout {
     display: grid;
     grid-template-columns: var(--recipe-rail-width) minmax(0, 70ch);
     gap: 0 var(--recipe-gap);
     justify-content: center;
     align-items: start;
   }
-  .markdown-preview-view.recipe-note.has-recipe-rail > .markdown-preview-sizer, .cooklang-recipe .recipe-layout > .recipe-main {
+  .markdown-preview-view.recipe-note.has-recipe-rail > .markdown-preview-sizer,	.cooklang-recipe .recipe-layout > .recipe-main {
     grid-column: 2;
     grid-row: 1;
     max-width: none;
@@ -459,10 +455,10 @@
     aspect-ratio: 4 / 3;
     max-height: none;
   }
-  .recipe-rail .recipe-hero p, .recipe-rail-list > * {
+  .recipe-rail .recipe-hero p,	.recipe-rail-list > * {
     margin: 0;
   }
-  .has-recipe-rail > .markdown-preview-sizer > [data-recipe-section="hero"], .has-recipe-rail > .markdown-preview-sizer > [data-recipe-section="ingredients"], .cooklang-recipe .recipe-main > [data-recipe-section="hero"], .cooklang-recipe .recipe-main > [data-recipe-section="ingredients"] {
+  .has-recipe-rail > .markdown-preview-sizer > [data-recipe-section="hero"],	.has-recipe-rail > .markdown-preview-sizer > [data-recipe-section="ingredients"],	.cooklang-recipe .recipe-main > [data-recipe-section="hero"],	.cooklang-recipe .recipe-main > [data-recipe-section="ingredients"] {
     display: none;
   }
 }
@@ -788,7 +784,7 @@
   padding-block: var(--size-4-1);
 }
 @media (prefers-reduced-motion: reduce) {
-  .recipe-cook-sheet, .recipe-cook-sheet.is-open {
+  .recipe-cook-sheet,	.recipe-cook-sheet.is-open {
     transition: none;
   }
 }
@@ -946,7 +942,7 @@
   animation-delay: 0.3s;
 }
 @keyframes recipe-ai-typing {
-  0%, 60%, 100% {
+  0%,	60%,	100% {
     opacity: 0.3;
     transform: translateY(0);
   }
@@ -1461,11 +1457,11 @@ select.rg-order-select.filtered {
   padding: 10px 20px;
   background: var(--interactive-accent);
   @supports (color: color-mix(in lab, red, red)) {
-    background: color-mix( in srgb, var(--interactive-accent) 12%, var(--background-primary) 88% );
+    background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary) 88%);
   }
   border-bottom: 1px solid var(--interactive-accent);
   @supports (color: color-mix(in lab, red, red)) {
-    border-bottom: 1px solid color-mix( in srgb, var(--interactive-accent) 30%, var(--background-modifier-border) 70% );
+    border-bottom: 1px solid color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border) 70%);
   }
   flex-shrink: 0;
   flex-wrap: wrap;
@@ -1550,7 +1546,7 @@ select.rg-order-select.filtered {
   border-color: var(--interactive-accent);
   background: var(--interactive-accent);
   @supports (color: color-mix(in lab, red, red)) {
-    background: color-mix( in srgb, var(--interactive-accent) 10%, var(--background-secondary) 90% );
+    background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-secondary) 90%);
   }
   box-shadow: 0 0 0 3px var(--interactive-accent);
   @supports (color: color-mix(in lab, red, red)) {

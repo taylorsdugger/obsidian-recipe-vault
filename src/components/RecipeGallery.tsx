@@ -105,6 +105,12 @@ const SORT_LABELS: Record<BaseSortMode, string> = {
   created: "Recently Added",
 };
 
+/** Whether a saved value is a sort mode the gallery understands. */
+export function isSortMode(value: unknown): value is SortMode {
+  if (typeof value !== "string") return false;
+  return Object.keys(SORT_LABELS).includes(value) || /^tag:[^/]+$/.test(value);
+}
+
 /** What a facet chip panel's open-state key looks like. */
 const facetPanel = (key: FacetKey) => `facet:${key}`;
 

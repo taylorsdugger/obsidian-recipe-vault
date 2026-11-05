@@ -1,6 +1,10 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { createRoot } from "react-dom/client";
-import { RecipeGallery, type SortMode } from "./components/RecipeGallery";
+import {
+  isSortMode,
+  RecipeGallery,
+  type SortMode,
+} from "./components/RecipeGallery";
 import { dedupeTags, type TagMatchMode } from "./utils/tagFilter";
 import { sanitizeFacetSelections, type FacetSelections } from "./utils/facets";
 import { getRecipeFiles, loadRecipes } from "./utils/recipeLoader";
@@ -59,17 +63,6 @@ export class RecipeGalleryView extends ItemView {
     lastGalleryState.facetSelections;
   private savedOrder: RecipeOrder = lastGalleryState.order;
   private renderTimer: number | null = null;
-
-  private isValidSortMode(value: unknown): value is SortMode {
-    return (
-      value === "name" ||
-      value === "meal_type" ||
-      value === "cook_time" ||
-      value === "times_made" ||
-      value === "created" ||
-      (typeof value === "string" && /^tag:[^/]+$/.test(value))
-    );
-  }
 
   constructor(leaf: WorkspaceLeaf, plugin: RecipeVault) {
     super(leaf);
@@ -160,7 +153,7 @@ export class RecipeGalleryView extends ItemView {
       typeof next?.searchQuery === "string"
         ? next.searchQuery
         : lastGalleryState.searchQuery;
-    this.savedSortMode = this.isValidSortMode(next?.sortMode)
+    this.savedSortMode = isSortMode(next?.sortMode)
       ? next.sortMode
       : lastGalleryState.sortMode;
 

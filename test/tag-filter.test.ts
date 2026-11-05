@@ -105,3 +105,32 @@ describe("groupByNamespace with selected tags", () => {
     ).toBe("vietnamese");
   });
 });
+
+describe("buildTagGroups review cases", () => {
+  const chip = (groups: ReturnType<typeof buildTagGroups>, tag: string) =>
+    groups.flatMap((g) => g.tags).find((t) => t.tag === tag);
+
+  it("counts a parent tag with its nested tags, before and after picking it", () => {
+    const list = [
+      r("a", ["dish"]),
+      r("b", ["dish/soup"]),
+      r("c", ["dish/soup"]),
+      r("d", ["cuisine/thai"]),
+    ];
+    const before = chip(buildTagGroups(list, list, [], "all"), "dish");
+    const after = chip(buildTagGroups(list, list, ["dish"], "all"), "dish");
+    expect(before?.count).toBe(3);
+    expect(after?.count).toBe(3);
+  });
+
+  it("still hides a blanket tag when .cook recipes (no tags) are present", () => {
+    const list = [
+      { title: "a", path: "a.md", tags: ["recipe", "dish/soup"] },
+      { title: "b", path: "b.md", tags: ["recipe"] },
+      { title: "c", path: "c.cook", tags: [] },
+    ];
+    const groups = buildTagGroups(list, list, [], "all");
+    expect(chip(groups, "recipe")).toBeUndefined();
+    expect(chip(groups, "dish/soup")?.count).toBe(1);
+  });
+});

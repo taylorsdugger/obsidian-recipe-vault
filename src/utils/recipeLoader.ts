@@ -382,7 +382,19 @@ export function parseCreated(value: unknown): number {
   if (value instanceof Date) return value.getTime() || 0;
   if (typeof value === "number") return value > 0 ? value : 0;
   if (typeof value !== "string" || !value.trim()) return 0;
-  const ms = Date.parse(value.trim());
+  const text = value.trim();
+  // `2026-11-01` and `2026-11-01 14:30` (Obsidian's date and datetime
+  // properties, no zone) are local times. Date.parse reads a bare date as UTC
+  // midnight, which lands on the previous day west of UTC, and Safari (iOS)
+  // can't parse the space-separated form at all.
+  const local =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(text);
+  if (local) {
+    const [, y, mo, d, h = "0", mi = "0", s = "0"] = local;
+    const ms = new Date(+y, +mo - 1, +d, +h, +mi, +s).getTime();
+    return Number.isNaN(ms) ? 0 : ms;
+  }
+  const ms = Date.parse(text);
   return Number.isNaN(ms) ? 0 : ms;
 }
 

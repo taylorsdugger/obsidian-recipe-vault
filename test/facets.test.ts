@@ -131,12 +131,30 @@ describe("created facet", () => {
 
 describe("parseCreated", () => {
   it("reads dates and rejects junk", () => {
-    expect(parseCreated("2026-11-05")).toBe(Date.parse("2026-11-05"));
+    expect(parseCreated("2026-11-05")).toBe(new Date(2026, 10, 5).getTime());
     expect(parseCreated("2017-12-30 16:22")).toBe(
       new Date(2017, 11, 30, 16, 22).getTime(),
     );
     expect(parseCreated(new Date(5))).toBe(5);
+    expect(parseCreated("2026-11-01T10:00:00Z")).toBe(
+      Date.UTC(2026, 10, 1, 10),
+    );
     expect(parseCreated("not a date")).toBe(0);
     expect(parseCreated(undefined)).toBe(0);
+  });
+});
+
+describe("date-only values stay in their own month", () => {
+  it("files a recipe added on the 1st under that month in any timezone", () => {
+    const recipe = {
+      title: "x",
+      meal_type: [],
+      cook_time_mins: 0,
+      times_made: 0,
+      created: parseCreated("2026-11-01"),
+    };
+    expect(facetChips([recipe], [recipe], "created")[0].value).toBe(
+      "November 2026",
+    );
   });
 });
