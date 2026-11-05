@@ -132,6 +132,9 @@ describe("created facet", () => {
 describe("parseCreated", () => {
   it("reads dates and rejects junk", () => {
     expect(parseCreated("2026-11-05")).toBe(Date.parse("2026-11-05"));
+    expect(parseCreated("2017-12-30 16:22")).toBe(
+      new Date(2017, 11, 30, 16, 22).getTime(),
+    );
     expect(parseCreated(new Date(5))).toBe(5);
     expect(parseCreated("not a date")).toBe(0);
     expect(parseCreated(undefined)).toBe(0);

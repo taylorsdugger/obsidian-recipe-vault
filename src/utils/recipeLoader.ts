@@ -137,9 +137,11 @@ export function loadRecipes(
       const cook_time_mins = parseCookTimeMins(cook_time);
       const times_made = typeof fm.times_made === "number" ? fm.times_made : 0;
       const ingredients = getIngredients(file.path);
+      // `date_added` first: imported recipes often carry the site's publish
+      // date in `created`, which isn't when the recipe joined the vault.
       const created =
-        parseCreated(fm.created) ||
         parseCreated(fm.date_added) ||
+        parseCreated(fm.created) ||
         file.stat.ctime ||
         0;
       const tags = dedupeTags([

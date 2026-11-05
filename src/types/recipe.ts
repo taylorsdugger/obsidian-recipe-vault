@@ -16,7 +16,7 @@ export interface RecipeNote {
   /** Ingredient list from frontmatter.recipeIngredient */
   ingredients: string[];
   /**
-   * When the recipe was added, as epoch ms: the `created` / `date_added`
+   * When the recipe was added, as epoch ms: the `date_added` (else `created`)
    * frontmatter date if it has one, else the file's creation time. 0 if unknown.
    */
   created: number;
